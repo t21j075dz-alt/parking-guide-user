@@ -755,11 +755,15 @@ h2 {
 .parking-map--layout {
   display: block;
   min-height: 18rem;
-  background: #666b70;
+  background-color: #f8fafc;
+  background-image:
+    linear-gradient(rgb(148 163 184 / 16%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(148 163 184 / 16%) 1px, transparent 1px);
+  background-size: 18px 18px;
 }
 
 html[data-theme="dark"] .parking-map--layout {
-  background: #3f444a;
+  background-color: #111827;
 }
 
 .map-object {
@@ -817,7 +821,7 @@ html[data-theme="dark"] .map-object--sidewalk {
   overflow: visible;
   place-items: center;
   border: 0;
-  background: rgb(23 107 77 / 18%);
+  background: transparent;
   color: #ffffff;
   text-align: center;
   text-shadow: 0 1px 1px rgb(0 0 0 / 75%);
@@ -1261,4 +1265,83 @@ html[data-theme="dark"] .map-object--sidewalk {
 .parking-map--layout > .map-object--noEntry,
 .parking-map--layout > .map-object--evCharger {
   z-index: 8;
+}
+
+
+/* 白紙模式図の多角形表示。 */
+.map-object--polygon {
+  overflow: visible;
+  border: 0 !important;
+  background: transparent !important;
+}
+.user-polygon-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.user-polygon-fill {
+  vector-effect: non-scaling-stroke;
+  fill: #e2e8f0;
+  stroke: #475569;
+  stroke-width: 2;
+}
+.map-object--parkingLot .user-polygon-fill {
+  fill: rgb(203 213 225 / 24%);
+  stroke: #2563eb;
+  stroke-width: 3;
+  stroke-dasharray: 8 5;
+}
+.map-object--building .user-polygon-fill {
+  fill: #dbe4ea;
+  stroke: #334155;
+}
+.map-object--road .user-polygon-fill {
+  fill: #64748b;
+  stroke: #334155;
+}
+.map-object--nationalRoad .user-polygon-fill {
+  fill: #dbeafe;
+  stroke: #1d4ed8;
+  stroke-width: 4;
+}
+.map-object--prefecturalRoad .user-polygon-fill {
+  fill: #fef3c7;
+  stroke: #b45309;
+  stroke-width: 3;
+}
+.map-object--publicRoad .user-polygon-fill {
+  fill: #e5e7eb;
+  stroke: #4b5563;
+}
+.map-object--polygon > .map-object-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 4;
+  max-width: 80%;
+  padding: 0.08rem 0.18rem;
+  overflow: hidden;
+  background: rgb(255 255 255 / 78%);
+  color: #111827;
+  font-size: clamp(0.5rem, 1.5vw, 0.72rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+}
+.map-object--parkingSpace > .map-object-label {
+  display: none;
+}
+.map-object--parkingSpace.is-recommended > .map-object-label {
+  display: block;
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: max-content;
+  padding: 0.05rem 0.15rem;
+  background: rgb(15 23 42 / 82%);
+  color: #fff;
+  transform: translateX(-50%);
 }
