@@ -1754,7 +1754,8 @@ facilityList.addEventListener("click", (event) => {
   state.proximitySearchRunning = false;
   state.recommendedSpace = null;
   selectedFacilityName.textContent = facility.name;
-  randomGuidanceNote.hidden = facility.id !== RANDOM_GUIDANCE_FACILITY_ID;
+  updateRandomGuidanceNote();
+  updatePrivateTestLocationPanel();
   showScreen("condition");
 });
 
