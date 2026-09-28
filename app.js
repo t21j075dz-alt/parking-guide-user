@@ -56,12 +56,27 @@ const PRIORITY_LABELS = Object.freeze({
   wide: "幅にゆとりがある",
 });
 
+const SPACE_TYPE_LABELS = Object.freeze({
+  standard: "普通車",
+  compact: "軽自動車",
+  accessible: "車いす使用者用",
+  ev: "EV充電",
+});
+
+/* 選択施設からこの距離以内へ入ると、自動で案内先を表示する。 */
+const AUTO_GUIDANCE_DISTANCE_KM = 0.25;
+const AUTO_GUIDANCE_MAX_ACCURACY_METERS = 80;
+
 const SCREEN_ORDER = Object.freeze(["facility", "condition", "result", "guide"]);
 
 const state = {
   currentScreen: "facility",
   selectedFacility: null,
   selectedPriority: "balanced",
+  requestedSpaceType: "standard",
+  autoProximityArmed: false,
+  autoTriggeredFacilityId: null,
+  proximitySearchRunning: false,
   recommendedSpace: null,
   currentSpaces: [],
   currentLayout: null,
@@ -89,6 +104,8 @@ const textSizeButton = document.querySelector("#text-size-button");
 const themeButton = document.querySelector("#theme-button");
 const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 const conditionForm = document.querySelector("#condition-form");
+const searchNowButton = document.querySelector("#search-now-button");
+const proximityStatus = document.querySelector("#proximity-status");
 const selectedFacilityName = document.querySelector("#selected-facility-name");
 const searchStatus = document.querySelector("#search-status");
 const resultContent = document.querySelector("#result-content");
@@ -483,17 +500,26 @@ function createDemoParkingSpaces(searchSequence = state.searchSequence) {
   const shiftedOccupied = baseOccupied.map(
     (number) => ((number + searchSequence - 1) % 12) + 1,
   );
+  const typeByNumber = new Map([
+    [1, "accessible"],
+    [3, "compact"],
+    [4, "ev"],
+    [7, "accessible"],
+    [9, "compact"],
+    [10, "ev"],
+  ]);
 
   return Array.from({ length: 12 }, (_, index) => {
     const number = index + 1;
     const distanceMeters = Math.max(20, 82 - number * 5);
+    const spaceType = typeByNumber.get(number) ?? "standard";
     return {
       id: `B-${String(number).padStart(2, "0")}`,
       uid: `demo_b_${String(number).padStart(2, "0")}`,
       number,
       isOccupied: shiftedOccupied.includes(number),
-      isWide: [3, 4, 9, 10].includes(number),
-      spaceType: "standard",
+      isWide: spaceType === "accessible",
+      spaceType,
       entranceDistanceMeters: distanceMeters,
       distanceScore: distanceMeters,
       sourceObject: null,
@@ -502,8 +528,10 @@ function createDemoParkingSpaces(searchSequence = state.searchSequence) {
 }
 
 /** 希望条件に合う空き区画を1件選ぶ。 */
-function selectRecommendedSpace(spaces, priority) {
-  const availableSpaces = spaces.filter((space) => !space.isOccupied);
+function selectRecommendedSpace(spaces, priority, requestedSpaceType = "standard") {
+  const availableSpaces = spaces.filter((space) =>
+    !space.isOccupied && space.spaceType === requestedSpaceType,
+  );
   if (availableSpaces.length === 0) {
     return null;
   }
@@ -926,6 +954,95 @@ function showScreen(screenName, options = {}) {
   }
 }
 
+/** 条件画面の入力内容を検索状態へ保存する。 */
+function saveSearchConditions() {
+  const checkedPriority = conditionForm.querySelector('input[name="priority"]:checked');
+  const checkedSpaceType = conditionForm.querySelector('input[name="spaceType"]:checked');
+  state.selectedPriority = checkedPriority?.value ?? "balanced";
+  state.requestedSpaceType = checkedSpaceType?.value ?? "standard";
+}
+
+/** 選択施設までの実測距離を返す。位置情報がない場合はnull。 */
+function getSelectedFacilityProximityKm() {
+  if (!state.userLocation || !state.selectedFacility) {
+    return null;
+  }
+  const coordinate = getFacilityCoordinate(state.selectedFacility);
+  if (!coordinate) {
+    return null;
+  }
+  return calculateDistanceKm(
+    state.userLocation.latitude,
+    state.userLocation.longitude,
+    coordinate.latitude,
+    coordinate.longitude,
+  );
+}
+
+/** 接近監視中の状態を条件画面へ表示する。 */
+function updateProximityStatus() {
+  if (!proximityStatus) return;
+
+  if (!state.autoProximityArmed || !state.selectedFacility) {
+    proximityStatus.textContent = "まだ自動案内を開始していません。";
+    return;
+  }
+
+  if (!state.userLocation) {
+    proximityStatus.textContent =
+      "位置情報を待っています。ブラウザーで位置情報を許可してください。";
+    return;
+  }
+
+  const distanceKm = getSelectedFacilityProximityKm();
+  if (distanceKm === null) {
+    proximityStatus.textContent =
+      "この施設の位置座標を確認できないため、自動案内を開始できません。";
+    return;
+  }
+
+  const meters = Math.round(distanceKm * 1000);
+  const accuracy = Number(state.userLocation.accuracy);
+  const accuracyText = Number.isFinite(accuracy) ? `（測位精度 約${Math.round(accuracy)}m）` : "";
+  proximityStatus.textContent = meters <= AUTO_GUIDANCE_DISTANCE_KM * 1000
+    ? `施設付近です。空き区画を確認しています…${accuracyText}`
+    : `施設まで直線約${meters}m。約250m以内で自動表示します。${accuracyText}`;
+}
+
+/**
+ * 位置情報更新時に接近判定を行う。
+ * 同じ施設では1回だけ自動表示し、GPS精度が著しく低い測位では発火させない。
+ */
+async function checkAutomaticProximitySearch() {
+  updateProximityStatus();
+
+  if (!state.autoProximityArmed
+      || !state.selectedFacility
+      || !state.userLocation
+      || state.proximitySearchRunning
+      || state.autoTriggeredFacilityId === state.selectedFacility.id) {
+    return;
+  }
+
+  const accuracy = Number(state.userLocation.accuracy);
+  if (Number.isFinite(accuracy) && accuracy > AUTO_GUIDANCE_MAX_ACCURACY_METERS) {
+    return;
+  }
+
+  const distanceKm = getSelectedFacilityProximityKm();
+  if (distanceKm === null || distanceKm > AUTO_GUIDANCE_DISTANCE_KM) {
+    return;
+  }
+
+  state.proximitySearchRunning = true;
+  state.autoTriggeredFacilityId = state.selectedFacility.id;
+  try {
+    await runSpaceSearch(null, { autoTriggered: true, skipSafetyGuard: true });
+  } finally {
+    state.proximitySearchRunning = false;
+  }
+}
+
 /** 選択施設に応じて登録済みレイアウトまたはデモ区画を準備する。 */
 function prepareSpaces(facility) {
   const layout = getFacilityLayout(facility);
@@ -950,9 +1067,10 @@ function prepareSpaces(facility) {
 }
 
 /** 空き区画検索を実行する。 */
-async function runSpaceSearch(priorityOverride = null) {
+async function runSpaceSearch(priorityOverride = null, options = {}) {
+  const { autoTriggered = false, skipSafetyGuard = false } = options;
   await loadRemoteParkingLayouts();
-  if (window.parkingSafety && !window.parkingSafety.guardOperation()) {
+  if (!skipSafetyGuard && window.parkingSafety && !window.parkingSafety.guardOperation()) {
     return { cancelled: true };
   }
   if (!state.selectedFacility) {
@@ -960,15 +1078,13 @@ async function runSpaceSearch(priorityOverride = null) {
     return { cancelled: true };
   }
 
-  const checkedPriority = conditionForm.querySelector('input[name="priority"]:checked');
-  state.selectedPriority = priorityOverride ?? checkedPriority?.value ?? "balanced";
+  saveSearchConditions();
+  state.selectedPriority = priorityOverride ?? state.selectedPriority ?? "balanced";
 
   const matchingRadio = conditionForm.querySelector(
     `input[name="priority"][value="${state.selectedPriority}"]`,
   );
-  if (matchingRadio) {
-    matchingRadio.checked = true;
-  }
+  if (matchingRadio) matchingRadio.checked = true;
 
   const requestId = ++state.searchRequestId;
   const facility = state.selectedFacility;
@@ -976,7 +1092,7 @@ async function runSpaceSearch(priorityOverride = null) {
   state.recommendedSpace = null;
 
   if (state.currentScreen !== "result") {
-    showScreen("result");
+    showScreen("result", { moveFocus: !autoTriggered });
   }
   resultContent.hidden = true;
   searchStatus.textContent = "空き区画を確認しています…";
@@ -996,16 +1112,17 @@ async function runSpaceSearch(priorityOverride = null) {
       state.currentLayout = prepared.layout;
       state.currentSpaces = prepared.spaces;
       state.guideEntrance = prepared.entrance;
-      state.recommendedSpace = selectRecommendedSpace(prepared.spaces, priority);
+      state.recommendedSpace = selectRecommendedSpace(prepared.spaces, priority, state.requestedSpaceType);
 
       if (!state.recommendedSpace) {
-        searchStatus.textContent = "現在の条件で案内できる空き区画がありません。";
-        resolve({ facility: facility.name, spaceId: null, priority });
+        searchStatus.textContent =
+          `${SPACE_TYPE_LABELS[state.requestedSpaceType] ?? "指定条件"}で案内できる空き区画がありません。`;
+        resolve({ facility: facility.name, spaceId: null, priority, spaceType: state.requestedSpaceType });
         return;
       }
 
       spaceNumber.textContent = state.recommendedSpace.id;
-      priorityBadge.textContent = PRIORITY_LABELS[priority];
+      priorityBadge.textContent = `${SPACE_TYPE_LABELS[state.requestedSpaceType]} / ${PRIORITY_LABELS[priority]}`;
 
       if (prepared.isSimulation) {
         spaceDescription.textContent = `店舗入口まで約${Math.round(state.recommendedSpace.entranceDistanceMeters)}m（シミュレーション）`;
@@ -1020,6 +1137,11 @@ async function runSpaceSearch(priorityOverride = null) {
         searchStatus.textContent = `${facility.name}の登録レイアウトから案内先を選びました。`;
       }
 
+      if (autoTriggered) {
+        searchStatus.textContent =
+          `${facility.name}への接近を検知して案内先を自動表示しました。運転中は画面を操作しないでください。`;
+      }
+
       updatedTime.textContent = new Intl.DateTimeFormat("ja-JP", {
         hour: "2-digit",
         minute: "2-digit",
@@ -1032,6 +1154,8 @@ async function runSpaceSearch(priorityOverride = null) {
         facility: facility.name,
         spaceId: state.recommendedSpace.id,
         priority,
+        spaceType: state.requestedSpaceType,
+        autoTriggered,
         simulation: prepared.isSimulation,
       });
     }, 350);
@@ -1124,6 +1248,10 @@ function resetApplication() {
   state.searchRequestId += 1;
   state.selectedFacility = null;
   state.selectedPriority = "balanced";
+  state.requestedSpaceType = "standard";
+  state.autoProximityArmed = false;
+  state.autoTriggeredFacilityId = null;
+  state.proximitySearchRunning = false;
   state.recommendedSpace = null;
   state.currentSpaces = [];
   state.currentLayout = null;
@@ -1150,6 +1278,9 @@ facilityList.addEventListener("click", (event) => {
 
   state.selectedFacility = facility;
   state.searchRequestId += 1;
+  state.autoProximityArmed = false;
+  state.autoTriggeredFacilityId = null;
+  state.proximitySearchRunning = false;
   state.recommendedSpace = null;
   selectedFacilityName.textContent = facility.name;
   showScreen("condition");
@@ -1184,10 +1315,24 @@ sortDistanceButton.addEventListener("click", () => {
 window.addEventListener("parking:locationchange", (event) => {
   state.userLocation = event.detail.location;
   updateFacilityDistances();
+  void checkAutomaticProximitySearch();
 });
 
 conditionForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  saveSearchConditions();
+  state.autoProximityArmed = true;
+  state.autoTriggeredFacilityId = null;
+  state.recommendedSpace = null;
+
+  /* submitはユーザー操作なので、このタイミングで位置情報許可を求められる。 */
+  window.parkingSafety?.start?.();
+  updateProximityStatus();
+  void checkAutomaticProximitySearch();
+});
+
+searchNowButton?.addEventListener("click", () => {
+  saveSearchConditions();
   void runSpaceSearch();
 });
 
