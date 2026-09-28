@@ -404,6 +404,14 @@ function renderRegisteredLayout(layout, recommendedSpace) {
     "parkingSpace",
     "buildingEntrance",
     "parkingEntrance",
+    "stopLine",
+    "speedBump",
+    "noEntry",
+    "cartCorral",
+    "bicycleParking",
+    "motorcycleParking",
+    "loadingZone",
+    "evCharger",
   ]);
 
   layout.objects
@@ -414,7 +422,8 @@ function renderRegisteredLayout(layout, recommendedSpace) {
       item.style.left = `${toPercent(object.x, canvasWidth)}%`;
       item.style.top = `${toPercent(object.y, canvasHeight)}%`;
 
-      if (["road", "sidewalk", "crosswalk", "building", "parkingSpace"].includes(object.objectType)) {
+      if (["road", "sidewalk", "crosswalk", "building", "parkingSpace", "stopLine",
+        "speedBump", "cartCorral", "bicycleParking", "motorcycleParking", "loadingZone"].includes(object.objectType)) {
         item.style.width = `${toPercent(Number(object.width) || 70, canvasWidth)}%`;
         item.style.height = `${toPercent(Number(object.height) || 70, canvasHeight)}%`;
         item.style.transform = `rotate(${Number(object.rotation) || 0}deg)`;
@@ -441,7 +450,25 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         item.append(marker, label);
         item.setAttribute("aria-label", label.textContent);
       } else if (object.objectType === "parkingEntrance") {
-        item.textContent = object.name || "駐車場入口";
+        const accessLabel = object.accessType === "entrance"
+          ? "入口"
+          : object.accessType === "exit"
+            ? "出口"
+            : "出入口";
+        item.textContent = object.name || `駐車場${accessLabel}`;
+        item.dataset.accessType = object.accessType ?? "both";
+      } else if (object.objectType === "road") {
+        if (object.trafficDirection === "oneWay") {
+          item.textContent = object.name || "一方通行";
+          item.dataset.trafficDirection = "oneWay";
+        }
+      } else if (object.objectType === "noEntry") {
+        item.textContent = object.name || "進入禁止";
+      } else if (object.objectType === "evCharger") {
+        item.textContent = object.name || "EV充電";
+      } else if (["stopLine", "speedBump", "cartCorral", "bicycleParking",
+        "motorcycleParking", "loadingZone"].includes(object.objectType)) {
+        item.textContent = object.name || "";
       } else if (object.objectType === "building") {
         item.textContent = object.name || "建物";
       }
