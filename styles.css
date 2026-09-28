@@ -1652,3 +1652,17 @@ html[data-theme="dark"] .map-object--parkingLot .user-polygon-fill {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* =========================================================
+   利用者マップの自動トリミング
+   ========================================================= */
+.parking-map.parking-map--layout[data-cropped="true"] {
+  width: 100%;
+  overflow: hidden;
+}
+
+/* 管理画面のCSS既定値と同じく、回転中心はオブジェクト中央。 */
+.parking-map--layout > .map-object {
+  transform-origin: 50% 50%;
+}
