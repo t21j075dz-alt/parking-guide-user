@@ -50,6 +50,17 @@ const CATEGORY_LABELS = Object.freeze({
   experiment: "実験用駐車場",
 });
 
+const CATEGORY_LABELS_EN = Object.freeze({
+  supermarket: "Supermarket / grocery",
+  "home-center": "Home center",
+  "discount-store": "Discount store",
+  experiment: "Test parking lot",
+});
+
+function getCategoryLabel(category) {
+  return (isEnglish() ? CATEGORY_LABELS_EN : CATEGORY_LABELS)[category] ?? category;
+}
+
 const PRIORITY_LABELS = Object.freeze({
   balanced: "おまかせ",
   near: "入口に近い",
@@ -63,14 +74,211 @@ const SPACE_TYPE_LABELS = Object.freeze({
   ev: "EV充電",
 });
 
+const SPACE_TYPE_LABELS_EN = Object.freeze({
+  standard: "Standard",
+  compact: "Kei car",
+  accessible: "Accessible",
+  ev: "EV charging",
+});
+
+const PRIORITY_LABELS_EN = Object.freeze({
+  balanced: "Recommended",
+  near: "Near entrance",
+  wide: "More space",
+});
+
+/*
+ * 固有名詞は元データを保持し、UI文言だけ日本語／英語を切り替える。
+ * 静的HTMLは日本語文言を英訳辞書で置換する。
+ */
+const STATIC_JA_EN = Object.freeze({
+  "本文へ移動": "Skip to main content",
+  "駐車場空き区画案内": "Parking Space Guide",
+  "施設": "Facility",
+  "条件": "Options",
+  "区画": "Space",
+  "案内": "Guide",
+  "卒業研究用の試作です。実店舗の空き情報は取得していません。駐車区画の検索結果は、管理データ未登録の施設ではシミュレーションを表示します。":
+    "Graduation research prototype. Live parking occupancy is not currently collected. Facilities without registered layout data use simulated results.",
+  "現在地": "Current location",
+  "まだ取得していません": "Location not started",
+  "現在地の取得中に移動状態を確認します。": "Movement status is checked while location is active.",
+  "現在地を取得": "Start location",
+  "取得を停止": "Stop location",
+  "位置情報について": "About location data",
+  "現在地は距離表示と移動状態の確認に使用します。位置情報はこのページ内で処理し、保存・送信しません。":
+    "Location is used for distance display and movement checks. It is processed on this page and is not stored or transmitted.",
+  "ブラウザー版のため、画面を閉じた後やバックグラウンドでの常時取得は行いません。":
+    "Because this is a browser app, location is not continuously tracked after the page is closed or while it is suspended in the background.",
+  "利用する施設を選択": "Select a facility",
+  "中国地方・九州地方の研究対象施設と、岡山理科大学の実験用駐車場を掲載しています。":
+    "Research facilities in the Chugoku and Kyushu regions and the Okayama University of Science test parking lot are listed.",
+  "絞り込み": "Filters",
+  "都道府県": "Prefecture",
+  "カテゴリ": "Category",
+  "すべての都道府県": "All prefectures",
+  "すべてのカテゴリ": "All categories",
+  "距離順に更新": "Sort by distance",
+  "条件を解除": "Clear filters",
+  "条件に一致する施設がありません。": "No facilities match the selected filters.",
+  "← 施設選択へ戻る": "← Back to facilities",
+  "駐車区画の条件": "Parking options",
+  "利用する駐車区画": "Parking space type",
+  "普通車": "Standard vehicle",
+  "普通車用の空き区画から案内": "Guide to an available standard space",
+  "軽自動車": "Kei car",
+  "「軽」の区画から案内": "Guide to an available kei-car space",
+  "車いす使用者用": "Accessible",
+  "「♿」の区画から案内": "Guide to an accessible parking space",
+  "EV充電を利用": "Use EV charging",
+  "EV用の区画から案内": "Guide to an available EV charging space",
+  "優先する条件": "Preference",
+  "おまかせ": "Recommended",
+  "入口までの距離と停めやすさをもとに選択": "Choose using entrance distance and ease of parking",
+  "入口に近い": "Near entrance",
+  "案内対象の建物入口に近い区画を優先": "Prefer spaces near the target entrance",
+  "幅にゆとりがある": "More space",
+  "幅の広い区画を優先": "Prefer wider spaces",
+  "施設へ近づいたら自動表示": "Show automatically near the facility",
+  "この条件を保存すると、位置情報を使って選択施設への接近を確認します。約250m以内に入ると空き区画を自動検索して表示します。":
+    "After starting automatic guidance, your location is checked. An available space is shown automatically when you are within about 250 m of the selected facility.",
+  "まだ自動案内を開始していません。": "Automatic guidance has not started.",
+  "音声案内を使用": "Use voice guidance",
+  "案内先が決まったときに端末の音声で読み上げます。": "Read the selected parking space aloud when guidance is ready.",
+  "この条件で自動案内を開始": "Start automatic guidance",
+  "今すぐ空き区画を確認": "Check available space now",
+  "マルナカ 中井町店では現在、条件に合う空き区画から研究用にランダムで1区画を案内します。":
+    "For Marunaka Nakaicho, this prototype currently selects one matching available space at random.",
+  "← 条件選択へ戻る": "← Back to options",
+  "案内先の駐車区画": "Recommended parking space",
+  "案内先": "Destination",
+  "選択条件": "Selected option",
+  "駐車場マップ": "Parking map",
+  "空き": "Available",
+  "使用中": "Occupied",
+  "建物入口": "Building entrance",
+  "区画までの案内を見る": "View parking guidance",
+  "音声で案内": "Voice guidance",
+  "空き状況を更新": "Refresh availability",
+  "← 区画表示へ戻る": "← Back to parking space",
+  "駐車区画までの案内": "Parking guidance",
+  "現地の標識・一方通行・歩行者を優先してください。": "Follow on-site signs, one-way restrictions, and give priority to pedestrians.",
+  "駐車場内へ進む": "Enter the parking area",
+  "現地の入口・進行方向を確認してください。": "Check the entrance and traffic direction on site.",
+  "案内先区画へ進む": "Proceed to the selected space",
+  "管理画面で経路データを登録すると、ここを実際の案内経路に置き換えられます。":
+    "When route data is registered in the admin app, this can be replaced with actual route guidance.",
+  "案内先に到着": "Arrive at the selected space",
+  "路面の区画番号と画面表示を確認してください。": "Confirm the pavement marking and the space shown on screen.",
+  "安全上の注意": "Safety notice",
+  "運転者は走行中に画面を操作しないでください。": "Drivers must not operate the screen while driving.",
+  "最初の画面へ戻る": "Back to start",
+  "運転中ですか？": "Are you driving?",
+  "移動を検知しました。GPSだけでは運転者と同乗者を区別できないため、操作する方の状況を確認します。":
+    "Movement was detected. GPS alone cannot tell whether you are the driver or passenger, so please confirm your situation.",
+  "はい、運転中です": "Yes, I am driving",
+  "いいえ、運転していません": "No, I am not driving",
+  "操作をやめる": "Cancel",
+  "運転中の操作は同乗者に依頼するか、安全な場所に停車してから行ってください。":
+    "Ask a passenger to operate the app, or stop in a safe place before using it.",
+  "安全な場所に停車するまで操作できません。": "Controls are locked until you stop in a safe place.",
+  "安全な場所に停車したので再開する": "I have stopped safely",
+  "岡山理科大学 工学部 情報工学科 卒業研究": "Okayama University of Science — Graduation Research",
+  "試作システムのため、実際の駐車案内には使用できません。":
+    "Prototype system. Do not rely on it for real-world parking guidance."
+});
+
+const STATIC_EN_JA = Object.freeze(
+  Object.fromEntries(Object.entries(STATIC_JA_EN).map(([ja, en]) => [en, ja])),
+);
+
+function isEnglish() {
+  return state.language === "en";
+}
+
+function ui(ja, en) {
+  return isEnglish() ? en : ja;
+}
+
+function getSpaceTypeLabel(type) {
+  return (isEnglish() ? SPACE_TYPE_LABELS_EN : SPACE_TYPE_LABELS)[type] ?? type;
+}
+
+function getPriorityLabel(priority) {
+  return (isEnglish() ? PRIORITY_LABELS_EN : PRIORITY_LABELS)[priority] ?? priority;
+}
+
+function translateStaticPage() {
+  const map = isEnglish() ? STATIC_JA_EN : STATIC_EN_JA;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+
+  nodes.forEach((node) => {
+    const raw = node.nodeValue ?? "";
+    const trimmed = raw.trim();
+    const replacement = map[trimmed];
+    if (!replacement) return;
+    node.nodeValue = raw.replace(trimmed, replacement);
+  });
+
+  document.documentElement.lang = isEnglish() ? "en" : "ja";
+  document.title = ui(
+    "駐車場空き区画案内｜卒業研究",
+    "Parking Space Guide | Graduation Research",
+  );
+
+  languageButton.textContent = isEnglish() ? "日本語" : "English";
+  languageButton.setAttribute(
+    "aria-label",
+    ui("表示言語を英語へ切り替える", "Switch display language to Japanese"),
+  );
+}
+
+function applyLanguage(language) {
+  state.language = language === "en" ? "en" : "ja";
+  translateStaticPage();
+  applyTheme(document.documentElement.dataset.theme ?? "light");
+  applyTextSizeLabel();
+  initializeFilters();
+  renderFacilities();
+  updateProximityStatus();
+  if (state.selectedFacility) {
+    selectedFacilityName.textContent = state.selectedFacility.name;
+    randomGuidanceNote.hidden = state.selectedFacility.id !== RANDOM_GUIDANCE_FACILITY_ID;
+  }
+  window.dispatchEvent(new CustomEvent("parking:languagechange", {
+    detail: { language: state.language },
+  }));
+  try {
+    localStorage.setItem("parkingGuideLanguage", state.language);
+  } catch {
+    /* 保存できない環境でも現在の言語は維持する。 */
+  }
+}
+
+function restoreLanguage() {
+  let saved = "ja";
+  try {
+    saved = localStorage.getItem("parkingGuideLanguage") ?? "ja";
+  } catch {
+    saved = "ja";
+  }
+  applyLanguage(saved);
+}
+
 /* 選択施設からこの距離以内へ入ると、自動で案内先を表示する。 */
 const AUTO_GUIDANCE_DISTANCE_KM = 0.25;
 const AUTO_GUIDANCE_MAX_ACCURACY_METERS = 80;
+const RANDOM_GUIDANCE_FACILITY_ID = "target_021";
 
 const SCREEN_ORDER = Object.freeze(["facility", "condition", "result", "guide"]);
 
 const state = {
   currentScreen: "facility",
+  language: "ja",
+  voiceEnabled: true,
+  lastSearchWasAuto: false,
   selectedFacility: null,
   selectedPriority: "balanced",
   requestedSpaceType: "standard",
@@ -102,9 +310,12 @@ const facilityCount = document.querySelector("#facility-count");
 const facilityEmpty = document.querySelector("#facility-empty");
 const textSizeButton = document.querySelector("#text-size-button");
 const themeButton = document.querySelector("#theme-button");
+const languageButton = document.querySelector("#language-button");
 const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 const conditionForm = document.querySelector("#condition-form");
 const searchNowButton = document.querySelector("#search-now-button");
+const voiceEnabledInput = document.querySelector("#voice-enabled");
+const randomGuidanceNote = document.querySelector("#random-guidance-note");
 const proximityStatus = document.querySelector("#proximity-status");
 const selectedFacilityName = document.querySelector("#selected-facility-name");
 const searchStatus = document.querySelector("#search-status");
@@ -116,6 +327,7 @@ const parkingMap = document.querySelector("#parking-map");
 const parkingMapTitle = document.querySelector("#parking-map-title");
 const updatedTime = document.querySelector("#updated-time");
 const showGuideButton = document.querySelector("#show-guide-button");
+const voiceGuideButton = document.querySelector("#voice-guide-button");
 const retryButton = document.querySelector("#retry-button");
 const guideSpaceNumber = document.querySelector("#guide-space-number");
 const guideFacilityName = document.querySelector("#guide-facility-name");
@@ -144,13 +356,13 @@ function initializeFilters() {
   setSelectOptions(
     prefectureFilter,
     getDistinctValues(FACILITIES, "prefecture").map((value) => [value, value]),
-    "すべての都道府県",
+    ui("すべての都道府県", "All prefectures"),
     state.filters.prefecture,
   );
   setSelectOptions(
     categoryFilter,
-    Object.entries(CATEGORY_LABELS),
-    "すべてのカテゴリ",
+    Object.entries(isEnglish() ? CATEGORY_LABELS_EN : CATEGORY_LABELS),
+    ui("すべてのカテゴリ", "All categories"),
     state.filters.category,
   );
 }
@@ -247,19 +459,19 @@ function updateFacilityDistance(button, facility) {
 
   if (distance === null) {
     distanceElement.textContent = getFacilityCoordinate(facility)
-      ? "現在地を取得すると直線距離を表示"
+      ? ui("現在地を取得すると直線距離を表示", "Start location to show straight-line distance")
       : facility.locationVerified
-        ? "住所確認済み・管理マップ位置の確定待ち"
-        : "位置情報は管理データから追加予定";
+        ? ui("住所確認済み・管理マップ位置の確定待ち", "Address verified; map coordinate pending")
+        : ui("位置情報は管理データから追加予定", "Location data will be added later");
   } else {
     distanceElement.textContent = facility.isDemo && !state.userLocation
-      ? `参考距離 約${distance.toFixed(1)} km`
-      : `現在地から直線 約${distance.toFixed(1)} km`;
+      ? ui(`参考距離 約${distance.toFixed(1)} km`, `Reference distance about ${distance.toFixed(1)} km`)
+      : ui(`現在地から直線 約${distance.toFixed(1)} km`, `About ${distance.toFixed(1)} km straight-line from your location`);
   }
 
   button.setAttribute(
     "aria-label",
-    `${facility.name}、${CATEGORY_LABELS[facility.category]}、${distanceElement.textContent}`,
+    `${facility.name}、${getCategoryLabel(facility.category)}、${distanceElement.textContent}`,
   );
 }
 
@@ -277,7 +489,7 @@ function renderFacilities() {
   }
 
   facilityList.replaceChildren();
-  facilityCount.textContent = `${sorted.length}件`;
+  facilityCount.textContent = isEnglish() ? `${sorted.length} facilities` : `${sorted.length}件`;
   facilityEmpty.hidden = sorted.length > 0;
 
   sorted.forEach((facility) => {
@@ -301,7 +513,7 @@ function renderFacilities() {
     meta.textContent = [
       facility.prefecture,
       facility.municipality,
-      CATEGORY_LABELS[facility.category],
+      getCategoryLabel(facility.category),
       facility.operatingStatus === "opening-scheduled" ? "開店予定" : "",
     ]
       .filter(Boolean)
@@ -318,7 +530,7 @@ function renderFacilities() {
       button.setAttribute("aria-disabled", "true");
       action.textContent = facility.plannedOpen === "2026-11" ? "2026年11月開業予定" : "開業予定";
     } else {
-      action.textContent = "選択";
+      action.textContent = ui("選択", "Select");
     }
 
     main.append(name, meta);
@@ -528,12 +740,16 @@ function createDemoParkingSpaces(searchSequence = state.searchSequence) {
 }
 
 /** 希望条件に合う空き区画を1件選ぶ。 */
-function selectRecommendedSpace(spaces, priority, requestedSpaceType = "standard") {
+function selectRecommendedSpace(spaces, priority, requestedSpaceType = "standard", randomize = false) {
   const availableSpaces = spaces.filter((space) =>
     !space.isOccupied && space.spaceType === requestedSpaceType,
   );
   if (availableSpaces.length === 0) {
     return null;
+  }
+
+  if (randomize) {
+    return availableSpaces[Math.floor(Math.random() * availableSpaces.length)];
   }
 
   if (priority === "near") {
@@ -960,6 +1176,7 @@ function saveSearchConditions() {
   const checkedSpaceType = conditionForm.querySelector('input[name="spaceType"]:checked');
   state.selectedPriority = checkedPriority?.value ?? "balanced";
   state.requestedSpaceType = checkedSpaceType?.value ?? "standard";
+  state.voiceEnabled = voiceEnabledInput?.checked !== false;
 }
 
 /** 選択施設までの実測距離を返す。位置情報がない場合はnull。 */
@@ -984,29 +1201,44 @@ function updateProximityStatus() {
   if (!proximityStatus) return;
 
   if (!state.autoProximityArmed || !state.selectedFacility) {
-    proximityStatus.textContent = "まだ自動案内を開始していません。";
+    proximityStatus.textContent = ui(
+      "まだ自動案内を開始していません。",
+      "Automatic guidance has not started.",
+    );
     return;
   }
 
   if (!state.userLocation) {
-    proximityStatus.textContent =
-      "位置情報を待っています。ブラウザーで位置情報を許可してください。";
+    proximityStatus.textContent = ui(
+      "位置情報を待っています。ブラウザーで位置情報を許可してください。",
+      "Waiting for location. Please allow location access in your browser.",
+    );
     return;
   }
 
   const distanceKm = getSelectedFacilityProximityKm();
   if (distanceKm === null) {
-    proximityStatus.textContent =
-      "この施設の位置座標を確認できないため、自動案内を開始できません。";
+    proximityStatus.textContent = ui(
+      "この施設の位置座標を確認できないため、自動案内を開始できません。",
+      "Automatic guidance cannot start because this facility does not have a confirmed coordinate.",
+    );
     return;
   }
 
   const meters = Math.round(distanceKm * 1000);
   const accuracy = Number(state.userLocation.accuracy);
-  const accuracyText = Number.isFinite(accuracy) ? `（測位精度 約${Math.round(accuracy)}m）` : "";
+  const accuracyText = Number.isFinite(accuracy)
+    ? ui(`（測位精度 約${Math.round(accuracy)}m）`, ` (accuracy about ${Math.round(accuracy)} m)`)
+    : "";
   proximityStatus.textContent = meters <= AUTO_GUIDANCE_DISTANCE_KM * 1000
-    ? `施設付近です。空き区画を確認しています…${accuracyText}`
-    : `施設まで直線約${meters}m。約250m以内で自動表示します。${accuracyText}`;
+    ? ui(
+        `施設付近です。空き区画を確認しています…${accuracyText}`,
+        `You are near the facility. Checking available spaces…${accuracyText}`,
+      )
+    : ui(
+        `施設まで直線約${meters}m。約250m以内で自動表示します。${accuracyText}`,
+        `About ${meters} m straight-line to the facility. Guidance will appear automatically within about 250 m.${accuracyText}`,
+      );
 }
 
 /**
@@ -1112,34 +1344,68 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       state.currentLayout = prepared.layout;
       state.currentSpaces = prepared.spaces;
       state.guideEntrance = prepared.entrance;
-      state.recommendedSpace = selectRecommendedSpace(prepared.spaces, priority, state.requestedSpaceType);
+      const useRandomGuidance = facility.id === RANDOM_GUIDANCE_FACILITY_ID;
+      state.recommendedSpace = selectRecommendedSpace(
+        prepared.spaces,
+        priority,
+        state.requestedSpaceType,
+        useRandomGuidance,
+      );
 
       if (!state.recommendedSpace) {
-        searchStatus.textContent =
-          `${SPACE_TYPE_LABELS[state.requestedSpaceType] ?? "指定条件"}で案内できる空き区画がありません。`;
+        searchStatus.textContent = ui(
+          `${getSpaceTypeLabel(state.requestedSpaceType)}で案内できる空き区画がありません。`,
+          `No available ${getSpaceTypeLabel(state.requestedSpaceType)} space can be recommended.`,
+        );
         resolve({ facility: facility.name, spaceId: null, priority, spaceType: state.requestedSpaceType });
         return;
       }
 
       spaceNumber.textContent = state.recommendedSpace.id;
-      priorityBadge.textContent = `${SPACE_TYPE_LABELS[state.requestedSpaceType]} / ${PRIORITY_LABELS[priority]}`;
+      priorityBadge.textContent = `${getSpaceTypeLabel(state.requestedSpaceType)} / ${getPriorityLabel(priority)}`;
 
       if (prepared.isSimulation) {
-        spaceDescription.textContent = `店舗入口まで約${Math.round(state.recommendedSpace.entranceDistanceMeters)}m（シミュレーション）`;
-        searchStatus.textContent = `${facility.name}の研究用シミュレーション結果です。`;
+        spaceDescription.textContent = ui(
+          `店舗入口まで約${Math.round(state.recommendedSpace.entranceDistanceMeters)}m（シミュレーション）`,
+          `About ${Math.round(state.recommendedSpace.entranceDistanceMeters)} m to the entrance (simulation)`,
+        );
+        searchStatus.textContent = ui(
+          `${facility.name}の研究用シミュレーション結果です。`,
+          `Research simulation result for ${facility.name}.`,
+        );
       } else if (Number.isFinite(state.recommendedSpace.entranceDistanceMeters)) {
         const entranceName = prepared.entrance?.name || "建物入口";
-        spaceDescription.textContent = `${entranceName}まで約${Math.round(state.recommendedSpace.entranceDistanceMeters)}m`;
-        searchStatus.textContent = `${facility.name}の登録レイアウトから案内先を選びました。`;
+        spaceDescription.textContent = ui(
+          `${entranceName}まで約${Math.round(state.recommendedSpace.entranceDistanceMeters)}m`,
+          `About ${Math.round(state.recommendedSpace.entranceDistanceMeters)} m to the entrance`,
+        );
+        searchStatus.textContent = ui(
+          `${facility.name}の登録レイアウトから案内先を選びました。`,
+          `A parking space was selected from the registered layout for ${facility.name}.`,
+        );
       } else {
         const entranceName = prepared.entrance?.name || "建物入口";
-        spaceDescription.textContent = `${entranceName}とのレイアウト上の距離を比較して選択`;
-        searchStatus.textContent = `${facility.name}の登録レイアウトから案内先を選びました。`;
+        spaceDescription.textContent = ui(
+          `${entranceName}とのレイアウト上の距離を比較して選択`,
+          "Selected by comparing the layout distance to the entrance",
+        );
+        searchStatus.textContent = ui(
+          `${facility.name}の登録レイアウトから案内先を選びました。`,
+          `A parking space was selected from the registered layout for ${facility.name}.`,
+        );
       }
 
+      if (facility.id === RANDOM_GUIDANCE_FACILITY_ID) {
+        searchStatus.textContent = ui(
+          `${facility.name}では研究用として、条件に合う空き区画からランダムに案内しています。`,
+          `For ${facility.name}, this prototype randomly selects one matching available space.`,
+        );
+      }
       if (autoTriggered) {
-        searchStatus.textContent =
-          `${facility.name}への接近を検知して案内先を自動表示しました。運転中は画面を操作しないでください。`;
+        searchStatus.textContent = ui(
+          `${facility.name}への接近を検知して案内先を自動表示しました。運転中は画面を操作しないでください。`,
+          `You are near ${facility.name}. Parking guidance was displayed automatically. Do not operate the screen while driving.`,
+        );
       }
 
       updatedTime.textContent = new Intl.DateTimeFormat("ja-JP", {
@@ -1149,6 +1415,11 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
 
       renderParkingMap(prepared.spaces, state.recommendedSpace, prepared.layout);
       resultContent.hidden = false;
+      state.lastSearchWasAuto = autoTriggered;
+
+      if (state.voiceEnabled) {
+        speakCurrentGuidance();
+      }
 
       resolve({
         facility: facility.name,
@@ -1162,6 +1433,54 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
   });
 }
 
+/** 案内先の番号部分を読み上げ用に整える。 */
+function getSpokenSpaceId(space) {
+  if (!space) return "";
+  const raw = String(space.sourceObject?.spaceNumber ?? space.id ?? "");
+  return raw.replace(/^0+/, "") || raw;
+}
+
+/** 現在の案内先を端末標準の音声合成で読み上げる。 */
+function speakCurrentGuidance() {
+  if (!state.recommendedSpace || !("speechSynthesis" in window)
+      || !("SpeechSynthesisUtterance" in window)) {
+    return false;
+  }
+
+  const number = getSpokenSpaceId(state.recommendedSpace);
+  const type = getSpaceTypeLabel(state.recommendedSpace.spaceType);
+  const message = isEnglish()
+    ? `Your parking space is ${number}. Space type: ${type}. Please follow the parking map and on-site signs.`
+    : `案内先は、${type}の駐車区画、${number}番です。駐車場マップと現地の標識を確認して進んでください。`;
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(message);
+  utterance.lang = isEnglish() ? "en-US" : "ja-JP";
+  utterance.rate = 0.95;
+  utterance.pitch = 1;
+
+  const voices = window.speechSynthesis.getVoices?.() ?? [];
+  const preferredPrefix = isEnglish() ? "en" : "ja";
+  const voice = voices.find((item) => item.lang?.toLowerCase().startsWith(preferredPrefix));
+  if (voice) utterance.voice = voice;
+
+  window.speechSynthesis.speak(utterance);
+  return true;
+}
+
+function updateVoiceAvailability() {
+  const supported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+  if (voiceGuideButton) {
+    voiceGuideButton.disabled = !supported;
+    voiceGuideButton.title = supported
+      ? ""
+      : ui("このブラウザーは音声読み上げに対応していません。", "This browser does not support speech synthesis.");
+  }
+  if (voiceEnabledInput) {
+    voiceEnabledInput.disabled = !supported;
+  }
+}
+
 /** 案内画面へ選択結果を反映する。 */
 function prepareGuideScreen() {
   if (!state.selectedFacility || !state.recommendedSpace) {
@@ -1171,7 +1490,7 @@ function prepareGuideScreen() {
 
   guideSpaceNumber.textContent = state.recommendedSpace.id;
   guideFacilityName.textContent = state.selectedFacility.name;
-  finalDirectionTitle.textContent = `${state.recommendedSpace.id} に到着`;
+  finalDirectionTitle.textContent = ui(`${state.recommendedSpace.id} に到着`, `Arrive at ${state.recommendedSpace.id}`);
   showScreen("guide");
 }
 
@@ -1180,11 +1499,18 @@ function prepareGuideScreen() {
    ========================================================= */
 
 /** 文字サイズを切り替え、端末内に保存する。 */
+function applyTextSizeLabel() {
+  const useLarge = document.documentElement.dataset.fontSize === "large";
+  textSizeButton.setAttribute("aria-pressed", String(useLarge));
+  textSizeButton.textContent = useLarge
+    ? ui("標準文字", "Standard text")
+    : ui("文字を大きく", "Larger text");
+}
+
 function toggleTextSize() {
   const useLarge = document.documentElement.dataset.fontSize !== "large";
   document.documentElement.dataset.fontSize = useLarge ? "large" : "normal";
-  textSizeButton.setAttribute("aria-pressed", String(useLarge));
-  textSizeButton.textContent = useLarge ? "標準文字" : "文字を大きく";
+  applyTextSizeLabel();
 
   try {
     localStorage.setItem("parkingGuideFontSize", useLarge ? "large" : "normal");
@@ -1204,8 +1530,7 @@ function restoreTextSize() {
 
   const useLarge = savedSize === "large";
   document.documentElement.dataset.fontSize = useLarge ? "large" : "normal";
-  textSizeButton.setAttribute("aria-pressed", String(useLarge));
-  textSizeButton.textContent = useLarge ? "標準文字" : "文字を大きく";
+  applyTextSizeLabel();
 }
 
 /** テーマを反映し、ブラウザー上部の色も合わせる。 */
@@ -1214,7 +1539,9 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = normalizedTheme;
   const dark = normalizedTheme === "dark";
   themeButton.setAttribute("aria-pressed", String(dark));
-  themeButton.textContent = dark ? "ライトモード" : "ダークモード";
+  themeButton.textContent = dark
+    ? ui("ライトモード", "Light mode")
+    : ui("ダークモード", "Dark mode");
   themeColorMeta?.setAttribute("content", dark ? "#17191d" : "#ffffff");
 }
 
@@ -1249,6 +1576,7 @@ function resetApplication() {
   state.selectedFacility = null;
   state.selectedPriority = "balanced";
   state.requestedSpaceType = "standard";
+  state.voiceEnabled = voiceEnabledInput?.checked !== false;
   state.autoProximityArmed = false;
   state.autoTriggeredFacilityId = null;
   state.proximitySearchRunning = false;
@@ -1283,11 +1611,18 @@ facilityList.addEventListener("click", (event) => {
   state.proximitySearchRunning = false;
   state.recommendedSpace = null;
   selectedFacilityName.textContent = facility.name;
+  randomGuidanceNote.hidden = facility.id !== RANDOM_GUIDANCE_FACILITY_ID;
   showScreen("condition");
 });
 
 textSizeButton.addEventListener("click", toggleTextSize);
 themeButton.addEventListener("click", toggleTheme);
+languageButton.addEventListener("click", () => {
+  applyLanguage(isEnglish() ? "ja" : "en");
+});
+voiceGuideButton?.addEventListener("click", () => {
+  speakCurrentGuidance();
+});
 filterForm.addEventListener("submit", (event) => event.preventDefault());
 
 prefectureFilter.addEventListener("change", () => {
@@ -1377,6 +1712,8 @@ window.addEventListener("popstate", (event) => {
 void loadRemoteParkingLayouts();
 restoreTheme();
 restoreTextSize();
+restoreLanguage();
+updateVoiceAvailability();
 initializeFilters();
 window.history.replaceState({ screen: "facility" }, "", "#facility");
 showScreen("facility", { addHistory: false, moveFocus: false });
