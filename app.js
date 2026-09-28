@@ -373,6 +373,23 @@ async function loadRemoteParkingLayouts() {
    管理用Webアプリのレイアウトデータ連携
    ========================================================= */
 
+/**
+ * 管理画面と同じ店舗識別キーを生成する。
+ * 店舗差し替え後にSupabaseや静的JSへ旧店舗レイアウトが残っていても、
+ * 新店舗へ誤表示しないために使用する。
+ */
+function getFacilityIdentityKeyForUser(facility) {
+  if (!facility) {
+    return null;
+  }
+  return [
+    facility.id,
+    facility.name,
+    facility.address ?? "",
+    facility.facilityRevision ?? 1,
+  ].join("|");
+}
+
 /** facilityId に対応する駐車場レイアウトを返す。 */
 function getFacilityLayout(facility) {
   if (!facility || !window.PARKING_LAYOUTS) {
@@ -382,6 +399,16 @@ function getFacilityLayout(facility) {
   if (!layout || layout.facilityId !== facility.id || !Array.isArray(layout.objects)) {
     return null;
   }
+
+  /*
+   * revision 2以上は対象店舗そのものを置換したID。
+   * identityKeyが一致しない旧店舗レイアウトは使用しない。
+   */
+  if (Number(facility.facilityRevision) >= 2
+      && layout.facilityIdentityKey !== getFacilityIdentityKeyForUser(facility)) {
+    return null;
+  }
+
   return layout;
 }
 
