@@ -1400,3 +1400,57 @@ html[data-theme="dark"] .map-object--parkingLot .user-polygon-fill {
 .map-object--parkingEntrance,
 .map-object--noEntry,
 .map-object--evCharger { z-index: 30 !important; }
+
+
+/* =========================================================
+   駐車枠の種別マーク
+   ========================================================= */
+.map-object--parkingSpace > .space-type-mark {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: clamp(0.52rem, 1.8vw, 0.82rem);
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 80%);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.map-object--parkingSpace > .space-number-mark {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  z-index: 5;
+  color: rgb(255 255 255 / 90%);
+  font-size: clamp(0.35rem, 1vw, 0.55rem);
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 80%);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.map-object--parkingSpace[data-space-type="accessible"] {
+  background: rgb(37 99 235 / 24%);
+}
+.map-object--parkingSpace[data-space-type="ev"] {
+  background: rgb(16 185 129 / 20%);
+}
+
+/* 対象外の別駐車場。案内対象ではなく背景情報としてのみ表示する。 */
+.map-object--excludedParkingLot {
+  z-index: 0 !important;
+}
+.map-object--excludedParkingLot .user-polygon-fill {
+  fill: #72777d;
+  stroke: #d1d5db;
+  stroke-width: 3;
+  stroke-dasharray: 10 6;
+}
+.map-object--excludedParkingLot > .map-object-label {
+  background: rgb(31 41 55 / 88%);
+  color: #fff;
+}
