@@ -1345,3 +1345,19 @@ html[data-theme="dark"] .map-object--sidewalk {
   color: #fff;
   transform: translateX(-50%);
 }
+
+
+/* 模式図の重なり順。 */
+.map-object--parkingLot { z-index: 1; }
+.map-object--nationalRoad,
+.map-object--prefecturalRoad,
+.map-object--publicRoad { z-index: 2; }
+.map-object--road { z-index: 3; }
+.map-object--building { z-index: 4; }
+.map-object--sidewalk,
+.map-object--crosswalk { z-index: 5; }
+.map-object--parkingSpace { z-index: 10; }
+.map-object--buildingEntrance,
+.map-object--parkingEntrance,
+.map-object--noEntry,
+.map-object--evCharger { z-index: 20; }
