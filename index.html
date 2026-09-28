@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ja" data-theme="light" data-font-size="normal">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#ffffff">
+    <meta
+      name="description"
+      content="研究対象施設から空き駐車区画を案内する卒業研究用Webアプリ"
+    >
+    <title>駐車場空き区画案内｜卒業研究</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script src="./location-safety.js" defer></script>
+    <script src="./facilities.js" defer></script>
+    <script src="./parking-layouts.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+
+  <body>
+    <a class="skip-link" href="#main-content">本文へ移動</a>
+
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="site-name" href="#facility" data-go-home aria-label="最初の画面へ戻る">
+          <span class="parking-symbol" aria-hidden="true">P</span>
+          <span>駐車場空き区画案内</span>
+        </a>
+        <div class="display-controls" aria-label="表示設定">
+          <button class="display-button" id="theme-button" type="button" aria-pressed="false">
+            ダークモード
+          </button>
+          <button class="display-button" id="text-size-button" type="button" aria-pressed="false">
+            文字を大きく
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main id="main-content" class="main-content" tabindex="-1">
+      <nav class="progress" aria-label="案内の進行状況">
+        <ol class="progress-list">
+          <li class="progress-item is-current" data-progress="facility" aria-current="step">
+            <span class="progress-number">1</span><span>施設</span>
+          </li>
+          <li class="progress-item" data-progress="condition">
+            <span class="progress-number">2</span><span>条件</span>
+          </li>
+          <li class="progress-item" data-progress="result">
+            <span class="progress-number">3</span><span>区画</span>
+          </li>
+          <li class="progress-item" data-progress="guide">
+            <span class="progress-number">4</span><span>案内</span>
+          </li>
+        </ol>
+      </nav>
+
+      <p class="research-note">
+        卒業研究用の試作です。実店舗の空き情報は取得していません。駐車区画の検索結果は、管理データ未登録の施設ではシミュレーションを表示します。
+      </p>
+
+      <section class="location-panel" aria-labelledby="location-title">
+        <div class="location-summary">
+          <h2 id="location-title" class="panel-title">現在地</h2>
+          <p id="location-status" class="location-status" role="status" aria-live="polite">まだ取得していません</p>
+          <p id="location-details" class="location-details"></p>
+          <p id="motion-status" class="motion-status" role="status" aria-live="polite">
+            現在地の取得中に移動状態を確認します。
+          </p>
+        </div>
+        <div class="location-actions">
+          <button class="secondary-button" id="location-button" type="button">現在地を取得</button>
+          <button class="secondary-button" id="location-stop-button" type="button" hidden>取得を停止</button>
+        </div>
+        <details class="location-help">
+          <summary>位置情報について</summary>
+          <p>現在地は距離表示と移動状態の確認に使用します。位置情報はこのページ内で処理し、保存・送信しません。</p>
+          <p>ブラウザー版のため、画面を閉じた後やバックグラウンドでの常時取得は行いません。</p>
+        </details>
+      </section>
+
+      <section class="screen" id="facility-screen" data-screen="facility" aria-labelledby="facility-title">
+        <div class="screen-heading">
+          <p class="step-label">1 / 4</p>
+          <h1 id="facility-title" tabindex="-1">利用する施設を選択</h1>
+          <p>中国地方・九州地方の研究対象施設と、岡山理科大学の実験用駐車場を掲載しています。</p>
+        </div>
+
+        <form id="facility-filter-form" class="facility-filters" aria-labelledby="filter-title">
+          <h2 id="filter-title">絞り込み</h2>
+          <div class="filter-grid">
+            <div class="filter-field">
+              <label for="prefecture-filter">都道府県</label>
+              <select id="prefecture-filter" name="prefecture">
+                <option value="">すべての都道府県</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label for="category-filter">カテゴリ</label>
+              <select id="category-filter" name="category">
+                <option value="">すべてのカテゴリ</option>
+              </select>
+            </div>
+          </div>
+          <div class="filter-footer">
+            <p class="facility-count-line">表示 <strong id="facility-count">0件</strong></p>
+            <div class="filter-actions">
+              <button class="secondary-button" id="sort-distance-button" type="button">距離順に更新</button>
+              <button class="secondary-button" id="reset-filters-button" type="button">条件を解除</button>
+            </div>
+          </div>
+        </form>
+
+        <p id="facility-empty" class="empty-state" hidden>条件に一致する施設がありません。</p>
+        <div id="facility-list" class="facility-list" aria-label="選択できる施設"></div>
+      </section>
+
+      <section class="screen" id="condition-screen" data-screen="condition" aria-labelledby="condition-title" hidden>
+        <button class="back-button" type="button" data-back="facility">← 施設選択へ戻る</button>
+        <div class="screen-heading">
+          <p class="step-label">2 / 4</p>
+          <h1 id="condition-title" tabindex="-1">駐車区画の条件</h1>
+          <p id="selected-facility-name" class="selected-place"></p>
+        </div>
+
+        <form id="condition-form">
+          <fieldset class="condition-fieldset">
+            <legend>優先する条件</legend>
+            <div class="choice-list">
+              <label class="choice-row">
+                <input type="radio" name="priority" value="balanced" checked>
+                <span><strong>おまかせ</strong><small>入口までの距離と停めやすさをもとに選択</small></span>
+              </label>
+              <label class="choice-row">
+                <input type="radio" name="priority" value="near">
+                <span><strong>入口に近い</strong><small>案内対象の建物入口に近い区画を優先</small></span>
+              </label>
+              <label class="choice-row">
+                <input type="radio" name="priority" value="wide">
+                <span><strong>幅にゆとりがある</strong><small>幅の広い区画を優先</small></span>
+              </label>
+            </div>
+          </fieldset>
+          <button class="primary-button full-width" type="submit">空き区画を探す</button>
+        </form>
+      </section>
+
+      <section class="screen" id="result-screen" data-screen="result" aria-labelledby="result-title" hidden>
+        <button class="back-button" type="button" data-back="condition">← 条件選択へ戻る</button>
+        <div class="screen-heading">
+          <p class="step-label">3 / 4</p>
+          <h1 id="result-title" tabindex="-1">案内先の駐車区画</h1>
+        </div>
+
+        <div id="search-status" class="search-status" role="status" aria-live="polite"></div>
+        <div id="result-content" hidden>
+          <section class="result-summary" aria-labelledby="space-number">
+            <div>
+              <p class="result-label">案内先</p>
+              <p id="space-number" class="space-number">B-12</p>
+            </div>
+            <div class="result-details">
+              <p id="space-description" class="space-description"></p>
+              <p><span class="text-label">選択条件</span> <span id="priority-badge"></span></p>
+            </div>
+          </section>
+
+          <section class="parking-map-section" aria-labelledby="parking-map-title">
+            <div class="section-title-row">
+              <h2 id="parking-map-title">駐車場マップ</h2>
+              <p id="updated-time" class="updated-time"></p>
+            </div>
+            <div class="map-legend" aria-label="区画図の凡例">
+              <span><span class="legend-sample is-recommended" aria-hidden="true"></span>案内先</span>
+              <span><span class="legend-sample is-available" aria-hidden="true"></span>空き</span>
+              <span><span class="legend-sample is-occupied" aria-hidden="true"></span>使用中</span>
+              <span><span class="legend-entrance" aria-hidden="true">↥</span>建物入口</span>
+            </div>
+            <div id="parking-map" class="parking-map parking-map--demo" role="list" aria-label="駐車場内の区画"></div>
+          </section>
+
+          <div class="button-group">
+            <button class="primary-button" id="show-guide-button" type="button">区画までの案内を見る</button>
+            <button class="secondary-button" id="retry-button" type="button">空き状況を更新</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="guide-screen" data-screen="guide" aria-labelledby="guide-title" hidden>
+        <button class="back-button" type="button" data-back="result">← 区画表示へ戻る</button>
+        <div class="screen-heading">
+          <p class="step-label">4 / 4</p>
+          <h1 id="guide-title" tabindex="-1">駐車区画までの案内</h1>
+          <p>現地の標識・一方通行・歩行者を優先してください。</p>
+        </div>
+
+        <section class="guide-summary" aria-label="案内先">
+          <p class="result-label">案内先</p>
+          <p id="guide-space-number" class="guide-space-number"></p>
+          <p id="guide-facility-name"></p>
+        </section>
+
+        <ol class="direction-list">
+          <li><span class="direction-number">1</span><div><h2>駐車場内へ進む</h2><p>現地の入口・進行方向を確認してください。</p></div></li>
+          <li><span class="direction-number">2</span><div><h2>案内先区画へ進む</h2><p>管理画面で経路データを登録すると、ここを実際の案内経路に置き換えられます。</p></div></li>
+          <li><span class="direction-number">3</span><div><h2 id="final-direction-title">案内先に到着</h2><p>路面の区画番号と画面表示を確認してください。</p></div></li>
+        </ol>
+
+        <div class="safety-note" role="note">
+          <strong>安全上の注意</strong>
+          <p>運転者は走行中に画面を操作しないでください。</p>
+        </div>
+        <button class="primary-button full-width" type="button" data-go-home>最初の画面へ戻る</button>
+      </section>
+    </main>
+
+    <dialog id="driving-dialog" class="driving-dialog" aria-labelledby="driving-dialog-title" aria-describedby="driving-dialog-description">
+      <h2 id="driving-dialog-title" tabindex="-1">運転中ですか？</h2>
+      <p id="driving-dialog-description">移動を検知しました。GPSだけでは運転者と同乗者を区別できないため、操作する方の状況を確認します。</p>
+      <div id="driving-question">
+        <div class="dialog-actions">
+          <button class="primary-button" id="confirm-driver-button" type="button">はい、運転中です</button>
+          <button class="secondary-button" id="confirm-passenger-button" type="button">いいえ、運転していません</button>
+          <button class="secondary-button" id="close-driving-dialog-button" type="button">操作をやめる</button>
+        </div>
+        <p class="dialog-help">運転中の操作は同乗者に依頼するか、安全な場所に停車してから行ってください。</p>
+      </div>
+      <div id="driving-lock-panel" hidden>
+        <p class="driving-lock-message">安全な場所に停車するまで操作できません。</p>
+        <p id="driving-lock-status" class="dialog-help" role="status" aria-live="polite" tabindex="-1"></p>
+        <button class="primary-button full-width" id="resume-after-stop-button" type="button">安全な場所に停車したので再開する</button>
+      </div>
+    </dialog>
+
+    <footer class="site-footer">
+      <p>岡山理科大学 工学部 情報工学科 卒業研究</p>
+      <p>試作システムのため、実際の駐車案内には使用できません。</p>
+    </footer>
+  </body>
+</html>

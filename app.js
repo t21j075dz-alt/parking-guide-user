@@ -1,0 +1,841 @@
+"use strict";
+
+/* =========================================================
+   駐車場空き区画案内：画面制御
+
+   研究対象施設は facilities.js、駐車場レイアウトは
+   parking-layouts.js から読み込む。位置情報と運転確認は
+   location-safety.js が担当する。
+   ========================================================= */
+
+const DEMO_FACILITY = Object.freeze({
+  id: "ous-main-gate-experiment",
+  name: "実験用駐車場（岡山理科大学正門）",
+  prefecture: "岡山県",
+  municipality: "岡山市",
+  address: "岡山県岡山市北区理大町1-1 岡山理科大学正門",
+  category: "experiment",
+  latitude: 34.6998,
+  longitude: 133.9280,
+  demoDistance: 0.8,
+  layoutId: "ous-main-gate-experiment",
+  targetBuildingId: null,
+  isDemo: true,
+});
+
+const FACILITIES = Object.freeze([DEMO_FACILITY, ...FACILITY_CATALOG]);
+
+const CATEGORY_LABELS = Object.freeze({
+  supermarket: "スーパー・食品店",
+  "home-center": "ホームセンター",
+  "discount-store": "ディスカウントストア",
+  experiment: "実験用駐車場",
+});
+
+const PRIORITY_LABELS = Object.freeze({
+  balanced: "おまかせ",
+  near: "入口に近い",
+  wide: "幅にゆとりがある",
+});
+
+const SCREEN_ORDER = Object.freeze(["facility", "condition", "result", "guide"]);
+
+const state = {
+  currentScreen: "facility",
+  selectedFacility: null,
+  selectedPriority: "balanced",
+  recommendedSpace: null,
+  currentSpaces: [],
+  currentLayout: null,
+  guideEntrance: null,
+  userLocation: null,
+  searchSequence: 0,
+  searchRequestId: 0,
+  filters: { prefecture: "", category: "" },
+  sortByDistance: false,
+};
+
+/* =========================================================
+   DOM参照
+   ========================================================= */
+
+const facilityList = document.querySelector("#facility-list");
+const filterForm = document.querySelector("#facility-filter-form");
+const prefectureFilter = document.querySelector("#prefecture-filter");
+const categoryFilter = document.querySelector("#category-filter");
+const resetFiltersButton = document.querySelector("#reset-filters-button");
+const sortDistanceButton = document.querySelector("#sort-distance-button");
+const facilityCount = document.querySelector("#facility-count");
+const facilityEmpty = document.querySelector("#facility-empty");
+const textSizeButton = document.querySelector("#text-size-button");
+const themeButton = document.querySelector("#theme-button");
+const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+const conditionForm = document.querySelector("#condition-form");
+const selectedFacilityName = document.querySelector("#selected-facility-name");
+const searchStatus = document.querySelector("#search-status");
+const resultContent = document.querySelector("#result-content");
+const spaceNumber = document.querySelector("#space-number");
+const spaceDescription = document.querySelector("#space-description");
+const priorityBadge = document.querySelector("#priority-badge");
+const parkingMap = document.querySelector("#parking-map");
+const parkingMapTitle = document.querySelector("#parking-map-title");
+const updatedTime = document.querySelector("#updated-time");
+const showGuideButton = document.querySelector("#show-guide-button");
+const retryButton = document.querySelector("#retry-button");
+const guideSpaceNumber = document.querySelector("#guide-space-number");
+const guideFacilityName = document.querySelector("#guide-facility-name");
+const finalDirectionTitle = document.querySelector("#final-direction-title");
+
+/* =========================================================
+   施設一覧・絞り込み・距離
+   ========================================================= */
+
+/** 選択肢を作り直し、指定した値を反映する。 */
+function setSelectOptions(select, items, defaultLabel, selectedValue = "") {
+  select.replaceChildren(new Option(defaultLabel, ""));
+  items.forEach(([value, label]) => select.add(new Option(label, value)));
+  select.value = selectedValue;
+}
+
+/** 空値を除き、施設データの値を日本語順で返す。 */
+function getDistinctValues(facilities, key) {
+  return [...new Set(facilities.map((facility) => facility[key]).filter(Boolean))].sort(
+    (first, second) => first.localeCompare(second, "ja"),
+  );
+}
+
+/** 研究対象施設から絞り込み項目を作る。 */
+function initializeFilters() {
+  setSelectOptions(
+    prefectureFilter,
+    getDistinctValues(FACILITIES, "prefecture").map((value) => [value, value]),
+    "すべての都道府県",
+    state.filters.prefecture,
+  );
+  setSelectOptions(
+    categoryFilter,
+    Object.entries(CATEGORY_LABELS),
+    "すべてのカテゴリ",
+    state.filters.category,
+  );
+}
+
+/** 現在の絞り込み条件に一致する施設を返す。 */
+function getFilteredFacilities() {
+  return FACILITIES.filter((facility) =>
+    Object.entries(state.filters).every(
+      ([key, value]) => !value || facility[key] === value,
+    ),
+  );
+}
+
+/** 緯度経度から直線距離をkmで求める。 */
+function calculateDistanceKm(lat1, lon1, lat2, lon2) {
+  const earthRadiusKm = 6371;
+  const toRadians = (degree) => (degree * Math.PI) / 180;
+  const latitudeDifference = toRadians(lat2 - lat1);
+  const longitudeDifference = toRadians(lon2 - lon1);
+  const startLatitude = toRadians(lat1);
+  const endLatitude = toRadians(lat2);
+
+  const a =
+    Math.sin(latitudeDifference / 2) ** 2 +
+    Math.cos(startLatitude) *
+      Math.cos(endLatitude) *
+      Math.sin(longitudeDifference / 2) ** 2;
+
+  const clampedA = Math.min(1, Math.max(0, a));
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(clampedA), Math.sqrt(1 - clampedA));
+}
+
+/** 現在地と施設座標がそろっている場合だけ直線距離を返す。 */
+function getFacilityDistance(facility) {
+  if (!state.userLocation) {
+    return facility.isDemo ? facility.demoDistance : null;
+  }
+  if (!Number.isFinite(facility.latitude) || !Number.isFinite(facility.longitude)) {
+    return null;
+  }
+
+  return calculateDistanceKm(
+    state.userLocation.latitude,
+    state.userLocation.longitude,
+    facility.latitude,
+    facility.longitude,
+  );
+}
+
+/** 施設カード内の距離表示を更新する。 */
+function updateFacilityDistance(button, facility) {
+  const distance = getFacilityDistance(facility);
+  const distanceElement = button.querySelector(".facility-distance");
+
+  if (distance === null) {
+    distanceElement.textContent = Number.isFinite(facility.latitude)
+      ? "現在地を取得すると直線距離を表示"
+      : "位置情報は管理データから追加予定";
+  } else {
+    distanceElement.textContent = facility.isDemo && !state.userLocation
+      ? `参考距離 約${distance.toFixed(1)} km`
+      : `現在地から直線 約${distance.toFixed(1)} km`;
+  }
+
+  button.setAttribute(
+    "aria-label",
+    `${facility.name}、${CATEGORY_LABELS[facility.category]}、${distanceElement.textContent}`,
+  );
+}
+
+/** 施設一覧を表示する。 */
+function renderFacilities() {
+  const filtered = getFilteredFacilities();
+  const sorted = [...filtered];
+
+  if (state.sortByDistance) {
+    sorted.sort((first, second) => {
+      const firstDistance = getFacilityDistance(first);
+      const secondDistance = getFacilityDistance(second);
+      return (firstDistance ?? Infinity) - (secondDistance ?? Infinity);
+    });
+  }
+
+  facilityList.replaceChildren();
+  facilityCount.textContent = `${sorted.length}件`;
+  facilityEmpty.hidden = sorted.length > 0;
+
+  sorted.forEach((facility) => {
+    const article = document.createElement("article");
+    article.className = "facility-row";
+
+    const button = document.createElement("button");
+    button.className = "facility-button";
+    button.type = "button";
+    button.dataset.facilityId = facility.id;
+
+    const main = document.createElement("span");
+    main.className = "facility-main";
+
+    const name = document.createElement("span");
+    name.className = "facility-name";
+    name.textContent = facility.name;
+
+    const meta = document.createElement("span");
+    meta.className = "facility-meta";
+    meta.textContent = [facility.prefecture, facility.municipality, CATEGORY_LABELS[facility.category]]
+      .filter(Boolean)
+      .join(" / ");
+
+    const distance = document.createElement("span");
+    distance.className = "facility-distance";
+
+    const action = document.createElement("span");
+    action.className = "facility-action";
+    action.textContent = "選択";
+
+    main.append(name, meta, distance);
+    button.append(main, action);
+    article.append(button);
+    facilityList.append(article);
+    updateFacilityDistance(button, facility);
+  });
+}
+
+/** GPS更新時は並び順を変えず、距離表示だけを更新する。 */
+function updateFacilityDistances() {
+  facilityList.querySelectorAll("[data-facility-id]").forEach((button) => {
+    const facility = FACILITIES.find((item) => item.id === button.dataset.facilityId);
+    if (facility) {
+      updateFacilityDistance(button, facility);
+    }
+  });
+}
+
+/* =========================================================
+   管理用Webアプリのレイアウトデータ連携
+   ========================================================= */
+
+/** facilityId に対応する駐車場レイアウトを返す。 */
+function getFacilityLayout(facility) {
+  if (!facility || !window.PARKING_LAYOUTS) {
+    return null;
+  }
+  const layout = window.PARKING_LAYOUTS[facility.layoutId ?? facility.id];
+  if (!layout || layout.facilityId !== facility.id || !Array.isArray(layout.objects)) {
+    return null;
+  }
+  return layout;
+}
+
+/** 案内基準に使用できる建物出入口を取得する。 */
+function getGuideEntrance(layout, facility) {
+  if (!layout) {
+    return null;
+  }
+
+  const entrances = layout.objects.filter((object) =>
+    object.objectType === "buildingEntrance" &&
+    object.guideTarget === true &&
+    object.publicAccess !== false &&
+    Number.isFinite(object.x) &&
+    Number.isFinite(object.y),
+  );
+
+  if (facility.targetBuildingId) {
+    return entrances.find((entrance) => entrance.buildingId === facility.targetBuildingId) ?? null;
+  }
+
+  return entrances[0] ?? null;
+}
+
+/** レイアウト上の2点間距離を計算する。 */
+function calculateLayoutDistance(space, entrance, layout) {
+  if (!space || !entrance) {
+    return { score: Infinity, meters: null };
+  }
+
+  const centerX = space.x + (Number(space.width) || 0) / 2;
+  const centerY = space.y + (Number(space.height) || 0) / 2;
+  const pixels = Math.hypot(centerX - entrance.x, centerY - entrance.y);
+  const scale = layout?.canvas?.scaleMetersPerPixel;
+
+  return {
+    score: pixels,
+    meters: Number.isFinite(scale) && scale > 0 ? pixels * scale : null,
+  };
+}
+
+/** 管理画面から登録された駐車区画を検索用データへ変換する。 */
+function createLayoutParkingSpaces(layout, facility) {
+  const entrance = getGuideEntrance(layout, facility);
+
+  return layout.objects
+    .filter((object) => object.objectType === "parkingSpace")
+    .filter((object) => Number.isFinite(object.x) && Number.isFinite(object.y))
+    .map((object, index) => {
+      const distance = calculateLayoutDistance(object, entrance, layout);
+      const status = object.status ?? "available";
+      const width = Number(object.width) || 0;
+      const height = Number(object.height) || 0;
+
+      return {
+        id: object.name || object.spaceNumber || object.uid || `区画${index + 1}`,
+        uid: object.uid || `space_${index + 1}`,
+        number: index + 1,
+        isOccupied: status === "occupied" || status === "unavailable",
+        isWide: object.spaceType === "accessible" || width > height * 0.65,
+        spaceType: object.spaceType ?? "standard",
+        entranceDistanceMeters: distance.meters,
+        distanceScore: distance.score,
+        sourceObject: object,
+      };
+    });
+}
+
+/** レイアウト未登録時に動作確認用の12区画を作る。 */
+function createDemoParkingSpaces(searchSequence = state.searchSequence) {
+  const baseOccupied = [2, 5, 8, 11];
+  const shiftedOccupied = baseOccupied.map(
+    (number) => ((number + searchSequence - 1) % 12) + 1,
+  );
+
+  return Array.from({ length: 12 }, (_, index) => {
+    const number = index + 1;
+    const distanceMeters = Math.max(20, 82 - number * 5);
+    return {
+      id: `B-${String(number).padStart(2, "0")}`,
+      uid: `demo_b_${String(number).padStart(2, "0")}`,
+      number,
+      isOccupied: shiftedOccupied.includes(number),
+      isWide: [3, 4, 9, 10].includes(number),
+      spaceType: "standard",
+      entranceDistanceMeters: distanceMeters,
+      distanceScore: distanceMeters,
+      sourceObject: null,
+    };
+  });
+}
+
+/** 希望条件に合う空き区画を1件選ぶ。 */
+function selectRecommendedSpace(spaces, priority) {
+  const availableSpaces = spaces.filter((space) => !space.isOccupied);
+  if (availableSpaces.length === 0) {
+    return null;
+  }
+
+  if (priority === "near") {
+    return [...availableSpaces].sort(
+      (first, second) => first.distanceScore - second.distanceScore,
+    )[0];
+  }
+
+  if (priority === "wide") {
+    return availableSpaces.find((space) => space.isWide) ?? availableSpaces[0];
+  }
+
+  const nearSpaces = [...availableSpaces].sort(
+    (first, second) => first.distanceScore - second.distanceScore,
+  );
+  return nearSpaces.find((space) => space.isWide) ?? nearSpaces[0];
+}
+
+/** オブジェクト座標をキャンバス比率へ変換する。 */
+function toPercent(value, total) {
+  if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, (value / total) * 100));
+}
+
+/** 管理画面で作成した実レイアウトを簡易表示する。 */
+function renderRegisteredLayout(layout, recommendedSpace) {
+  parkingMap.replaceChildren();
+  parkingMap.className = "parking-map parking-map--layout";
+  parkingMapTitle.textContent = "駐車場マップ";
+
+  const canvasWidth = Number(layout.canvas?.width) || 1000;
+  const canvasHeight = Number(layout.canvas?.height) || 700;
+  parkingMap.style.aspectRatio = `${canvasWidth} / ${canvasHeight}`;
+
+  const supportedTypes = new Set([
+    "road",
+    "sidewalk",
+    "crosswalk",
+    "building",
+    "parkingSpace",
+    "buildingEntrance",
+    "parkingEntrance",
+  ]);
+
+  layout.objects
+    .filter((object) => supportedTypes.has(object.objectType))
+    .forEach((object) => {
+      const item = document.createElement("div");
+      item.className = `map-object map-object--${object.objectType}`;
+      item.style.left = `${toPercent(object.x, canvasWidth)}%`;
+      item.style.top = `${toPercent(object.y, canvasHeight)}%`;
+
+      if (["road", "sidewalk", "crosswalk", "building", "parkingSpace"].includes(object.objectType)) {
+        item.style.width = `${toPercent(Number(object.width) || 70, canvasWidth)}%`;
+        item.style.height = `${toPercent(Number(object.height) || 70, canvasHeight)}%`;
+        item.style.transform = `rotate(${Number(object.rotation) || 0}deg)`;
+      }
+
+      if (object.objectType === "parkingSpace") {
+        const isRecommended = object.uid === recommendedSpace?.uid;
+        const isOccupied = object.status === "occupied" || object.status === "unavailable";
+        item.classList.toggle("is-occupied", isOccupied);
+        item.classList.toggle("is-recommended", isRecommended);
+        item.textContent = object.name || object.spaceNumber || "区画";
+        item.setAttribute(
+          "aria-label",
+          `${item.textContent}、${isRecommended ? "案内先" : isOccupied ? "使用中" : "空き"}`,
+        );
+      } else if (object.objectType === "buildingEntrance") {
+        const marker = document.createElement("span");
+        marker.className = "entrance-icon";
+        marker.setAttribute("aria-hidden", "true");
+        marker.textContent = "↥";
+        const label = document.createElement("span");
+        label.className = "entrance-label";
+        label.textContent = object.name || "建物入口";
+        item.append(marker, label);
+        item.setAttribute("aria-label", label.textContent);
+      } else if (object.objectType === "parkingEntrance") {
+        item.textContent = object.name || "駐車場入口";
+      } else if (object.objectType === "building") {
+        item.textContent = object.name || "建物";
+      }
+
+      parkingMap.append(item);
+    });
+}
+
+/** レイアウト未登録時の研究用区画図を表示する。 */
+function renderDemoParkingMap(spaces, recommendedSpace) {
+  parkingMap.replaceChildren();
+  parkingMap.className = "parking-map parking-map--demo";
+  parkingMap.removeAttribute("style");
+  parkingMapTitle.textContent = "デモ区画図";
+
+  spaces.forEach((space) => {
+    const item = document.createElement("div");
+    const isRecommended = space.id === recommendedSpace.id;
+    let status = "空き";
+
+    item.className = "parking-space";
+    if (space.isOccupied) {
+      item.classList.add("is-occupied");
+      status = "使用中";
+    }
+    if (isRecommended) {
+      item.classList.add("is-recommended");
+      status = "案内先";
+    }
+
+    item.innerHTML = '<span class="parking-space-number"></span><span class="parking-space-state"></span>';
+    item.querySelector(".parking-space-number").textContent = space.id;
+    item.querySelector(".parking-space-state").textContent = status;
+    item.setAttribute("role", "listitem");
+    item.setAttribute("aria-label", `${space.id}、${status}`);
+    parkingMap.append(item);
+  });
+}
+
+/** 登録レイアウトがあれば実マップ、なければデモ図を表示する。 */
+function renderParkingMap(spaces, recommendedSpace, layout) {
+  if (layout && spaces.some((space) => space.sourceObject)) {
+    renderRegisteredLayout(layout, recommendedSpace);
+  } else {
+    renderDemoParkingMap(spaces, recommendedSpace);
+  }
+}
+
+/* =========================================================
+   画面遷移・検索
+   ========================================================= */
+
+/** 指定した4画面のうち1画面だけを表示する。 */
+function showScreen(screenName, options = {}) {
+  const { addHistory = true, moveFocus = true } = options;
+  if (!SCREEN_ORDER.includes(screenName)) {
+    return;
+  }
+
+  document.querySelectorAll("[data-screen]").forEach((screen) => {
+    screen.hidden = screen.dataset.screen !== screenName;
+  });
+
+  const currentIndex = SCREEN_ORDER.indexOf(screenName);
+  document.querySelectorAll("[data-progress]").forEach((item) => {
+    const itemIndex = SCREEN_ORDER.indexOf(item.dataset.progress);
+    item.classList.toggle("is-current", itemIndex === currentIndex);
+    item.classList.toggle("is-complete", itemIndex < currentIndex);
+    if (itemIndex === currentIndex) {
+      item.setAttribute("aria-current", "step");
+    } else {
+      item.removeAttribute("aria-current");
+    }
+  });
+
+  state.currentScreen = screenName;
+  if (screenName === "facility") {
+    renderFacilities();
+  }
+
+  if (addHistory) {
+    window.history.pushState({ screen: screenName }, "", `#${screenName}`);
+  }
+
+  window.scrollTo({ top: 0, behavior: "auto" });
+  if (moveFocus && !document.querySelector("#driving-dialog")?.open) {
+    document.querySelector(`#${screenName}-title`)?.focus();
+  }
+}
+
+/** 選択施設に応じて登録済みレイアウトまたはデモ区画を準備する。 */
+function prepareSpaces(facility) {
+  const layout = getFacilityLayout(facility);
+  if (layout) {
+    const spaces = createLayoutParkingSpaces(layout, facility);
+    if (spaces.length > 0) {
+      return {
+        layout,
+        spaces,
+        entrance: getGuideEntrance(layout, facility),
+        isSimulation: false,
+      };
+    }
+  }
+
+  return {
+    layout: null,
+    spaces: createDemoParkingSpaces(),
+    entrance: null,
+    isSimulation: true,
+  };
+}
+
+/** 空き区画検索を実行する。 */
+async function runSpaceSearch(priorityOverride = null) {
+  if (window.parkingSafety && !window.parkingSafety.guardOperation()) {
+    return { cancelled: true };
+  }
+  if (!state.selectedFacility) {
+    showScreen("facility");
+    return { cancelled: true };
+  }
+
+  const checkedPriority = conditionForm.querySelector('input[name="priority"]:checked');
+  state.selectedPriority = priorityOverride ?? checkedPriority?.value ?? "balanced";
+
+  const matchingRadio = conditionForm.querySelector(
+    `input[name="priority"][value="${state.selectedPriority}"]`,
+  );
+  if (matchingRadio) {
+    matchingRadio.checked = true;
+  }
+
+  const requestId = ++state.searchRequestId;
+  const facility = state.selectedFacility;
+  const priority = state.selectedPriority;
+  state.recommendedSpace = null;
+
+  if (state.currentScreen !== "result") {
+    showScreen("result");
+  }
+  resultContent.hidden = true;
+  searchStatus.textContent = "空き区画を確認しています…";
+
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      if (requestId !== state.searchRequestId || state.selectedFacility !== facility) {
+        resolve({ cancelled: true });
+        return;
+      }
+
+      const prepared = prepareSpaces(facility);
+      if (prepared.isSimulation) {
+        prepared.spaces = createDemoParkingSpaces(state.searchSequence);
+      }
+
+      state.currentLayout = prepared.layout;
+      state.currentSpaces = prepared.spaces;
+      state.guideEntrance = prepared.entrance;
+      state.recommendedSpace = selectRecommendedSpace(prepared.spaces, priority);
+
+      if (!state.recommendedSpace) {
+        searchStatus.textContent = "現在の条件で案内できる空き区画がありません。";
+        resolve({ facility: facility.name, spaceId: null, priority });
+        return;
+      }
+
+      spaceNumber.textContent = state.recommendedSpace.id;
+      priorityBadge.textContent = PRIORITY_LABELS[priority];
+
+      if (prepared.isSimulation) {
+        spaceDescription.textContent = `店舗入口まで約${Math.round(state.recommendedSpace.entranceDistanceMeters)}m（シミュレーション）`;
+        searchStatus.textContent = `${facility.name}の研究用シミュレーション結果です。`;
+      } else if (Number.isFinite(state.recommendedSpace.entranceDistanceMeters)) {
+        const entranceName = prepared.entrance?.name || "建物入口";
+        spaceDescription.textContent = `${entranceName}まで約${Math.round(state.recommendedSpace.entranceDistanceMeters)}m`;
+        searchStatus.textContent = `${facility.name}の登録レイアウトから案内先を選びました。`;
+      } else {
+        const entranceName = prepared.entrance?.name || "建物入口";
+        spaceDescription.textContent = `${entranceName}とのレイアウト上の距離を比較して選択`;
+        searchStatus.textContent = `${facility.name}の登録レイアウトから案内先を選びました。`;
+      }
+
+      updatedTime.textContent = new Intl.DateTimeFormat("ja-JP", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date());
+
+      renderParkingMap(prepared.spaces, state.recommendedSpace, prepared.layout);
+      resultContent.hidden = false;
+
+      resolve({
+        facility: facility.name,
+        spaceId: state.recommendedSpace.id,
+        priority,
+        simulation: prepared.isSimulation,
+      });
+    }, 350);
+  });
+}
+
+/** 案内画面へ選択結果を反映する。 */
+function prepareGuideScreen() {
+  if (!state.selectedFacility || !state.recommendedSpace) {
+    showScreen("facility");
+    return;
+  }
+
+  guideSpaceNumber.textContent = state.recommendedSpace.id;
+  guideFacilityName.textContent = state.selectedFacility.name;
+  finalDirectionTitle.textContent = `${state.recommendedSpace.id} に到着`;
+  showScreen("guide");
+}
+
+/* =========================================================
+   表示設定
+   ========================================================= */
+
+/** 文字サイズを切り替え、端末内に保存する。 */
+function toggleTextSize() {
+  const useLarge = document.documentElement.dataset.fontSize !== "large";
+  document.documentElement.dataset.fontSize = useLarge ? "large" : "normal";
+  textSizeButton.setAttribute("aria-pressed", String(useLarge));
+  textSizeButton.textContent = useLarge ? "標準文字" : "文字を大きく";
+
+  try {
+    localStorage.setItem("parkingGuideFontSize", useLarge ? "large" : "normal");
+  } catch {
+    /* 保存できない環境でも表示変更は続ける。 */
+  }
+}
+
+/** 保存済みの文字サイズを復元する。 */
+function restoreTextSize() {
+  let savedSize = "normal";
+  try {
+    savedSize = localStorage.getItem("parkingGuideFontSize") ?? "normal";
+  } catch {
+    savedSize = "normal";
+  }
+
+  const useLarge = savedSize === "large";
+  document.documentElement.dataset.fontSize = useLarge ? "large" : "normal";
+  textSizeButton.setAttribute("aria-pressed", String(useLarge));
+  textSizeButton.textContent = useLarge ? "標準文字" : "文字を大きく";
+}
+
+/** テーマを反映し、ブラウザー上部の色も合わせる。 */
+function applyTheme(theme) {
+  const normalizedTheme = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = normalizedTheme;
+  const dark = normalizedTheme === "dark";
+  themeButton.setAttribute("aria-pressed", String(dark));
+  themeButton.textContent = dark ? "ライトモード" : "ダークモード";
+  themeColorMeta?.setAttribute("content", dark ? "#17191d" : "#ffffff");
+}
+
+/** ライト・ダークを切り替える。 */
+function toggleTheme() {
+  const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  applyTheme(nextTheme);
+  try {
+    localStorage.setItem("parkingGuideTheme", nextTheme);
+  } catch {
+    /* 保存できない環境でも現在の表示は維持する。 */
+  }
+}
+
+/** 保存値がない場合はOS設定を使う。 */
+function restoreTheme() {
+  let savedTheme = null;
+  try {
+    savedTheme = localStorage.getItem("parkingGuideTheme");
+  } catch {
+    savedTheme = null;
+  }
+  const preferredTheme = savedTheme === "light" || savedTheme === "dark"
+    ? savedTheme
+    : window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  applyTheme(preferredTheme);
+}
+
+/** 最初の画面へ戻り、検索結果を初期化する。 */
+function resetApplication() {
+  state.searchRequestId += 1;
+  state.selectedFacility = null;
+  state.selectedPriority = "balanced";
+  state.recommendedSpace = null;
+  state.currentSpaces = [];
+  state.currentLayout = null;
+  state.guideEntrance = null;
+  state.searchSequence = 0;
+  conditionForm.reset();
+  showScreen("facility");
+}
+
+/* =========================================================
+   操作イベント
+   ========================================================= */
+
+facilityList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-facility-id]");
+  if (!button) {
+    return;
+  }
+
+  const facility = FACILITIES.find((item) => item.id === button.dataset.facilityId);
+  if (!facility) {
+    return;
+  }
+
+  state.selectedFacility = facility;
+  state.searchRequestId += 1;
+  state.recommendedSpace = null;
+  selectedFacilityName.textContent = facility.name;
+  showScreen("condition");
+});
+
+textSizeButton.addEventListener("click", toggleTextSize);
+themeButton.addEventListener("click", toggleTheme);
+filterForm.addEventListener("submit", (event) => event.preventDefault());
+
+prefectureFilter.addEventListener("change", () => {
+  state.filters.prefecture = prefectureFilter.value;
+  renderFacilities();
+});
+
+categoryFilter.addEventListener("change", () => {
+  state.filters.category = categoryFilter.value;
+  renderFacilities();
+});
+
+resetFiltersButton.addEventListener("click", () => {
+  state.filters = { prefecture: "", category: "" };
+  state.sortByDistance = false;
+  initializeFilters();
+  renderFacilities();
+});
+
+sortDistanceButton.addEventListener("click", () => {
+  state.sortByDistance = true;
+  renderFacilities();
+});
+
+window.addEventListener("parking:locationchange", (event) => {
+  state.userLocation = event.detail.location;
+  updateFacilityDistances();
+});
+
+conditionForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void runSpaceSearch();
+});
+
+showGuideButton.addEventListener("click", prepareGuideScreen);
+
+retryButton.addEventListener("click", () => {
+  state.searchSequence += 1;
+  void runSpaceSearch();
+});
+
+document.querySelectorAll("[data-back]").forEach((button) => {
+  button.addEventListener("click", () => showScreen(button.dataset.back));
+});
+
+document.querySelectorAll("[data-go-home]").forEach((element) => {
+  element.addEventListener("click", (event) => {
+    event.preventDefault();
+    resetApplication();
+  });
+});
+
+window.addEventListener("popstate", (event) => {
+  if (window.parkingSafety && !window.parkingSafety.guardOperation()) {
+    window.history.pushState({ screen: state.currentScreen }, "", `#${state.currentScreen}`);
+    return;
+  }
+
+  const requestedScreen = event.state?.screen;
+  const canOpenScreen =
+    requestedScreen === "facility" ||
+    (requestedScreen === "condition" && state.selectedFacility) ||
+    (requestedScreen === "result" && state.recommendedSpace) ||
+    (requestedScreen === "guide" && state.recommendedSpace);
+
+  showScreen(canOpenScreen ? requestedScreen : "facility", { addHistory: false });
+});
+
+/* =========================================================
+   初期表示
+   ========================================================= */
+
+restoreTheme();
+restoreTextSize();
+initializeFilters();
+window.history.replaceState({ screen: "facility" }, "", "#facility");
+showScreen("facility", { addHistory: false, moveFocus: false });

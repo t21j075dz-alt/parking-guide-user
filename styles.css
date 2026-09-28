@@ -1,0 +1,1067 @@
+/* =========================================================
+   駐車場空き区画案内：共通スタイル
+   装飾を抑え、業務系Webアプリに近いフラットな表示にする。
+   ========================================================= */
+
+:root {
+  color-scheme: light;
+  --font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN",
+    "Yu Gothic", "YuGothic", Meiryo, sans-serif;
+  --font-size-body: 1rem;
+  --font-size-small: 0.875rem;
+  --font-size-label: 0.8125rem;
+  --font-size-title: clamp(1.55rem, 5vw, 2.15rem);
+  --font-size-heading: clamp(1.15rem, 4vw, 1.45rem);
+
+  --color-background: #f5f5f3;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f0f1f2;
+  --color-text: #202327;
+  --color-muted: #5c626a;
+  --color-border: #b9bdc2;
+  --color-border-strong: #737980;
+  --color-primary: #145c8e;
+  --color-primary-contrast: #ffffff;
+  --color-focus: #f2b705;
+  --color-available: #176b4d;
+  --color-available-soft: #e7f2ec;
+  --color-occupied: #5b626a;
+  --color-occupied-soft: #e4e6e8;
+  --color-recommended: #8a5a00;
+  --color-recommended-soft: #fff2c9;
+  --color-danger: #9f2f2f;
+  --color-warning: #7a5200;
+  --color-warning-soft: #fff4d6;
+
+  --radius: 0.3rem;
+  --content-width: 58rem;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --color-background: #17191d;
+  --color-surface: #202328;
+  --color-surface-subtle: #292d33;
+  --color-text: #f1f3f5;
+  --color-muted: #b7bdc5;
+  --color-border: #565d66;
+  --color-border-strong: #8a919b;
+  --color-primary: #7bb7e0;
+  --color-primary-contrast: #10202c;
+  --color-focus: #ffd24a;
+  --color-available: #79caa9;
+  --color-available-soft: #203c31;
+  --color-occupied: #adb3ba;
+  --color-occupied-soft: #343940;
+  --color-recommended: #ffd166;
+  --color-recommended-soft: #4a3c1a;
+  --color-danger: #ff9d9d;
+  --color-warning: #f3cf7a;
+  --color-warning-soft: #3d331f;
+}
+
+html[data-font-size="large"] {
+  --font-size-body: 1.15rem;
+  --font-size-small: 1rem;
+  --font-size-label: 0.9375rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 20rem;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: var(--font-size-body);
+  line-height: 1.65;
+  -webkit-text-size-adjust: 100%;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button,
+a,
+label,
+select,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+a {
+  color: var(--color-primary);
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0.45rem;
+  font-size: var(--font-size-title);
+  line-height: 1.3;
+}
+
+h2 {
+  margin-bottom: 0.45rem;
+  font-size: var(--font-size-heading);
+  line-height: 1.35;
+}
+
+:focus-visible {
+  outline: 0.18rem solid var(--color-focus);
+  outline-offset: 0.18rem;
+}
+
+.skip-link {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 200;
+  padding: 0.55rem 0.8rem;
+  background: var(--color-text);
+  color: var(--color-background);
+  transform: translateY(-160%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* =========================================================
+   ヘッダー・共通レイアウト
+   ========================================================= */
+
+.site-header {
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(100% - 2rem, var(--content-width));
+  min-height: 4.2rem;
+  margin-inline: auto;
+  gap: 1rem;
+}
+
+.site-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--color-text);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.parking-symbol {
+  display: inline-grid;
+  width: 2.1rem;
+  height: 2.1rem;
+  place-items: center;
+  border: 2px solid var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.display-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.display-button,
+.primary-button,
+.secondary-button,
+.back-button {
+  min-height: 2.6rem;
+  border-radius: var(--radius);
+  font-weight: 600;
+}
+
+.display-button,
+.secondary-button {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.display-button:hover,
+.secondary-button:hover {
+  background: var(--color-surface-subtle);
+}
+
+.primary-button {
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+}
+
+.primary-button:hover {
+  filter: brightness(0.94);
+}
+
+.back-button {
+  margin-bottom: 1rem;
+  padding: 0.45rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.18rem;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.main-content {
+  width: min(100% - 2rem, var(--content-width));
+  min-height: 72vh;
+  margin-inline: auto;
+  padding: 1rem 0 3rem;
+}
+
+.screen {
+  max-width: 48rem;
+  margin-inline: auto;
+}
+
+.screen-heading {
+  margin-bottom: 1.25rem;
+}
+
+.screen-heading > p:last-child {
+  margin-bottom: 0;
+  color: var(--color-muted);
+}
+
+.step-label {
+  margin-bottom: 0.15rem;
+  color: var(--color-muted);
+  font-size: var(--font-size-label);
+  font-weight: 700;
+}
+
+/* =========================================================
+   進行状況・研究用表示
+   ========================================================= */
+
+.progress {
+  max-width: 48rem;
+  margin: 0 auto 1rem;
+}
+
+.progress-list {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progress-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.65rem;
+  gap: 0.35rem;
+  border-bottom: 2px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+
+.progress-item.is-current,
+.progress-item.is-complete {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-text);
+}
+
+.progress-item.is-current {
+  font-weight: 700;
+}
+
+.progress-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.research-note {
+  max-width: 48rem;
+  margin: 0 auto 1rem;
+  padding: 0.65rem 0.8rem;
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-warning-soft);
+  color: var(--color-text);
+  font-size: var(--font-size-small);
+}
+
+/* =========================================================
+   現在地
+   ========================================================= */
+
+.location-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  max-width: 48rem;
+  margin: 0 auto 1.5rem;
+  padding: 0.9rem 0;
+  gap: 0.8rem 1rem;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.location-panel p {
+  margin-bottom: 0;
+}
+
+.panel-title {
+  margin-bottom: 0.2rem;
+  font-size: 1em;
+}
+
+.location-status,
+.location-details,
+.motion-status,
+.location-help {
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+
+.location-details:not(:empty),
+.motion-status:not(:empty) {
+  margin-top: 0.2rem;
+}
+
+.location-actions {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.location-help {
+  grid-column: 1 / -1;
+  margin-top: 0.2rem;
+}
+
+.location-help summary {
+  width: fit-content;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.location-help p {
+  margin-top: 0.55rem;
+}
+
+/* =========================================================
+   施設選択
+   ========================================================= */
+
+.facility-filters {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.facility-filters h2 {
+  font-size: 1em;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.filter-field label {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+  font-weight: 600;
+}
+
+.filter-field select {
+  width: 100%;
+  min-height: 2.7rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.filter-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.8rem;
+  gap: 0.65rem;
+}
+
+.facility-count-line {
+  margin-bottom: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+
+.filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.filter-actions button {
+  min-height: 2.35rem;
+  padding: 0.4rem 0.65rem;
+  font-size: var(--font-size-small);
+}
+
+.facility-list {
+  border-top: 1px solid var(--color-border);
+}
+
+.facility-row {
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.facility-button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 5.2rem;
+  padding: 0.9rem 0.7rem;
+  gap: 1rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+}
+
+.facility-button:hover {
+  background: var(--color-surface-subtle);
+}
+
+.facility-main {
+  min-width: 0;
+}
+
+.facility-name {
+  display: block;
+  margin-bottom: 0.18rem;
+  font-weight: 700;
+}
+
+.facility-meta,
+.facility-distance {
+  display: block;
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+
+.facility-distance {
+  margin-top: 0.15rem;
+}
+
+.facility-action {
+  color: var(--color-primary);
+  font-size: var(--font-size-small);
+  font-weight: 700;
+}
+
+.empty-state {
+  padding: 1rem 0;
+  color: var(--color-muted);
+}
+
+/* =========================================================
+   条件選択
+   ========================================================= */
+
+.selected-place {
+  margin-top: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-surface-subtle);
+  color: var(--color-text) !important;
+  font-weight: 700;
+}
+
+.condition-fieldset {
+  margin: 0 0 1rem;
+  padding: 0;
+  border: 0;
+}
+
+.condition-fieldset legend {
+  margin-bottom: 0.65rem;
+  padding: 0;
+  font-weight: 700;
+}
+
+.choice-list {
+  border-top: 1px solid var(--color-border);
+}
+
+.choice-row {
+  display: flex;
+  align-items: flex-start;
+  min-height: 4.7rem;
+  padding: 0.8rem 0.3rem;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+}
+
+.choice-row:hover {
+  background: var(--color-surface-subtle);
+}
+
+.choice-row:has(input:checked) {
+  background: var(--color-surface-subtle);
+}
+
+.choice-row input {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.2rem;
+  accent-color: var(--color-primary);
+}
+
+.choice-row span,
+.choice-row strong,
+.choice-row small {
+  display: block;
+}
+
+.choice-row small {
+  margin-top: 0.1rem;
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+
+/* =========================================================
+   結果・マップ
+   ========================================================= */
+
+.search-status:not(:empty) {
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.75rem;
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-surface-subtle);
+}
+
+.result-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 1rem 0;
+  gap: 1.25rem;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.result-label {
+  margin-bottom: 0.1rem;
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+
+.space-number,
+.guide-space-number {
+  margin-bottom: 0;
+  font-size: clamp(2.5rem, 10vw, 4.5rem);
+  font-weight: 800;
+  line-height: 1.05;
+}
+
+.result-details p {
+  margin-bottom: 0.35rem;
+}
+
+.space-description {
+  color: var(--color-muted);
+}
+
+.text-label {
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+
+.parking-map-section {
+  padding-top: 0.2rem;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.section-title-row h2,
+.section-title-row p {
+  margin-bottom: 0;
+}
+
+.updated-time {
+  color: var(--color-muted);
+  font-size: var(--font-size-label);
+}
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0.7rem 0;
+  gap: 0.45rem 0.9rem;
+  color: var(--color-muted);
+  font-size: var(--font-size-label);
+}
+
+.map-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.legend-sample {
+  width: 1.35rem;
+  height: 0.95rem;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+}
+
+.legend-sample.is-recommended {
+  border: 2px solid var(--color-recommended);
+  background: var(--color-recommended-soft);
+}
+
+.legend-sample.is-available {
+  border-color: var(--color-available);
+  background: var(--color-available-soft);
+}
+
+.legend-sample.is-occupied {
+  background: var(--color-occupied-soft);
+}
+
+.legend-entrance {
+  color: var(--color-primary);
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.parking-map {
+  position: relative;
+  overflow: hidden;
+  min-height: 16rem;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+}
+
+.parking-map--demo {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0.75rem;
+  gap: 0.55rem;
+}
+
+.parking-space {
+  display: grid;
+  min-height: 4.8rem;
+  place-items: center;
+  padding: 0.35rem;
+  border: 1px solid var(--color-available);
+  background: var(--color-available-soft);
+  text-align: center;
+}
+
+.parking-space.is-occupied {
+  border-color: var(--color-occupied);
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-occupied-soft),
+    var(--color-occupied-soft) 0.35rem,
+    var(--color-surface-subtle) 0.35rem,
+    var(--color-surface-subtle) 0.6rem
+  );
+}
+
+.parking-space.is-recommended {
+  border: 3px solid var(--color-recommended);
+  background: var(--color-recommended-soft);
+}
+
+.parking-space-number,
+.parking-space-state {
+  display: block;
+}
+
+.parking-space-number {
+  font-weight: 800;
+}
+
+.parking-space-state {
+  font-size: var(--font-size-label);
+}
+
+/* 管理用Webアプリから登録した自由配置レイアウト。 */
+.parking-map--layout {
+  display: block;
+  min-height: 18rem;
+}
+
+.map-object {
+  position: absolute;
+  overflow: hidden;
+  transform-origin: top left;
+  font-size: clamp(0.58rem, 1.8vw, 0.82rem);
+}
+
+.map-object--road {
+  z-index: 1;
+  background: #777d84;
+}
+
+html[data-theme="dark"] .map-object--road {
+  background: #454b52;
+}
+
+.map-object--sidewalk {
+  z-index: 2;
+  border: 1px solid var(--color-border-strong);
+  background: #d8d6cd;
+}
+
+html[data-theme="dark"] .map-object--sidewalk {
+  background: #66665f;
+}
+
+.map-object--crosswalk {
+  z-index: 3;
+  border: 1px solid var(--color-border-strong);
+  background: repeating-linear-gradient(
+    90deg,
+    var(--color-surface) 0,
+    var(--color-surface) 15%,
+    var(--color-border-strong) 15%,
+    var(--color-border-strong) 30%
+  );
+}
+
+.map-object--building {
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--color-border-strong);
+  background: var(--color-surface-subtle);
+  font-weight: 700;
+}
+
+.map-object--parkingSpace {
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-available);
+  background: var(--color-available-soft);
+  text-align: center;
+}
+
+.map-object--parkingSpace.is-occupied {
+  border-color: var(--color-occupied);
+  background: var(--color-occupied-soft);
+}
+
+.map-object--parkingSpace.is-recommended {
+  border: 3px solid var(--color-recommended);
+  background: var(--color-recommended-soft);
+  font-weight: 800;
+}
+
+.map-object--buildingEntrance,
+.map-object--parkingEntrance {
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  min-width: max-content;
+  gap: 0.2rem;
+  transform: translate(-50%, -50%);
+  font-weight: 800;
+}
+
+.map-object--buildingEntrance {
+  color: var(--color-primary);
+}
+
+.map-object--parkingEntrance {
+  padding: 0.1rem 0.25rem;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.entrance-icon {
+  display: inline-grid;
+  width: 1.2rem;
+  height: 1.2rem;
+  place-items: center;
+  border: 1px solid currentColor;
+  background: var(--color-surface);
+  line-height: 1;
+}
+
+.entrance-label {
+  padding: 0.05rem 0.2rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.button-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 1rem;
+  gap: 0.65rem;
+}
+
+/* =========================================================
+   詳細案内
+   ========================================================= */
+
+.guide-summary {
+  margin-bottom: 1rem;
+  padding: 0.8rem 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.guide-summary p {
+  margin-bottom: 0.15rem;
+}
+
+.direction-list {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.direction-list li {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  padding: 0.8rem 0;
+  gap: 0.7rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.direction-list h2 {
+  margin-bottom: 0.15rem;
+  font-size: 1em;
+}
+
+.direction-list p {
+  margin-bottom: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+
+.direction-number {
+  display: inline-grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  place-items: center;
+  border: 1px solid var(--color-border-strong);
+  font-size: var(--font-size-small);
+  font-weight: 700;
+}
+
+.safety-note {
+  margin-bottom: 1rem;
+  padding: 0.7rem 0.8rem;
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-warning-soft);
+}
+
+.safety-note p {
+  margin: 0.15rem 0 0;
+}
+
+/* =========================================================
+   運転確認ダイアログ
+   ========================================================= */
+
+.driving-dialog {
+  width: min(100% - 2rem, 31rem);
+  max-width: none;
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 1.2rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.driving-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.dialog-actions {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.dialog-help {
+  margin: 0.8rem 0 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+
+.driving-lock-message {
+  padding: 0.6rem 0.7rem;
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-warning-soft);
+}
+
+/* =========================================================
+   フッター・レスポンシブ
+   ========================================================= */
+
+.site-footer {
+  padding: 1.2rem 1rem 1.8rem;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+  text-align: center;
+}
+
+.site-footer p {
+  margin-bottom: 0.2rem;
+}
+
+@media (max-width: 42rem) {
+  .header-inner {
+    align-items: flex-start;
+    width: min(100% - 1.2rem, var(--content-width));
+    padding-block: 0.65rem;
+  }
+
+  .site-name {
+    padding-top: 0.25rem;
+  }
+
+  .site-name > span:last-child {
+    max-width: 9rem;
+  }
+
+  .display-controls {
+    max-width: 9.5rem;
+  }
+
+  .display-button {
+    min-height: 2.2rem;
+    padding: 0.35rem 0.55rem;
+    font-size: var(--font-size-label);
+  }
+
+  .main-content {
+    width: min(100% - 1.2rem, var(--content-width));
+  }
+
+  .progress-item {
+    flex-direction: column;
+    min-height: 3rem;
+    gap: 0;
+  }
+
+  .location-panel {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .location-actions button {
+    max-width: 8rem;
+    padding-inline: 0.6rem;
+    font-size: var(--font-size-small);
+  }
+
+  .filter-grid,
+  .button-group,
+  .result-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .facility-button {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .parking-map--demo {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 24rem) {
+  .parking-map--demo {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .display-controls {
+    max-width: 7.8rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --color-border: var(--color-border-strong);
+  }
+}
