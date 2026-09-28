@@ -295,7 +295,14 @@ function renderFacilities() {
 
     const action = document.createElement("span");
     action.className = "facility-action";
-    action.textContent = "選択";
+
+    if (facility.operatingStatus === "opening-scheduled") {
+      button.disabled = true;
+      button.setAttribute("aria-disabled", "true");
+      action.textContent = facility.plannedOpen === "2026-11" ? "2026年11月開業予定" : "開業予定";
+    } else {
+      action.textContent = "選択";
+    }
 
     main.append(name, meta);
     if (facility.statusNote) {
