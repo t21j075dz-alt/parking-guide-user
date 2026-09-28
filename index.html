@@ -9,7 +9,9 @@
       content="研究対象施設から空き駐車区画を案内する卒業研究用Webアプリ"
     >
     <title>駐車場空き区画案内｜卒業研究</title>
+    <!-- 利用者画面の共通スタイル。管理画面とは別リポジトリで管理する。 -->
     <link rel="stylesheet" href="./styles.css">
+    <!-- 安全確認 → 施設データ → 同期設定 → レイアウト → 画面制御の順で読み込む。 -->
     <script src="./location-safety.js" defer></script>
     <script src="./facilities.js" defer></script>
     <script src="./sync-config.js" defer></script>
@@ -20,6 +22,7 @@
   <body>
     <a class="skip-link" href="#main-content">本文へ移動</a>
 
+    <!-- アプリ名と表示設定。運転中でも誤操作しにくいよう操作数を抑える。 -->
     <header class="site-header">
       <div class="header-inner">
         <a class="site-name" href="#facility" data-go-home aria-label="最初の画面へ戻る">
@@ -38,6 +41,7 @@
     </header>
 
     <main id="main-content" class="main-content" tabindex="-1">
+      <!-- 4画面構成：施設 → 条件 → 区画 → 案内。 -->
       <nav class="progress" aria-label="案内の進行状況">
         <ol class="progress-list">
           <li class="progress-item is-current" data-progress="facility" aria-current="step">
@@ -59,6 +63,7 @@
         卒業研究用の試作です。実店舗の空き情報は取得していません。駐車区画の検索結果は、管理データ未登録の施設ではシミュレーションを表示します。
       </p>
 
+      <!-- 現在地取得と移動状態表示。位置情報の安全制御本体は location-safety.js。 -->
       <section class="location-panel" aria-labelledby="location-title">
         <div class="location-summary">
           <h2 id="location-title" class="panel-title">現在地</h2>
@@ -79,6 +84,7 @@
         </details>
       </section>
 
+      <!-- 画面1：利用する施設の選択。 -->
       <section class="screen" id="facility-screen" data-screen="facility" aria-labelledby="facility-title">
         <div class="screen-heading">
           <p class="step-label">1 / 4</p>
@@ -115,6 +121,7 @@
         <div id="facility-list" class="facility-list" aria-label="選択できる施設"></div>
       </section>
 
+      <!-- 画面2：案内先区画を選ぶ際の優先条件。 -->
       <section class="screen" id="condition-screen" data-screen="condition" aria-labelledby="condition-title" hidden>
         <button class="back-button" type="button" data-back="facility">← 施設選択へ戻る</button>
         <div class="screen-heading">
@@ -145,6 +152,7 @@
         </form>
       </section>
 
+      <!-- 画面3：推奨区画と駐車場内レイアウトの表示。 -->
       <section class="screen" id="result-screen" data-screen="result" aria-labelledby="result-title" hidden>
         <button class="back-button" type="button" data-back="condition">← 条件選択へ戻る</button>
         <div class="screen-heading">
@@ -186,6 +194,7 @@
         </div>
       </section>
 
+      <!-- 画面4：推奨区画までの詳細案内。経路探索は将来拡張予定。 -->
       <section class="screen" id="guide-screen" data-screen="guide" aria-labelledby="guide-title" hidden>
         <button class="back-button" type="button" data-back="result">← 区画表示へ戻る</button>
         <div class="screen-heading">
@@ -214,6 +223,7 @@
       </section>
     </main>
 
+    <!-- 移動中の操作を止め、運転者か同乗者かを確認する安全ダイアログ。 -->
     <dialog id="driving-dialog" class="driving-dialog" aria-labelledby="driving-dialog-title" aria-describedby="driving-dialog-description">
       <h2 id="driving-dialog-title" tabindex="-1">運転中ですか？</h2>
       <p id="driving-dialog-description">移動を検知しました。GPSだけでは運転者と同乗者を区別できないため、操作する方の状況を確認します。</p>
@@ -232,6 +242,7 @@
       </div>
     </dialog>
 
+    <!-- 卒業研究の試作であり実運用向けではないことを表示する。 -->
     <footer class="site-footer">
       <p>岡山理科大学 工学部 情報工学科 卒業研究</p>
       <p>試作システムのため、実際の駐車案内には使用できません。</p>
