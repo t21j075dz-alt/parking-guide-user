@@ -455,7 +455,11 @@ function renderRegisteredLayout(layout, recommendedSpace) {
           : object.accessType === "exit"
             ? "出口"
             : "出入口";
-        item.textContent = object.name || `駐車場${accessLabel}`;
+        const defaultNames = new Set(["駐車場入口", "駐車場出口", "駐車場出入口"]);
+        const customName = String(object.name ?? "").trim();
+        item.textContent = customName && !defaultNames.has(customName)
+          ? `${accessLabel}｜${customName}`
+          : `駐車場${accessLabel}`;
         item.dataset.accessType = object.accessType ?? "both";
       } else if (object.objectType === "road") {
         if (object.trafficDirection === "oneWay") {
