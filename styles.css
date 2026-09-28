@@ -1361,3 +1361,16 @@ html[data-theme="dark"] .map-object--sidewalk {
 .map-object--parkingEntrance,
 .map-object--noEntry,
 .map-object--evCharger { z-index: 20; }
+
+
+/* 管理画面と同じ濃いアスファルト色で駐車場敷地を表示する。 */
+.map-object--parkingLot .user-polygon-fill {
+  fill: #4b5055;
+  stroke: #2f3439;
+  stroke-width: 3;
+  stroke-dasharray: none;
+}
+html[data-theme="dark"] .map-object--parkingLot .user-polygon-fill {
+  fill: #3f4448;
+  stroke: #8b949e;
+}
