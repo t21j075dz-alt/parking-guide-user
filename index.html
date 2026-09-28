@@ -131,6 +131,15 @@
           <p class="step-label">2 / 4</p>
           <h1 id="condition-title" tabindex="-1">駐車区画の条件</h1>
           <p id="selected-facility-name" class="selected-place"></p>
+          <section id="private-test-location-panel" class="private-test-location-panel" hidden aria-labelledby="private-test-location-title">
+            <h2 id="private-test-location-title">自宅テスト地点</h2>
+            <p>正確な自宅位置は公開データに保存しません。自宅にいるときに現在地をこの端末だけへ登録してください。</p>
+            <p id="private-test-location-status" class="private-test-location-status" role="status" aria-live="polite">テスト地点はまだ登録されていません。</p>
+            <div class="private-test-location-actions">
+              <button class="secondary-button" id="save-private-test-location-button" type="button">現在地をテスト地点として登録</button>
+              <button class="secondary-button" id="clear-private-test-location-button" type="button">登録地点を削除</button>
+            </div>
+          </section>
           <p id="random-guidance-note" class="random-guidance-note" hidden>マルナカ 中井町店では現在、条件に合う空き区画から研究用にランダムで1区画を案内します。</p>
         </div>
 
