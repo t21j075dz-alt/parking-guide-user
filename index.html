@@ -190,10 +190,19 @@
             <p id="proximity-status" class="proximity-status" role="status" aria-live="polite">まだ自動案内を開始していません。</p>
           </section>
 
-          <label class="voice-option">
-            <input id="voice-enabled" type="checkbox" checked>
-            <span><strong>音声案内を使用</strong><small>案内先が決まったときに端末の音声で読み上げます。</small></span>
-          </label>
+          <section class="voice-settings" aria-labelledby="voice-settings-title">
+            <label class="voice-option">
+              <input id="voice-enabled" type="checkbox" checked>
+              <span><strong id="voice-settings-title">音声案内を使用</strong><small>案内先が決まったときに端末の音声で読み上げます。</small></span>
+            </label>
+            <div class="voice-choice-row">
+              <label for="voice-select">音声</label>
+              <select id="voice-select">
+                <option value="">自動（聞き取りやすい音声）</option>
+              </select>
+              <button class="secondary-button" id="voice-preview-button" type="button">音声を試す</button>
+            </div>
+          </section>
 
           <div class="condition-actions">
             <button class="primary-button full-width" type="submit">この条件で自動案内を開始</button>
