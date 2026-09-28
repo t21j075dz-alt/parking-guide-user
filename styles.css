@@ -1129,6 +1129,3 @@ html[data-theme="dark"] .map-object--sidewalk {
 .map-object--evCharger {
   color: var(--color-available);
 }
-.map-object--parkingEntrance[data-access-type="entrance"]::before { content: "入口"; margin-right: 0.2rem; }
-.map-object--parkingEntrance[data-access-type="exit"]::before { content: "出口"; margin-right: 0.2rem; }
-.map-object--parkingEntrance[data-access-type="both"]::before { content: "出入口"; margin-right: 0.2rem; }
