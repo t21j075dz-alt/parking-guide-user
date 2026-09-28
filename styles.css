@@ -1374,3 +1374,29 @@ html[data-theme="dark"] .map-object--parkingLot .user-polygon-fill {
   fill: #3f4448;
   stroke: #8b949e;
 }
+
+
+/* =========================================================
+   模式図の固定レイヤー順
+   敷地・道路系は常に最奥、駐車枠・設備は前面。
+   ========================================================= */
+.map-object--parkingLot { z-index: 0 !important; }
+.map-object--nationalRoad,
+.map-object--prefecturalRoad,
+.map-object--publicRoad { z-index: 1 !important; }
+.map-object--road,
+.map-object--sidewalk,
+.map-object--crosswalk { z-index: 2 !important; }
+
+.map-object--building { z-index: 6 !important; }
+.map-object--parkingSpace { z-index: 20 !important; }
+.map-object--cartCorral,
+.map-object--bicycleParking,
+.map-object--motorcycleParking,
+.map-object--loadingZone,
+.map-object--stopLine,
+.map-object--speedBump { z-index: 24 !important; }
+.map-object--buildingEntrance,
+.map-object--parkingEntrance,
+.map-object--noEntry,
+.map-object--evCharger { z-index: 30 !important; }
