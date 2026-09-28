@@ -166,20 +166,60 @@ function calculateDistanceKm(lat1, lon1, lat2, lon2) {
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(clampedA), Math.sqrt(1 - clampedA));
 }
 
-/** 現在地と施設座標がそろっている場合だけ直線距離を返す。 */
+/**
+ * 施設の代表座標を取得する。
+ *
+ * 優先順位：
+ * 1. 公式MAP等から固定登録した施設座標
+ * 2. 管理画面で確認済み住所から決定し、layout.backgroundへ保存した中心座標
+ *
+ * 店舗名だけを検索した曖昧な座標は使わない。
+ */
+function getFacilityCoordinate(facility) {
+  if (Number.isFinite(facility?.latitude) && Number.isFinite(facility?.longitude)) {
+    return {
+      latitude: facility.latitude,
+      longitude: facility.longitude,
+      source: facility.coordinateSource ?? "施設マスター",
+    };
+  }
+
+  const layout = getFacilityLayout(facility);
+  const background = layout?.background;
+  if (
+    background &&
+    ["verified-coordinate", "verified-address", "manual-adjustment", "manual-coordinate"].includes(
+      background.locatedBy,
+    ) &&
+    Number.isFinite(background.centerLat) &&
+    Number.isFinite(background.centerLng)
+  ) {
+    return {
+      latitude: background.centerLat,
+      longitude: background.centerLng,
+      source: background.coordinateSource ?? "管理レイアウト",
+    };
+  }
+
+  return null;
+}
+
+/** 現在地と確認済み施設座標がそろっている場合だけ直線距離を返す。 */
 function getFacilityDistance(facility) {
   if (!state.userLocation) {
     return facility.isDemo ? facility.demoDistance : null;
   }
-  if (!Number.isFinite(facility.latitude) || !Number.isFinite(facility.longitude)) {
+
+  const coordinate = getFacilityCoordinate(facility);
+  if (!coordinate) {
     return null;
   }
 
   return calculateDistanceKm(
     state.userLocation.latitude,
     state.userLocation.longitude,
-    facility.latitude,
-    facility.longitude,
+    coordinate.latitude,
+    coordinate.longitude,
   );
 }
 
@@ -189,9 +229,11 @@ function updateFacilityDistance(button, facility) {
   const distanceElement = button.querySelector(".facility-distance");
 
   if (distance === null) {
-    distanceElement.textContent = Number.isFinite(facility.latitude)
+    distanceElement.textContent = getFacilityCoordinate(facility)
       ? "現在地を取得すると直線距離を表示"
-      : "位置情報は管理データから追加予定";
+      : facility.locationVerified
+        ? "住所確認済み・管理マップ位置の確定待ち"
+        : "位置情報は管理データから追加予定";
   } else {
     distanceElement.textContent = facility.isDemo && !state.userLocation
       ? `参考距離 約${distance.toFixed(1)} km`
@@ -239,7 +281,12 @@ function renderFacilities() {
 
     const meta = document.createElement("span");
     meta.className = "facility-meta";
-    meta.textContent = [facility.prefecture, facility.municipality, CATEGORY_LABELS[facility.category]]
+    meta.textContent = [
+      facility.prefecture,
+      facility.municipality,
+      CATEGORY_LABELS[facility.category],
+      facility.operatingStatus === "opening-scheduled" ? "開店予定" : "",
+    ]
       .filter(Boolean)
       .join(" / ");
 
@@ -250,7 +297,14 @@ function renderFacilities() {
     action.className = "facility-action";
     action.textContent = "選択";
 
-    main.append(name, meta, distance);
+    main.append(name, meta);
+    if (facility.statusNote) {
+      const status = document.createElement("span");
+      status.className = "facility-status";
+      status.textContent = facility.statusNote;
+      main.append(status);
+    }
+    main.append(distance);
     button.append(main, action);
     article.append(button);
     facilityList.append(article);
