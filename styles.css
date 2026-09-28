@@ -1201,3 +1201,64 @@ html[data-theme="dark"] .map-object--sidewalk {
 .map-object--evCharger {
   color: var(--color-available);
 }
+
+
+/* =========================================================
+   利用者マップの航空写真背景
+   管理画面で保存した中心座標・ズームを使い、登録オブジェクトの下に表示する。
+   ========================================================= */
+
+.user-satellite-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #6b7075;
+}
+
+.user-satellite-tile {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+  background: #73787d;
+}
+
+.user-satellite-tile img {
+  position: absolute;
+  max-width: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.user-satellite-tile.is-missing {
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 10%) 25%, transparent 25%) 0 0 / 12px 12px,
+    #73787d;
+}
+
+.map-photo-attribution {
+  position: absolute;
+  right: 0.2rem;
+  bottom: 0.15rem;
+  z-index: 30;
+  max-width: calc(100% - 0.4rem);
+  padding: 0.1rem 0.25rem;
+  background: rgb(255 255 255 / 82%);
+  color: #111827;
+  font-size: clamp(0.48rem, 1.6vw, 0.66rem);
+  line-height: 1.2;
+  text-shadow: none;
+}
+
+/* 航空写真より上へ配置図を表示する。 */
+.parking-map--layout > .map-object {
+  z-index: 2;
+}
+
+.parking-map--layout > .map-object--buildingEntrance,
+.parking-map--layout > .map-object--parkingEntrance,
+.parking-map--layout > .map-object--noEntry,
+.parking-map--layout > .map-object--evCharger {
+  z-index: 8;
+}
