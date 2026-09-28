@@ -159,6 +159,22 @@ const STATIC_JA_EN = Object.freeze({
   "現在地をテスト地点として登録": "Save current location as test point",
   "登録地点を削除": "Delete saved test point",
   "← 条件選択へ戻る": "← Back to options",
+  "待機": "Waiting",
+  "自動案内中": "Automatic guidance active",
+  "目的施設への接近を待っています": "Waiting to approach the destination",
+  "約250m以内に入ると、空き区画を自動で検索して表示します。":
+    "When you come within about 250 m, an available parking space will be searched and displayed automatically.",
+  "目的施設": "Destination facility",
+  "住所": "Address",
+  "利用する区画": "Parking space type",
+  "優先条件": "Preference",
+  "位置情報を確認しています…": "Checking your location…",
+  "Google Mapsで目的施設を開く": "Open destination in Google Maps",
+  "自宅テスト用では、端末内に登録した座標をGoogle Mapsへ渡します。":
+    "For the home test facility, the coordinate stored on this device is passed to Google Maps.",
+  "走行中は画面を操作せず、自動案内が開始されるまでそのままお待ちください。":
+    "Do not operate the screen while driving. Wait for guidance to start automatically.",
+  "案内を終了": "End guidance",
   "案内先の駐車区画": "Recommended parking space",
   "案内先": "Destination",
   "選択条件": "Selected option",
@@ -256,6 +272,7 @@ function applyLanguage(language) {
     selectedFacilityName.textContent = state.selectedFacility.name;
     updateRandomGuidanceNote();
     updatePrivateTestLocationPanel();
+    updateWaitingScreen();
   }
   if (state.recommendedSpace) {
     const random = RANDOM_GUIDANCE_FACILITY_IDS.has(state.selectedFacility?.id);
@@ -281,10 +298,6 @@ function applyLanguage(language) {
     if (state.currentSpaces.length) {
       renderParkingMap(state.currentSpaces, state.recommendedSpace, state.currentLayout);
     }
-    finalDirectionTitle.textContent = ui(
-      `${state.recommendedSpace.id} に到着`,
-      `Arrive at ${state.recommendedSpace.id}`,
-    );
   }
   populateVoiceOptions();
   window.dispatchEvent(new CustomEvent("parking:languagechange", {
@@ -320,7 +333,7 @@ const PRIVATE_TEST_FACILITY_ID = "home-test-001";
 const PRIVATE_TEST_COORDINATE_STORAGE_KEY = "parkingGuidePrivateTestCoordinatesV1";
 const RANDOM_GUIDANCE_FACILITY_IDS = new Set(["target_021", PRIVATE_TEST_FACILITY_ID]);
 
-const SCREEN_ORDER = Object.freeze(["facility", "condition", "result", "guide"]);
+const SCREEN_ORDER = Object.freeze(["facility", "condition", "waiting", "result"]);
 
 const state = {
   currentScreen: "facility",
@@ -374,6 +387,13 @@ const savePrivateTestLocationButton = document.querySelector("#save-private-test
 const clearPrivateTestLocationButton = document.querySelector("#clear-private-test-location-button");
 const proximityStatus = document.querySelector("#proximity-status");
 const selectedFacilityName = document.querySelector("#selected-facility-name");
+const waitingFacilityName = document.querySelector("#waiting-facility-name");
+const waitingFacilityAddress = document.querySelector("#waiting-facility-address");
+const waitingSpaceType = document.querySelector("#waiting-space-type");
+const waitingPriority = document.querySelector("#waiting-priority");
+const waitingProximityStatus = document.querySelector("#waiting-proximity-status");
+const waitingGoogleMapsLink = document.querySelector("#waiting-google-maps-link");
+const waitingGoogleMapsNote = document.querySelector("#waiting-google-maps-note");
 const searchStatus = document.querySelector("#search-status");
 const resultContent = document.querySelector("#result-content");
 const spaceNumber = document.querySelector("#space-number");
@@ -382,12 +402,9 @@ const priorityBadge = document.querySelector("#priority-badge");
 const parkingMap = document.querySelector("#parking-map");
 const parkingMapTitle = document.querySelector("#parking-map-title");
 const updatedTime = document.querySelector("#updated-time");
-const showGuideButton = document.querySelector("#show-guide-button");
 const voiceGuideButton = document.querySelector("#voice-guide-button");
 const retryButton = document.querySelector("#retry-button");
-const guideSpaceNumber = document.querySelector("#guide-space-number");
-const guideFacilityName = document.querySelector("#guide-facility-name");
-const finalDirectionTitle = document.querySelector("#final-direction-title");
+const endGuidanceButton = document.querySelector("#end-guidance-button");
 
 /* =========================================================
    施設一覧・絞り込み・距離
@@ -1346,7 +1363,7 @@ function renderParkingMap(spaces, recommendedSpace, layout) {
    画面遷移・検索
    ========================================================= */
 
-/** 指定した4画面のうち1画面だけを表示する。 */
+/** 指定した4画面（施設・条件・待機・区画）のうち1画面だけを表示する。 */
 function showScreen(screenName, options = {}) {
   const { addHistory = true, moveFocus = true } = options;
   if (!SCREEN_ORDER.includes(screenName)) {
@@ -1396,6 +1413,57 @@ function updateRandomGuidanceNote() {
   }
 }
 
+/** Google Maps検索URLを施設情報から生成する。 */
+function getFacilityGoogleMapsUrl(facility) {
+  if (!facility) return null;
+
+  if (facility.id === PRIVATE_TEST_FACILITY_ID) {
+    const coordinate = readPrivateTestCoordinate();
+    if (!coordinate) return null;
+    const query = `${coordinate.latitude},${coordinate.longitude}`;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  }
+
+  const address = String(facility.address ?? "").trim();
+  const query = [facility.name, address].filter(Boolean).join(" ");
+  if (!query) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+/** 自動案内の待機画面へ施設情報・条件・Google Mapsリンクを反映する。 */
+function updateWaitingScreen() {
+  const facility = state.selectedFacility;
+  if (!facility) return;
+
+  waitingFacilityName.textContent = facility.name;
+  waitingFacilityAddress.textContent = facility.id === PRIVATE_TEST_FACILITY_ID
+    ? ui(
+        "自宅テスト用（正確な位置はこの端末内に保存）",
+        "Home test facility (exact location stored only on this device)",
+      )
+    : (facility.address || ui("住所未登録", "Address not registered"));
+  waitingSpaceType.textContent = getSpaceTypeLabel(state.requestedSpaceType);
+  waitingPriority.textContent = RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id)
+    ? ui("ランダム", "Random")
+    : getPriorityLabel(state.selectedPriority);
+
+  const mapsUrl = getFacilityGoogleMapsUrl(facility);
+  if (mapsUrl) {
+    waitingGoogleMapsLink.href = mapsUrl;
+    waitingGoogleMapsLink.hidden = false;
+  } else {
+    waitingGoogleMapsLink.removeAttribute("href");
+    waitingGoogleMapsLink.hidden = true;
+  }
+  waitingGoogleMapsNote.hidden = facility.id !== PRIVATE_TEST_FACILITY_ID || !mapsUrl;
+}
+
+/** 条件画面と待機画面へ同じ接近状態を表示する。 */
+function setProximityMessage(message) {
+  if (proximityStatus) proximityStatus.textContent = message;
+  if (waitingProximityStatus) waitingProximityStatus.textContent = message;
+}
+
 /** 条件画面の入力内容を検索状態へ保存する。 */
 function saveSearchConditions() {
   const checkedPriority = conditionForm.querySelector('input[name="priority"]:checked');
@@ -1425,27 +1493,27 @@ function getSelectedFacilityProximityKm() {
 
 /** 接近監視中の状態を条件画面へ表示する。 */
 function updateProximityStatus() {
-  if (!proximityStatus) return;
+  if (!proximityStatus && !waitingProximityStatus) return;
 
   if (!state.autoProximityArmed || !state.selectedFacility) {
-    proximityStatus.textContent = ui(
+    setProximityMessage(ui(
       "まだ自動案内を開始していません。",
       "Automatic guidance has not started.",
-    );
+    ));
     return;
   }
 
   if (!state.userLocation) {
-    proximityStatus.textContent = ui(
+    setProximityMessage(ui(
       "位置情報を待っています。ブラウザーで位置情報を許可してください。",
       "Waiting for location. Please allow location access in your browser.",
-    );
+    ));
     return;
   }
 
   const distanceKm = getSelectedFacilityProximityKm();
   if (distanceKm === null) {
-    proximityStatus.textContent = state.selectedFacility.id === PRIVATE_TEST_FACILITY_ID
+    setProximityMessage(state.selectedFacility.id === PRIVATE_TEST_FACILITY_ID
       ? ui(
           "自宅テスト地点をこの端末に登録すると、250m接近時の自動案内を利用できます。",
           "Save the home test point on this device to use automatic guidance within 250 m.",
@@ -1453,7 +1521,7 @@ function updateProximityStatus() {
       : ui(
           "この施設の位置座標を確認できないため、自動案内を開始できません。",
           "Automatic guidance cannot start because this facility does not have a confirmed coordinate.",
-        );
+        ));
     return;
   }
 
@@ -1462,15 +1530,16 @@ function updateProximityStatus() {
   const accuracyText = Number.isFinite(accuracy)
     ? ui(`（測位精度 約${Math.round(accuracy)}m）`, ` (accuracy about ${Math.round(accuracy)} m)`)
     : "";
-  proximityStatus.textContent = meters <= AUTO_GUIDANCE_DISTANCE_KM * 1000
+
+  setProximityMessage(meters <= AUTO_GUIDANCE_DISTANCE_KM * 1000
     ? ui(
         `施設付近です。空き区画を確認しています…${accuracyText}`,
         `You are near the facility. Checking available spaces…${accuracyText}`,
       )
     : ui(
-        `施設まで直線約${meters}m。約250m以内で自動表示します。${accuracyText}`,
-        `About ${meters} m straight-line to the facility. Guidance will appear automatically within about 250 m.${accuracyText}`,
-      );
+        `施設まで直線約${meters}m。約250m以内で自動案内を開始します。${accuracyText}`,
+        `About ${meters} m straight-line to the facility. Guidance will start automatically within about 250 m.${accuracyText}`,
+      ));
 }
 
 /**
@@ -1789,19 +1858,6 @@ function updateVoiceAvailability() {
   if (supported) populateVoiceOptions();
 }
 
-/** 案内画面へ選択結果を反映する。 */
-function prepareGuideScreen() {
-  if (!state.selectedFacility || !state.recommendedSpace) {
-    showScreen("facility");
-    return;
-  }
-
-  guideSpaceNumber.textContent = state.recommendedSpace.id;
-  guideFacilityName.textContent = state.selectedFacility.name;
-  finalDirectionTitle.textContent = ui(`${state.recommendedSpace.id} に到着`, `Arrive at ${state.recommendedSpace.id}`);
-  showScreen("guide");
-}
-
 /* =========================================================
    表示設定
    ========================================================= */
@@ -1876,6 +1932,18 @@ function restoreTheme() {
     ? savedTheme
     : window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   applyTheme(preferredTheme);
+}
+
+/** 自動案内を終了して位置監視・音声を止め、最初の画面へ戻る。 */
+function endGuidance() {
+  state.autoProximityArmed = false;
+  state.proximitySearchRunning = false;
+  state.autoTriggeredFacilityId = null;
+  window.speechSynthesis?.cancel?.();
+  window.parkingSafety?.stop?.(
+    ui("案内を終了しました。位置情報の取得を停止しました。", "Guidance ended. Location tracking stopped."),
+  );
+  resetApplication();
 }
 
 /** 最初の画面へ戻り、検索結果を初期化する。 */
@@ -2004,6 +2072,9 @@ window.addEventListener("parking:locationchange", (event) => {
   }
 
   updateFacilityDistances();
+  if (state.currentScreen === "waiting") {
+    updateWaitingScreen();
+  }
   void checkAutomaticProximitySearch();
 });
 
@@ -2019,7 +2090,9 @@ conditionForm.addEventListener("submit", (event) => {
 
   /* submitはユーザー操作なので、このタイミングで位置情報許可を求められる。 */
   window.parkingSafety?.start?.();
+  updateWaitingScreen();
   updateProximityStatus();
+  showScreen("waiting");
   void checkAutomaticProximitySearch();
 });
 
@@ -2028,12 +2101,12 @@ searchNowButton?.addEventListener("click", () => {
   void runSpaceSearch();
 });
 
-showGuideButton.addEventListener("click", prepareGuideScreen);
-
 retryButton.addEventListener("click", () => {
   state.searchSequence += 1;
   void runSpaceSearch();
 });
+
+endGuidanceButton?.addEventListener("click", endGuidance);
 
 document.querySelectorAll("[data-back]").forEach((button) => {
   button.addEventListener("click", () => showScreen(button.dataset.back));
@@ -2056,8 +2129,8 @@ window.addEventListener("popstate", (event) => {
   const canOpenScreen =
     requestedScreen === "facility" ||
     (requestedScreen === "condition" && state.selectedFacility) ||
-    (requestedScreen === "result" && state.recommendedSpace) ||
-    (requestedScreen === "guide" && state.recommendedSpace);
+    (requestedScreen === "waiting" && state.selectedFacility && state.autoProximityArmed) ||
+    (requestedScreen === "result" && state.recommendedSpace);
 
   showScreen(canOpenScreen ? requestedScreen : "facility", { addHistory: false });
 });
