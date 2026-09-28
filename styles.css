@@ -1454,3 +1454,36 @@ html[data-theme="dark"] .map-object--parkingLot .user-polygon-fill {
   background: rgb(31 41 55 / 88%);
   color: #fff;
 }
+
+
+/* =========================================================
+   接近時自動案内
+   ========================================================= */
+.proximity-panel {
+  margin: 0 0 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-subtle);
+}
+.proximity-panel h2 {
+  margin: 0 0 0.3rem;
+  font-size: 1em;
+}
+.proximity-panel p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+  line-height: 1.55;
+}
+.proximity-panel .proximity-status {
+  margin-top: 0.6rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-weight: 700;
+}
+.condition-actions {
+  display: grid;
+  gap: 0.6rem;
+}
