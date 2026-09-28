@@ -36,6 +36,9 @@
           <button class="display-button" id="text-size-button" type="button" aria-pressed="false">
             文字を大きく
           </button>
+          <button class="display-button" id="language-button" type="button" aria-label="表示言語を切り替える">
+            English
+          </button>
         </div>
       </div>
     </header>
@@ -128,6 +131,7 @@
           <p class="step-label">2 / 4</p>
           <h1 id="condition-title" tabindex="-1">駐車区画の条件</h1>
           <p id="selected-facility-name" class="selected-place"></p>
+          <p id="random-guidance-note" class="random-guidance-note" hidden>マルナカ 中井町店では現在、条件に合う空き区画から研究用にランダムで1区画を案内します。</p>
         </div>
 
         <form id="condition-form">
@@ -177,6 +181,11 @@
             <p id="proximity-status" class="proximity-status" role="status" aria-live="polite">まだ自動案内を開始していません。</p>
           </section>
 
+          <label class="voice-option">
+            <input id="voice-enabled" type="checkbox" checked>
+            <span><strong>音声案内を使用</strong><small>案内先が決まったときに端末の音声で読み上げます。</small></span>
+          </label>
+
           <div class="condition-actions">
             <button class="primary-button full-width" type="submit">この条件で自動案内を開始</button>
             <button class="secondary-button full-width" id="search-now-button" type="button">今すぐ空き区画を確認</button>
@@ -219,8 +228,9 @@
             <div id="parking-map" class="parking-map parking-map--demo" role="list" aria-label="駐車場内の区画"></div>
           </section>
 
-          <div class="button-group">
+          <div class="button-group result-actions">
             <button class="primary-button" id="show-guide-button" type="button">区画までの案内を見る</button>
+            <button class="secondary-button" id="voice-guide-button" type="button">音声で案内</button>
             <button class="secondary-button" id="retry-button" type="button">空き状況を更新</button>
           </div>
         </div>
