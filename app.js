@@ -673,13 +673,20 @@ function renderRegisteredLayout(layout, recommendedSpace) {
   const canvasHeight = Number(layout.canvas?.height) || 700;
   parkingMap.style.aspectRatio = `${canvasWidth} / ${canvasHeight}`;
 
-  /*
-   * 航空写真を先に描画し、その上へ管理画面で作成したオブジェクトを重ねる。
-   * x/y/width/heightは同じ論理キャンバスを基準にしているため位置関係が一致する。
-   */
-  renderRegisteredBackground(layout, canvasWidth, canvasHeight);
+  const polygonTypes = new Set([
+    "parkingLot",
+    "building",
+    "road",
+    "nationalRoad",
+    "prefecturalRoad",
+    "publicRoad",
+  ]);
 
   const supportedTypes = new Set([
+    "parkingLot",
+    "nationalRoad",
+    "prefecturalRoad",
+    "publicRoad",
     "road",
     "sidewalk",
     "crosswalk",
@@ -702,30 +709,67 @@ function renderRegisteredLayout(layout, recommendedSpace) {
     .forEach((object) => {
       const item = document.createElement("div");
       item.className = `map-object map-object--${object.objectType}`;
+      item.dataset.objectType = object.objectType;
       item.style.left = `${toPercent(object.x, canvasWidth)}%`;
       item.style.top = `${toPercent(object.y, canvasHeight)}%`;
 
-      if (["road", "sidewalk", "crosswalk", "building", "parkingSpace", "stopLine",
-        "speedBump", "cartCorral", "bicycleParking", "motorcycleParking", "loadingZone"].includes(object.objectType)) {
-        item.style.width = `${toPercent(Number(object.width) || 70, canvasWidth)}%`;
-        item.style.height = `${toPercent(Number(object.height) || 70, canvasHeight)}%`;
+      const hasSize = [
+        "parkingLot", "nationalRoad", "prefecturalRoad", "publicRoad",
+        "road", "sidewalk", "crosswalk", "building", "parkingSpace", "stopLine",
+        "speedBump", "cartCorral", "bicycleParking", "motorcycleParking", "loadingZone",
+      ].includes(object.objectType);
+
+      if (hasSize) {
+        const objectWidth = Number(object.width) || 70;
+        const objectHeight = Number(object.height) || 70;
+        item.style.width = `${toPercent(objectWidth, canvasWidth)}%`;
+        item.style.height = `${toPercent(objectHeight, canvasHeight)}%`;
         item.style.transform = `rotate(${Number(object.rotation) || 0}deg)`;
+
+        if (polygonTypes.has(object.objectType)) {
+          const points = Array.isArray(object.polygonPoints) && object.polygonPoints.length >= 3
+            ? object.polygonPoints
+            : [
+                { x: 0, y: 0 },
+                { x: objectWidth, y: 0 },
+                { x: objectWidth, y: objectHeight },
+                { x: 0, y: objectHeight },
+              ];
+
+          item.classList.add("map-object--polygon");
+          const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          svg.classList.add("user-polygon-shape");
+          svg.setAttribute("viewBox", `0 0 ${objectWidth} ${objectHeight}`);
+          svg.setAttribute("preserveAspectRatio", "none");
+          const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          polygon.classList.add("user-polygon-fill");
+          polygon.setAttribute("points", points.map((point) => `${point.x},${point.y}`).join(" "));
+          svg.append(polygon);
+          item.append(svg);
+        }
       }
 
+      const appendLabel = (text) => {
+        if (!text) return;
+        const label = document.createElement("span");
+        label.className = "map-object-label";
+        label.textContent = text;
+        item.append(label);
+      };
+
       if (object.objectType === "parkingSpace") {
-        /* 管理画面で登録した路面標示を利用者マップへそのまま反映する。 */
-        item.dataset.markingStyle = object.markingStyle ?? "full";
+        item.dataset.markingStyle = object.markingStyle ?? "uShape";
         item.style.setProperty("--space-line-color", object.markingColor ?? "#ffffff");
-        item.style.setProperty("--space-line-width", `${Math.max(1, Number(object.markingWidth) || 3)}px`);
+        item.style.setProperty("--space-line-width", `${Math.max(1, Number(object.markingWidth) || 2)}px`);
 
         const isRecommended = object.uid === recommendedSpace?.uid;
         const isOccupied = object.status === "occupied" || object.status === "unavailable";
         item.classList.toggle("is-occupied", isOccupied);
         item.classList.toggle("is-recommended", isRecommended);
-        item.textContent = object.name || object.spaceNumber || "区画";
+        appendLabel(object.name || object.spaceNumber || "区画");
         item.setAttribute(
           "aria-label",
-          `${item.textContent}、${isRecommended ? "案内先" : isOccupied ? "使用中" : "空き"}`,
+          `${object.name || object.spaceNumber || "区画"}、${isRecommended ? "案内先" : isOccupied ? "使用中" : "空き"}`,
         );
       } else if (object.objectType === "buildingEntrance") {
         const marker = document.createElement("span");
@@ -745,24 +789,32 @@ function renderRegisteredLayout(layout, recommendedSpace) {
             : "出入口";
         const defaultNames = new Set(["駐車場入口", "駐車場出口", "駐車場出入口"]);
         const customName = String(object.name ?? "").trim();
-        item.textContent = customName && !defaultNames.has(customName)
+        appendLabel(customName && !defaultNames.has(customName)
           ? `${accessLabel}｜${customName}`
-          : `駐車場${accessLabel}`;
+          : `駐車場${accessLabel}`);
         item.dataset.accessType = object.accessType ?? "both";
       } else if (object.objectType === "road") {
         if (object.trafficDirection === "oneWay") {
-          item.textContent = object.name || "一方通行";
+          appendLabel(object.name || "一方通行");
           item.dataset.trafficDirection = "oneWay";
         }
       } else if (object.objectType === "noEntry") {
-        item.textContent = object.name || "進入禁止";
+        appendLabel(object.name || "進入禁止");
       } else if (object.objectType === "evCharger") {
-        item.textContent = object.name || "EV充電";
+        appendLabel(object.name || "EV充電");
       } else if (["stopLine", "speedBump", "cartCorral", "bicycleParking",
         "motorcycleParking", "loadingZone"].includes(object.objectType)) {
-        item.textContent = object.name || "";
+        appendLabel(object.name || "");
       } else if (object.objectType === "building") {
-        item.textContent = object.name || "建物";
+        appendLabel(object.name || "建物");
+      } else if (object.objectType === "parkingLot") {
+        appendLabel(object.name || "駐車場敷地");
+      } else if (object.objectType === "nationalRoad") {
+        appendLabel(object.name || "国道");
+      } else if (object.objectType === "prefecturalRoad") {
+        appendLabel(object.name || "県道");
+      } else if (object.objectType === "publicRoad") {
+        appendLabel(object.name || "公道");
       }
 
       parkingMap.append(item);
