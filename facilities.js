@@ -6,6 +6,16 @@
    店舗名・対象都道府県は研究対象リストとして管理する。
    住所・緯度経度・駐車場レイアウトは未登録のまま推測せず、
    今後の管理用Webアプリから facilityId をキーに追加する。
+
+   各施設データの項目：
+   - id: 管理アプリと共通の固定 facilityId。
+   - name: 利用者へ表示する施設名。
+   - prefecture / municipality / address: 所在地。
+   - category: 施設カテゴリ。
+   - latitude / longitude: 現在地からの距離計算用。未確認時は null。
+   - layoutId: 駐車場レイアウト参照キー。
+   - targetBuildingId: 複数建物時に入口検索対象を限定するID。
+   - isDemo: 実験用施設かどうか。
    ========================================================= */
 
 const CATALOG_METADATA = Object.freeze({
@@ -15,6 +25,7 @@ const CATALOG_METADATA = Object.freeze({
 });
 
 const FACILITY_CATALOG = Object.freeze([
+  // ----- 鳥取県 -----
   {
     "id": "target_001",
     "name": "スーパーセンタートライアル 鳥取千代水店",
@@ -145,6 +156,7 @@ const FACILITY_CATALOG = Object.freeze([
     "targetBuildingId": null,
     "isDemo": false
   },
+  // ----- 島根県 -----
   {
     "id": "target_011",
     "name": "トライアル 松江店",
@@ -275,6 +287,7 @@ const FACILITY_CATALOG = Object.freeze([
     "targetBuildingId": null,
     "isDemo": false
   },
+  // ----- 岡山県 -----
   {
     "id": "target_021",
     "name": "マルナカ 中井町店",
@@ -405,6 +418,7 @@ const FACILITY_CATALOG = Object.freeze([
     "targetBuildingId": null,
     "isDemo": false
   },
+  // ----- 広島県 -----
   {
     "id": "target_031",
     "name": "トライアル 大竹店",
@@ -535,6 +549,7 @@ const FACILITY_CATALOG = Object.freeze([
     "targetBuildingId": null,
     "isDemo": false
   },
+  // ----- 山口県 -----
   {
     "id": "target_041",
     "name": "トライアル 山口小郡店",
@@ -665,6 +680,7 @@ const FACILITY_CATALOG = Object.freeze([
     "targetBuildingId": null,
     "isDemo": false
   },
+  // ----- 福岡県 -----
   {
     "id": "target_051",
     "name": "マルキョウ 花見店",
@@ -795,6 +811,7 @@ const FACILITY_CATALOG = Object.freeze([
     "targetBuildingId": null,
     "isDemo": false
   },
+  // ----- 佐賀県 -----
   {
     "id": "target_061",
     "name": "トライアル 佐賀大和店",
@@ -925,6 +942,7 @@ const FACILITY_CATALOG = Object.freeze([
     "targetBuildingId": null,
     "isDemo": false
   },
+  // ----- 長崎県 -----
   {
     "id": "target_071",
     "name": "トライアル 佐々店",
@@ -1055,6 +1073,7 @@ const FACILITY_CATALOG = Object.freeze([
     "targetBuildingId": null,
     "isDemo": false
   },
+  // ----- 熊本県 -----
   {
     "id": "target_081",
     "name": "ハンズマン 画図店",
@@ -1185,6 +1204,7 @@ const FACILITY_CATALOG = Object.freeze([
     "targetBuildingId": null,
     "isDemo": false
   },
+  // ----- 大分県 -----
   {
     "id": "target_091",
     "name": "ハンズマン わさだ店",
@@ -1315,6 +1335,7 @@ const FACILITY_CATALOG = Object.freeze([
     "targetBuildingId": null,
     "isDemo": false
   },
+  // ----- 宮崎県 -----
   {
     "id": "target_101",
     "name": "ハンズマン 加納店",
@@ -1445,6 +1466,7 @@ const FACILITY_CATALOG = Object.freeze([
     "targetBuildingId": null,
     "isDemo": false
   },
+  // ----- 鹿児島県 -----
   {
     "id": "target_111",
     "name": "ハンズマン 宇宿店",
