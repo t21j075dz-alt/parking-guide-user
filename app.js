@@ -250,6 +250,46 @@ function updateFacilityDistances() {
   });
 }
 
+
+
+/* =========================================================
+   管理画面からのクラウドレイアウト取得
+   ========================================================= */
+
+/** Supabaseに保存された最新レイアウトを読み込み、同梱データより優先する。 */
+async function loadRemoteParkingLayouts() {
+  const config = window.PARKING_REMOTE_CONFIG ?? {};
+  const url = String(config.supabaseUrl ?? "").replace(/\/$/, "");
+  const publishableKey = String(config.publishableKey ?? "");
+  if (config.enabled !== true || !/^https:\/\//.test(url) || publishableKey.length <= 10) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${url}/rest/v1/parking_layouts?select=facility_id,layout_data,updated_at`, {
+      headers: {
+        apikey: publishableKey,
+        Authorization: `Bearer ${publishableKey}`,
+      },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return;
+    }
+    const rows = await response.json();
+    const layouts = { ...(window.PARKING_LAYOUTS ?? {}) };
+    rows.forEach((row) => {
+      if (row?.facility_id && row.layout_data && Array.isArray(row.layout_data.objects)) {
+        layouts[row.facility_id] = row.layout_data;
+      }
+    });
+    window.PARKING_LAYOUTS = layouts;
+  } catch {
+    /* 通信できない場合は同梱の parking-layouts.js を使う。 */
+  }
+}
+
+
 /* =========================================================
    管理用Webアプリのレイアウトデータ連携
    ========================================================= */
@@ -588,6 +628,7 @@ function prepareSpaces(facility) {
 
 /** 空き区画検索を実行する。 */
 async function runSpaceSearch(priorityOverride = null) {
+  await loadRemoteParkingLayouts();
   if (window.parkingSafety && !window.parkingSafety.guardOperation()) {
     return { cancelled: true };
   }
@@ -865,6 +906,7 @@ window.addEventListener("popstate", (event) => {
    初期表示
    ========================================================= */
 
+void loadRemoteParkingLayouts();
 restoreTheme();
 restoreTextSize();
 initializeFilters();
