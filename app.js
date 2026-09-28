@@ -1043,6 +1043,81 @@ function renderRegisteredBackground(layout, canvasWidth, canvasHeight) {
   parkingMap.append(attribution);
 }
 
+/** オブジェクトの描画サイズを管理画面と同じ保存値から取得する。 */
+function getLayoutObjectSize(object) {
+  const fallbackSizes = {
+    buildingEntrance: [22, 22],
+    parkingEntrance: [26, 26],
+    noEntry: [26, 26],
+    evCharger: [22, 22],
+  };
+  const fallback = fallbackSizes[object.objectType] ?? [70, 70];
+  return {
+    width: Number(object.width) > 0 ? Number(object.width) : fallback[0],
+    height: Number(object.height) > 0 ? Number(object.height) : fallback[1],
+  };
+}
+
+/** 管理画面と同じ中心回転を考慮した外接矩形を返す。 */
+function getRotatedObjectBounds(object) {
+  const { width, height } = getLayoutObjectSize(object);
+  const x = Number(object.x) || 0;
+  const y = Number(object.y) || 0;
+  const angle = (Number(object.rotation) || 0) * Math.PI / 180;
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const corners = [
+    [x, y],
+    [x + width, y],
+    [x + width, y + height],
+    [x, y + height],
+  ].map(([px, py]) => {
+    const dx = px - centerX;
+    const dy = py - centerY;
+    return {
+      x: centerX + dx * cosine - dy * sine,
+      y: centerY + dx * sine + dy * cosine,
+    };
+  });
+  return {
+    minX: Math.min(...corners.map((point) => point.x)),
+    minY: Math.min(...corners.map((point) => point.y)),
+    maxX: Math.max(...corners.map((point) => point.x)),
+    maxY: Math.max(...corners.map((point) => point.y)),
+  };
+}
+
+/**
+ * 配置されていない外周余白を利用者画面だけでトリミングする。
+ * 保存レイアウト自体は変更しないので管理画面の座標は保持される。
+ */
+function calculateLayoutCrop(layout, supportedTypes) {
+  const canvasWidth = Number(layout.canvas?.width) || 1000;
+  const canvasHeight = Number(layout.canvas?.height) || 700;
+  const visibleObjects = (layout.objects ?? []).filter((object) =>
+    supportedTypes.has(object.objectType));
+
+  if (!visibleObjects.length) {
+    return { x: 0, y: 0, width: canvasWidth, height: canvasHeight };
+  }
+
+  const bounds = visibleObjects.map(getRotatedObjectBounds);
+  const logicalPadding = Math.max(18, Math.min(canvasWidth, canvasHeight) * 0.025);
+  const minX = Math.max(0, Math.min(...bounds.map((item) => item.minX)) - logicalPadding);
+  const minY = Math.max(0, Math.min(...bounds.map((item) => item.minY)) - logicalPadding);
+  const maxX = Math.min(canvasWidth, Math.max(...bounds.map((item) => item.maxX)) + logicalPadding);
+  const maxY = Math.min(canvasHeight, Math.max(...bounds.map((item) => item.maxY)) + logicalPadding);
+
+  return {
+    x: minX,
+    y: minY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+  };
+}
+
 /** 管理画面で作成した実レイアウトを簡易表示する。 */
 function renderRegisteredLayout(layout, recommendedSpace) {
   parkingMap.replaceChildren();
@@ -1051,7 +1126,6 @@ function renderRegisteredLayout(layout, recommendedSpace) {
 
   const canvasWidth = Number(layout.canvas?.width) || 1000;
   const canvasHeight = Number(layout.canvas?.height) || 700;
-  parkingMap.style.aspectRatio = `${canvasWidth} / ${canvasHeight}`;
 
   const polygonTypes = new Set([
     "parkingLot",
@@ -1086,6 +1160,10 @@ function renderRegisteredLayout(layout, recommendedSpace) {
     "evCharger",
   ]);
 
+  const crop = calculateLayoutCrop(layout, supportedTypes);
+  parkingMap.style.aspectRatio = `${crop.width} / ${crop.height}`;
+  parkingMap.dataset.cropped = "true";
+
   layout.objects
     .filter((object) => supportedTypes.has(object.objectType))
     .forEach((object) => {
@@ -1096,24 +1174,16 @@ function renderRegisteredLayout(layout, recommendedSpace) {
        * 管理画面と同じ仕様：x/y は常にオブジェクト外接矩形の左上。
        * 小型設備も中心座標へ変換せず、同じwidth/height/rotationを比率縮小する。
        */
-      item.style.left = `${toPercent(Number(object.x) || 0, canvasWidth)}%`;
-      item.style.top = `${toPercent(Number(object.y) || 0, canvasHeight)}%`;
+      item.style.left = `${toPercent((Number(object.x) || 0) - crop.x, crop.width)}%`;
+      item.style.top = `${toPercent((Number(object.y) || 0) - crop.y, crop.height)}%`;
 
-      const fallbackSizes = {
-        buildingEntrance: [22, 22],
-        parkingEntrance: [26, 26],
-        noEntry: [26, 26],
-        evCharger: [22, 22],
-      };
-      const fallbackSize = fallbackSizes[object.objectType] ?? [70, 70];
-      const objectWidth = Number(object.width) > 0 ? Number(object.width) : fallbackSize[0];
-      const objectHeight = Number(object.height) > 0 ? Number(object.height) : fallbackSize[1];
+      const { width: objectWidth, height: objectHeight } = getLayoutObjectSize(object);
       const hasSize = Number.isFinite(objectWidth) && Number.isFinite(objectHeight)
         && objectWidth > 0 && objectHeight > 0;
 
       if (hasSize) {
-        item.style.width = `${toPercent(objectWidth, canvasWidth)}%`;
-        item.style.height = `${toPercent(objectHeight, canvasHeight)}%`;
+        item.style.width = `${toPercent(objectWidth, crop.width)}%`;
+        item.style.height = `${toPercent(objectHeight, crop.height)}%`;
         item.style.transform = `rotate(${Number(object.rotation) || 0}deg)`;
 
         if (polygonTypes.has(object.objectType)) {
@@ -1676,6 +1746,14 @@ function speakText(message) {
   return true;
 }
 
+/** 自動案内開始時の安全メッセージを読み上げる。 */
+function speakAutomaticGuidanceStartMessage() {
+  const message = isEnglish()
+    ? "Search started. Guidance will begin automatically when you approach the destination facility. Using or looking at a smartphone while driving is prohibited by Japanese road traffic law. Do not operate the screen while driving."
+    : "探索を開始しました。目的施設へ接近後、自動的に駐車区画の案内を開始します。運転中のスマートフォンの操作や注視は道路交通法で禁止されています。走行中は画面を操作しないでください。";
+  return speakText(message);
+}
+
 /** 現在の案内先を読み上げる。 */
 function speakCurrentGuidance() {
   if (!state.recommendedSpace) return false;
@@ -1932,6 +2010,9 @@ window.addEventListener("parking:locationchange", (event) => {
 conditionForm.addEventListener("submit", (event) => {
   event.preventDefault();
   saveSearchConditions();
+  if (state.voiceEnabled) {
+    speakAutomaticGuidanceStartMessage();
+  }
   state.autoProximityArmed = true;
   state.autoTriggeredFacilityId = null;
   state.recommendedSpace = null;
