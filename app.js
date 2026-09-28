@@ -145,6 +145,9 @@ const STATIC_JA_EN = Object.freeze({
   "まだ自動案内を開始していません。": "Automatic guidance has not started.",
   "音声案内を使用": "Use voice guidance",
   "案内先が決まったときに端末の音声で読み上げます。": "Read the selected parking space aloud when guidance is ready.",
+  "音声": "Voice",
+  "自動（聞き取りやすい音声）": "Automatic (clear voice)",
+  "音声を試す": "Preview voice",
   "この条件で自動案内を開始": "Start automatic guidance",
   "今すぐ空き区画を確認": "Check available space now",
   "マルナカ 中井町店では現在、条件に合う空き区画から研究用にランダムで1区画を案内します。":
@@ -283,11 +286,13 @@ function applyLanguage(language) {
       `Arrive at ${state.recommendedSpace.id}`,
     );
   }
+  populateVoiceOptions();
   window.dispatchEvent(new CustomEvent("parking:languagechange", {
     detail: { language: state.language },
   }));
   try {
     localStorage.setItem("parkingGuideLanguage", state.language);
+    localStorage.setItem("parkingGuideVoiceURI", state.selectedVoiceURI ?? "");
   } catch {
     /* 保存できない環境でも現在の言語は維持する。 */
   }
@@ -299,6 +304,11 @@ function restoreLanguage() {
     saved = localStorage.getItem("parkingGuideLanguage") ?? "ja";
   } catch {
     saved = "ja";
+  }
+  try {
+    state.selectedVoiceURI = localStorage.getItem("parkingGuideVoiceURI") ?? "";
+  } catch {
+    state.selectedVoiceURI = "";
   }
   applyLanguage(saved);
 }
@@ -316,6 +326,7 @@ const state = {
   currentScreen: "facility",
   language: "ja",
   voiceEnabled: true,
+  selectedVoiceURI: "",
   lastSearchWasAuto: false,
   selectedFacility: null,
   selectedPriority: "balanced",
@@ -354,6 +365,8 @@ const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 const conditionForm = document.querySelector("#condition-form");
 const searchNowButton = document.querySelector("#search-now-button");
 const voiceEnabledInput = document.querySelector("#voice-enabled");
+const voiceSelect = document.querySelector("#voice-select");
+const voicePreviewButton = document.querySelector("#voice-preview-button");
 const randomGuidanceNote = document.querySelector("#random-guidance-note");
 const privateTestLocationPanel = document.querySelector("#private-test-location-panel");
 const privateTestLocationStatus = document.querySelector("#private-test-location-status");
@@ -1079,18 +1092,26 @@ function renderRegisteredLayout(layout, recommendedSpace) {
       const item = document.createElement("div");
       item.className = `map-object map-object--${object.objectType}`;
       item.dataset.objectType = object.objectType;
-      item.style.left = `${toPercent(object.x, canvasWidth)}%`;
-      item.style.top = `${toPercent(object.y, canvasHeight)}%`;
+      /*
+       * 管理画面と同じ仕様：x/y は常にオブジェクト外接矩形の左上。
+       * 小型設備も中心座標へ変換せず、同じwidth/height/rotationを比率縮小する。
+       */
+      item.style.left = `${toPercent(Number(object.x) || 0, canvasWidth)}%`;
+      item.style.top = `${toPercent(Number(object.y) || 0, canvasHeight)}%`;
 
-      const hasSize = [
-        "parkingLot", "excludedParkingLot", "nationalRoad", "prefecturalRoad", "publicRoad",
-        "road", "sidewalk", "crosswalk", "building", "parkingSpace", "stopLine",
-        "speedBump", "cartCorral", "bicycleParking", "motorcycleParking", "loadingZone",
-      ].includes(object.objectType);
+      const fallbackSizes = {
+        buildingEntrance: [22, 22],
+        parkingEntrance: [26, 26],
+        noEntry: [26, 26],
+        evCharger: [22, 22],
+      };
+      const fallbackSize = fallbackSizes[object.objectType] ?? [70, 70];
+      const objectWidth = Number(object.width) > 0 ? Number(object.width) : fallbackSize[0];
+      const objectHeight = Number(object.height) > 0 ? Number(object.height) : fallbackSize[1];
+      const hasSize = Number.isFinite(objectWidth) && Number.isFinite(objectHeight)
+        && objectWidth > 0 && objectHeight > 0;
 
       if (hasSize) {
-        const objectWidth = Number(object.width) || 70;
-        const objectHeight = Number(object.height) || 70;
         item.style.width = `${toPercent(objectWidth, canvasWidth)}%`;
         item.style.height = `${toPercent(objectHeight, canvasHeight)}%`;
         item.style.transform = `rotate(${Number(object.rotation) || 0}deg)`;
@@ -1312,6 +1333,7 @@ function saveSearchConditions() {
   state.selectedPriority = checkedPriority?.value ?? "balanced";
   state.requestedSpaceType = checkedSpaceType?.value ?? "standard";
   state.voiceEnabled = voiceEnabledInput?.checked !== false;
+  state.selectedVoiceURI = voiceSelect?.value ?? state.selectedVoiceURI ?? "";
 }
 
 /** 選択施設までの実測距離を返す。位置情報がない場合はnull。 */
@@ -1582,45 +1604,111 @@ function getSpokenSpaceId(space) {
   return raw.replace(/^0+/, "") || raw;
 }
 
-/** 現在の案内先を端末標準の音声合成で読み上げる。 */
-function speakCurrentGuidance() {
-  if (!state.recommendedSpace || !("speechSynthesis" in window)
+/** 端末が提供する音声一覧から、聞き取りやすい候補を優先して返す。 */
+function getAvailableSpeechVoices() {
+  if (!("speechSynthesis" in window)) return [];
+  const languagePrefix = isEnglish() ? "en" : "ja";
+  return (window.speechSynthesis.getVoices?.() ?? [])
+    .filter((voice) => voice.lang?.toLowerCase().startsWith(languagePrefix))
+    .sort((first, second) => {
+      const preferredPattern = isEnglish()
+        ? /Samantha|Ava|Karen|Google US English|Microsoft.*(Aria|Jenny|Guy)/i
+        : /Kyoko|Nanami|Haruka|Ayumi|Otoya|Google 日本語|Microsoft.*Japan/i;
+      const firstScore = (first.localService ? 2 : 0) + (preferredPattern.test(first.name) ? 4 : 0)
+        + (first.default ? 1 : 0);
+      const secondScore = (second.localService ? 2 : 0) + (preferredPattern.test(second.name) ? 4 : 0)
+        + (second.default ? 1 : 0);
+      return secondScore - firstScore || first.name.localeCompare(second.name);
+    });
+}
+
+/** 利用可能な音声をプルダウンへ反映する。 */
+function populateVoiceOptions() {
+  if (!voiceSelect) return;
+
+  const previous = state.selectedVoiceURI || voiceSelect.value || "";
+  const defaultText = ui("自動（聞き取りやすい音声）", "Automatic (clear voice)");
+  voiceSelect.replaceChildren(new Option(defaultText, ""));
+
+  getAvailableSpeechVoices().forEach((voice) => {
+    const option = new Option(`${voice.name}（${voice.lang}）`, voice.voiceURI);
+    voiceSelect.add(option);
+  });
+
+  if ([...voiceSelect.options].some((option) => option.value === previous)) {
+    voiceSelect.value = previous;
+  } else {
+    voiceSelect.value = "";
+    state.selectedVoiceURI = "";
+  }
+}
+
+/** 選択中、または自動選択された音声を返す。 */
+function getSelectedSpeechVoice() {
+  const voices = getAvailableSpeechVoices();
+  if (!voices.length) return null;
+  if (state.selectedVoiceURI) {
+    const selected = voices.find((voice) => voice.voiceURI === state.selectedVoiceURI);
+    if (selected) return selected;
+  }
+  return voices[0];
+}
+
+/** 指定文を現在の音声設定で読み上げる。 */
+function speakText(message) {
+  if (!message || !("speechSynthesis" in window)
       || !("SpeechSynthesisUtterance" in window)) {
     return false;
   }
 
-  const number = getSpokenSpaceId(state.recommendedSpace);
-  const type = getSpaceTypeLabel(state.recommendedSpace.spaceType);
-  const message = isEnglish()
-    ? `Your parking space is ${number}. Space type: ${type}. Please follow the parking map and on-site signs.`
-    : `案内先は、${type}の駐車区画、${number}番です。駐車場マップと現地の標識を確認して進んでください。`;
-
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(message);
   utterance.lang = isEnglish() ? "en-US" : "ja-JP";
-  utterance.rate = 0.95;
+  /* 以前より少しゆっくりにして区画番号を聞き取りやすくする。 */
+  utterance.rate = 0.84;
   utterance.pitch = 1;
+  utterance.volume = 1;
 
-  const voices = window.speechSynthesis.getVoices?.() ?? [];
-  const preferredPrefix = isEnglish() ? "en" : "ja";
-  const voice = voices.find((item) => item.lang?.toLowerCase().startsWith(preferredPrefix));
+  const voice = getSelectedSpeechVoice();
   if (voice) utterance.voice = voice;
 
   window.speechSynthesis.speak(utterance);
   return true;
 }
 
+/** 現在の案内先を読み上げる。 */
+function speakCurrentGuidance() {
+  if (!state.recommendedSpace) return false;
+
+  const number = getSpokenSpaceId(state.recommendedSpace);
+  const type = getSpaceTypeLabel(state.recommendedSpace.spaceType);
+  const message = isEnglish()
+    ? `Parking space ${number}. ${type}. Please check the map and on-site signs.`
+    : `駐車区画、${number}番です。${type}です。マップと現地の標識を確認してください。`;
+
+  return speakText(message);
+}
+
+/** 音声選択画面から短い試聴を行う。 */
+function previewSelectedVoice() {
+  const message = isEnglish()
+    ? "Voice guidance test. Parking space number five."
+    : "音声案内のテストです。駐車区画、5番です。";
+  speakText(message);
+}
+
 function updateVoiceAvailability() {
   const supported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-  if (voiceGuideButton) {
-    voiceGuideButton.disabled = !supported;
-    voiceGuideButton.title = supported
+  [voiceGuideButton, voicePreviewButton].forEach((button) => {
+    if (!button) return;
+    button.disabled = !supported;
+    button.title = supported
       ? ""
       : ui("このブラウザーは音声読み上げに対応していません。", "This browser does not support speech synthesis.");
-  }
-  if (voiceEnabledInput) {
-    voiceEnabledInput.disabled = !supported;
-  }
+  });
+  if (voiceEnabledInput) voiceEnabledInput.disabled = !supported;
+  if (voiceSelect) voiceSelect.disabled = !supported;
+  if (supported) populateVoiceOptions();
 }
 
 /** 案内画面へ選択結果を反映する。 */
@@ -1767,6 +1855,15 @@ languageButton.addEventListener("click", () => {
 voiceGuideButton?.addEventListener("click", () => {
   speakCurrentGuidance();
 });
+voicePreviewButton?.addEventListener("click", previewSelectedVoice);
+voiceSelect?.addEventListener("change", () => {
+  state.selectedVoiceURI = voiceSelect.value;
+  try {
+    localStorage.setItem("parkingGuideVoiceURI", state.selectedVoiceURI);
+  } catch {
+    /* 保存できない環境でも現在の選択は利用する。 */
+  }
+});
 
 savePrivateTestLocationButton?.addEventListener("click", () => {
   if (state.selectedFacility?.id !== PRIVATE_TEST_FACILITY_ID) return;
@@ -1893,6 +1990,11 @@ restoreTheme();
 restoreTextSize();
 restoreLanguage();
 updateVoiceAvailability();
+if ("speechSynthesis" in window) {
+  window.speechSynthesis.addEventListener?.("voiceschanged", () => {
+    populateVoiceOptions();
+  });
+}
 initializeFilters();
 window.history.replaceState({ screen: "facility" }, "", "#facility");
 showScreen("facility", { addHistory: false, moveFocus: false });
