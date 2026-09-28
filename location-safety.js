@@ -51,7 +51,11 @@
     lockStatus: document.getElementById("driving-lock-status"),
   };
 
-  const state = {
+  function lt(ja, en) {
+    return document.documentElement.lang?.toLowerCase().startsWith("en") ? en : ja;
+  }
+
+    const state = {
     enabled: false,
     watchId: null,
     generation: 0,
@@ -122,19 +126,40 @@
   /** 移動状態、確認期限、停止後の再開条件を画面に反映する。 */
   function updateSafetyStatus() {
     const passenger = state.passengerUntil > Date.now();
-    let message = "移動状態：位置情報の取得を開始してください。";
+    let message = lt(
+      "移動状態：位置情報の取得を開始してください。",
+      "Movement: start location tracking to check your status.",
+    );
     if (state.driverLocked) {
-      message = "運転中：画面操作を停止しています。";
+      message = lt(
+        "運転中：画面操作を停止しています。",
+        "Driving detected: screen controls are locked.",
+      );
     } else if (passenger) {
-      message = "同乗者・運転者以外として操作できます。確認は最大5分間有効です。";
+      message = lt(
+        "同乗者・運転者以外として操作できます。確認は最大5分間有効です。",
+        "Passenger mode is active. Confirmation remains valid for up to 5 minutes.",
+      );
     } else if (state.motion === "moving") {
-      message = "移動を検知しました。操作すると運転中か確認します。";
+      message = lt(
+        "移動を検知しました。操作すると運転中か確認します。",
+        "Movement detected. The app will confirm whether you are driving before allowing controls.",
+      );
     } else if (state.motion === "stationary") {
-      message = "移動状態：停止相当の状態を検知しています。";
+      message = lt(
+        "移動状態：停止相当の状態を検知しています。",
+        "Movement: a stationary state is being detected.",
+      );
     } else if (state.needsConfirmation) {
-      message = "移動状態を確認できません。次の操作で安全確認を行います。";
+      message = lt(
+        "移動状態を確認できません。次の操作で安全確認を行います。",
+        "Movement status is uncertain. A safety confirmation will appear on the next operation.",
+      );
     } else if (state.enabled) {
-      message = "移動状態：判定中です。運転中は操作しないでください。";
+      message = lt(
+        "移動状態：判定中です。運転中は操作しないでください。",
+        "Movement: checking. Do not operate the screen while driving.",
+      );
     }
     setText(elements.motionStatus, message);
 
@@ -142,11 +167,20 @@
       elements.resume.disabled = isCurrentlyMoving();
     }
     if (isCurrentlyMoving()) {
-      setText(elements.lockStatus, "GPSで移動を検知しています。安全な場所に停車してから再開してください。");
+      setText(elements.lockStatus, lt(
+        "GPSで移動を検知しています。安全な場所に停車してから再開してください。",
+        "GPS indicates that you are moving. Stop in a safe place before resuming.",
+      ));
     } else if (state.motion === "stationary") {
-      setText(elements.lockStatus, "停止相当の状態を検知しました。安全な場所に停車していることを確認して再開してください。");
+      setText(elements.lockStatus, lt(
+        "停止相当の状態を検知しました。安全な場所に停車していることを確認して再開してください。",
+        "A stationary state was detected. Confirm that you are safely stopped before resuming.",
+      ));
     } else {
-      setText(elements.lockStatus, "GPSで停止を確認できません。安全な場所に停車していることを自分で確認できた場合だけ再開してください。");
+      setText(elements.lockStatus, lt(
+        "GPSで停止を確認できません。安全な場所に停車していることを自分で確認できた場合だけ再開してください。",
+        "GPS cannot confirm that you are stopped. Resume only after confirming that you are safely parked.",
+      ));
     }
   }
 
@@ -186,7 +220,8 @@
   }
 
   /** 利用者の停止操作または継続できないエラーで取得を終了する。 */
-  function stop(message = "位置情報の取得を停止しました。") {
+  function stop(message = null) {
+    message ??= lt("位置情報の取得を停止しました。", "Location tracking stopped.");
     state.enabled = false;
     cancelWatch();
     stopTimer();
@@ -205,7 +240,7 @@
       clearLocation();
       resetSamples();
       state.passengerUntil = 0;
-      setText(elements.locationStatus, "位置情報の更新が途切れています。再取得を待っています。");
+      setText(elements.locationStatus, lt("位置情報の更新が途切れています。再取得を待っています。", "Location updates were interrupted. Waiting to reacquire your position."));
     }
     if (state.passengerUntil && state.passengerUntil <= Date.now()) {
       state.passengerUntil = 0;
@@ -331,7 +366,7 @@
       || coordinates.accuracy < 0 || !Number.isFinite(timestamp)
       || age < -5000 || age > CONFIG.maximumPositionAge) {
       resetSamples();
-      setText(elements.locationStatus, "有効な位置情報を待っています。");
+      setText(elements.locationStatus, lt("有効な位置情報を待っています。", "Waiting for a valid location fix."));
       updateSafetyStatus();
       return;
     }
@@ -347,10 +382,20 @@
     };
     dispatchLocation(location);
     setText(elements.locationStatus, coordinates.accuracy <= CONFIG.maximumAccuracy
-      ? "位置情報を取得中です。画面表示中は継続して更新します。"
-      : "位置情報の精度が低いため、移動状態を確認できません。");
-    const updatedAt = new Date(timestamp).toLocaleTimeString("ja-JP");
-    setText(elements.locationDetails, `測位精度：約${Math.round(coordinates.accuracy)}m / 更新：${updatedAt}`);
+      ? lt(
+          "位置情報を取得中です。画面表示中は継続して更新します。",
+          "Location is active and will continue updating while this page is visible.",
+        )
+      : lt(
+          "位置情報の精度が低いため、移動状態を確認できません。",
+          "Location accuracy is too low to confirm movement status.",
+        ));
+    const locale = document.documentElement.lang?.startsWith("en") ? "en-US" : "ja-JP";
+    const updatedAt = new Date(timestamp).toLocaleTimeString(locale);
+    setText(elements.locationDetails, lt(
+      `測位精度：約${Math.round(coordinates.accuracy)}m / 更新：${updatedAt}`,
+      `Accuracy: about ${Math.round(coordinates.accuracy)} m / Updated: ${updatedAt}`,
+    ));
     updateMotion({ ...location, speed: coordinates.speed });
   }
 
@@ -360,15 +405,15 @@
       return;
     }
     if (error.code === 1) {
-      stop("位置情報の利用が許可されていません。ブラウザーの設定で許可してから再開してください。");
+      stop(lt("位置情報の利用が許可されていません。ブラウザーの設定で許可してから再開してください。", "Location access is not allowed. Enable it in your browser settings and try again."));
       return;
     }
     clearLocation();
     resetSamples();
     state.passengerUntil = 0;
     setText(elements.locationStatus, error.code === 3
-      ? "位置情報の取得に時間がかかっています。自動で再試行します。"
-      : "現在の位置情報を取得できません。自動で再試行します。");
+      ? lt("位置情報の取得に時間がかかっています。自動で再試行します。", "Location is taking longer than expected. Retrying automatically.")
+      : lt("現在の位置情報を取得できません。自動で再試行します。", "Unable to get your current location. Retrying automatically."));
     updateSafetyStatus();
     cancelWatch();
     state.retryId = window.setTimeout(() => {
@@ -386,7 +431,7 @@
     }
     cancelWatch();
     const generation = state.generation;
-    setText(elements.locationStatus, "位置情報を取得しています…");
+    setText(elements.locationStatus, lt("位置情報を取得しています…", "Getting your location…"));
     try {
       const watchId = navigator.geolocation.watchPosition(
         (position) => receivePosition(position, generation),
@@ -400,7 +445,7 @@
         navigator.geolocation.clearWatch(watchId);
       }
     } catch {
-      stop("位置情報を開始できません。HTTPS接続とブラウザーの許可設定を確認してください。");
+      stop(lt("位置情報を開始できません。HTTPS接続とブラウザーの許可設定を確認してください。", "Unable to start location tracking. Check HTTPS and your browser permissions."));
     }
     if (state.enabled && state.timerId === null) {
       state.timerId = window.setInterval(checkFreshness, 2000);
@@ -413,11 +458,11 @@
       return;
     }
     if (!window.isSecureContext) {
-      stop("位置情報を利用するにはHTTPS（開発時はlocalhost）で開いてください。");
+      stop(lt("位置情報を利用するにはHTTPS（開発時はlocalhost）で開いてください。", "Location requires HTTPS (or localhost during development)."));
       return;
     }
     if (!("geolocation" in navigator)) {
-      stop("このブラウザーは位置情報の取得に対応していません。");
+      stop(lt("このブラウザーは位置情報の取得に対応していません。", "This browser does not support geolocation."));
       return;
     }
     state.enabled = true;
@@ -426,7 +471,7 @@
     updateButtons();
     updateSafetyStatus();
     if (document.hidden) {
-      setText(elements.locationStatus, "画面を表示すると位置情報の取得を開始します。");
+      setText(elements.locationStatus, lt("画面を表示すると位置情報の取得を開始します。", "Location tracking will start when the page becomes visible."));
       return;
     }
     beginWatch();
@@ -442,7 +487,7 @@
     clearLocation();
     resetSamples();
     state.passengerUntil = 0;
-    setText(elements.locationStatus, "画面が非表示のため、位置情報の取得を一時停止しています。");
+    setText(elements.locationStatus, lt("画面が非表示のため、位置情報の取得を一時停止しています。", "Location tracking is paused while the page is hidden."));
     updateSafetyStatus();
   }
 
@@ -632,6 +677,27 @@
   ["pointerdown", "touchstart", "touchmove", "click", "keydown", "wheel", "submit", "beforeinput", "input", "change"].forEach((type) => {
     window.addEventListener(type, interceptOperation, { capture: true, passive: false });
   });
+  window.addEventListener("parking:languagechange", () => {
+    updateSafetyStatus();
+    if (state.location) {
+      const locale = document.documentElement.lang?.startsWith("en") ? "en-US" : "ja-JP";
+      const updatedAt = new Date(state.location.timestamp).toLocaleTimeString(locale);
+      setText(elements.locationStatus, state.location.accuracy <= CONFIG.maximumAccuracy
+        ? lt(
+            "位置情報を取得中です。画面表示中は継続して更新します。",
+            "Location is active and will continue updating while this page is visible.",
+          )
+        : lt(
+            "位置情報の精度が低いため、移動状態を確認できません。",
+            "Location accuracy is too low to confirm movement status.",
+          ));
+      setText(elements.locationDetails, lt(
+        `測位精度：約${Math.round(state.location.accuracy)}m / 更新：${updatedAt}`,
+        `Accuracy: about ${Math.round(state.location.accuracy)} m / Updated: ${updatedAt}`,
+      ));
+    }
+  });
+
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       suspend();
