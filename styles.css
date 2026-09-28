@@ -1574,3 +1574,81 @@ html[data-theme="dark"] .map-object--parkingLot .user-polygon-fill {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* =========================================================
+   管理画面との座標一致
+   ========================================================= */
+/*
+ * 利用者マップも管理キャンバスと同じ縦横比を厳密に維持する。
+ * 以前の min-height:18rem は狭い画面で縦方向だけ拡大し、
+ * x/y のパーセント縮尺が一致しなくなる原因だった。
+ */
+.parking-map.parking-map--layout {
+  min-height: 0;
+  height: auto;
+}
+
+/* x/yは管理画面と同じ左上基準。小型設備でも中心補正を行わない。 */
+.parking-map--layout .map-object--buildingEntrance,
+.parking-map--layout .map-object--parkingEntrance {
+  display: block;
+  min-width: 0;
+  gap: 0;
+  padding: 0;
+  transform-origin: top left;
+}
+
+/* 管理画面の配置点そのものは動かさず、文字だけ外側へ出す。 */
+.parking-map--layout .map-object--buildingEntrance .entrance-icon,
+.parking-map--layout .map-object--parkingEntrance .map-object-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.parking-map--layout .map-object--buildingEntrance .entrance-label {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: 0.18rem;
+  transform: translateY(-50%);
+}
+.parking-map--layout .map-object--buildingEntrance,
+.parking-map--layout .map-object--parkingEntrance {
+  transform: none;
+}
+
+/* =========================================================
+   音声選択
+   ========================================================= */
+.voice-settings {
+  margin-bottom: 1rem;
+}
+.voice-settings .voice-option {
+  margin-bottom: 0.55rem;
+}
+.voice-choice-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+}
+.voice-choice-row label {
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+  font-weight: 700;
+}
+.voice-choice-row select {
+  min-width: 0;
+  min-height: 2.6rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+@media (max-width: 42rem) {
+  .voice-choice-row {
+    grid-template-columns: 1fr;
+  }
+}
