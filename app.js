@@ -488,6 +488,11 @@ function renderRegisteredLayout(layout, recommendedSpace) {
       }
 
       if (object.objectType === "parkingSpace") {
+        /* 管理画面で登録した路面標示を利用者マップへそのまま反映する。 */
+        item.dataset.markingStyle = object.markingStyle ?? "full";
+        item.style.setProperty("--space-line-color", object.markingColor ?? "#ffffff");
+        item.style.setProperty("--space-line-width", `${Math.max(1, Number(object.markingWidth) || 3)}px`);
+
         const isRecommended = object.uid === recommendedSpace?.uid;
         const isOccupied = object.status === "occupied" || object.status === "unavailable";
         item.classList.toggle("is-occupied", isOccupied);
