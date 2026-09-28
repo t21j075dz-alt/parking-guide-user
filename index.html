@@ -132,6 +132,28 @@
 
         <form id="condition-form">
           <fieldset class="condition-fieldset">
+            <legend>利用する駐車区画</legend>
+            <div class="choice-list">
+              <label class="choice-row">
+                <input type="radio" name="spaceType" value="standard" checked>
+                <span><strong>普通車</strong><small>普通車用の空き区画から案内</small></span>
+              </label>
+              <label class="choice-row">
+                <input type="radio" name="spaceType" value="compact">
+                <span><strong>軽自動車</strong><small>「軽」の区画から案内</small></span>
+              </label>
+              <label class="choice-row">
+                <input type="radio" name="spaceType" value="accessible">
+                <span><strong>車いす使用者用</strong><small>「♿」の区画から案内</small></span>
+              </label>
+              <label class="choice-row">
+                <input type="radio" name="spaceType" value="ev">
+                <span><strong>EV充電を利用</strong><small>EV用の区画から案内</small></span>
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset class="condition-fieldset">
             <legend>優先する条件</legend>
             <div class="choice-list">
               <label class="choice-row">
@@ -148,7 +170,17 @@
               </label>
             </div>
           </fieldset>
-          <button class="primary-button full-width" type="submit">空き区画を探す</button>
+
+          <section class="proximity-panel" aria-labelledby="proximity-title">
+            <h2 id="proximity-title">施設へ近づいたら自動表示</h2>
+            <p>この条件を保存すると、位置情報を使って選択施設への接近を確認します。約250m以内に入ると空き区画を自動検索して表示します。</p>
+            <p id="proximity-status" class="proximity-status" role="status" aria-live="polite">まだ自動案内を開始していません。</p>
+          </section>
+
+          <div class="condition-actions">
+            <button class="primary-button full-width" type="submit">この条件で自動案内を開始</button>
+            <button class="secondary-button full-width" id="search-now-button" type="button">今すぐ空き区画を確認</button>
+          </div>
         </form>
       </section>
 
