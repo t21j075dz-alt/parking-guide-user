@@ -755,6 +755,11 @@ h2 {
 .parking-map--layout {
   display: block;
   min-height: 18rem;
+  background: #666b70;
+}
+
+html[data-theme="dark"] .parking-map--layout {
+  background: #3f444a;
 }
 
 .map-object {
@@ -805,22 +810,83 @@ html[data-theme="dark"] .map-object--sidewalk {
 }
 
 .map-object--parkingSpace {
+  --space-line-color: #ffffff;
+  --space-line-width: 3px;
   z-index: 5;
   display: grid;
+  overflow: visible;
   place-items: center;
-  border: 1px solid var(--color-available);
-  background: var(--color-available-soft);
+  border: 0;
+  background: rgb(23 107 77 / 18%);
+  color: #ffffff;
   text-align: center;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 75%);
+}
+.map-object--parkingSpace::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.map-object--parkingSpace[data-marking-style="full"]::before {
+  border: var(--space-line-width) solid var(--space-line-color);
+}
+.map-object--parkingSpace[data-marking-style="uShape"]::before {
+  border-top: var(--space-line-width) solid var(--space-line-color);
+  border-right: var(--space-line-width) solid var(--space-line-color);
+  border-left: var(--space-line-width) solid var(--space-line-color);
+}
+.map-object--parkingSpace[data-marking-style="sides"]::before {
+  border-right: var(--space-line-width) solid var(--space-line-color);
+  border-left: var(--space-line-width) solid var(--space-line-color);
+}
+.map-object--parkingSpace[data-marking-style="headOnly"]::before {
+  border-top: var(--space-line-width) solid var(--space-line-color);
+}
+.map-object--parkingSpace[data-marking-style="headTicks"]::before {
+  background:
+    linear-gradient(var(--space-line-color) 0 0) left top / 28% var(--space-line-width) no-repeat,
+    linear-gradient(var(--space-line-color) 0 0) right top / 28% var(--space-line-width) no-repeat,
+    linear-gradient(var(--space-line-color) 0 0) left top / var(--space-line-width) 22% no-repeat,
+    linear-gradient(var(--space-line-color) 0 0) right top / var(--space-line-width) 22% no-repeat;
+}
+.map-object--parkingSpace[data-marking-style="leftOnly"]::before {
+  border-left: var(--space-line-width) solid var(--space-line-color);
+}
+.map-object--parkingSpace[data-marking-style="rightOnly"]::before {
+  border-right: var(--space-line-width) solid var(--space-line-color);
+}
+.map-object--parkingSpace[data-marking-style="doubleFull"]::before {
+  border: calc(var(--space-line-width) * 2 + 1px) double var(--space-line-color);
+}
+.map-object--parkingSpace[data-marking-style="doubleSides"]::before {
+  border-right: calc(var(--space-line-width) * 2 + 1px) double var(--space-line-color);
+  border-left: calc(var(--space-line-width) * 2 + 1px) double var(--space-line-color);
+}
+.map-object--parkingSpace[data-marking-style="cornerMarks"]::before {
+  background:
+    linear-gradient(var(--space-line-color) 0 0) left top / 28% var(--space-line-width) no-repeat,
+    linear-gradient(var(--space-line-color) 0 0) left top / var(--space-line-width) 22% no-repeat,
+    linear-gradient(var(--space-line-color) 0 0) right top / 28% var(--space-line-width) no-repeat,
+    linear-gradient(var(--space-line-color) 0 0) right top / var(--space-line-width) 22% no-repeat,
+    linear-gradient(var(--space-line-color) 0 0) left bottom / 28% var(--space-line-width) no-repeat,
+    linear-gradient(var(--space-line-color) 0 0) left bottom / var(--space-line-width) 22% no-repeat,
+    linear-gradient(var(--space-line-color) 0 0) right bottom / 28% var(--space-line-width) no-repeat,
+    linear-gradient(var(--space-line-color) 0 0) right bottom / var(--space-line-width) 22% no-repeat;
+}
+.map-object--parkingSpace[data-marking-style="none"]::before {
+  display: none;
 }
 
 .map-object--parkingSpace.is-occupied {
-  border-color: var(--color-occupied);
-  background: var(--color-occupied-soft);
+  background: rgb(91 98 106 / 38%);
 }
 
 .map-object--parkingSpace.is-recommended {
-  border: 3px solid var(--color-recommended);
-  background: var(--color-recommended-soft);
+  outline: 3px solid var(--color-recommended);
+  outline-offset: 2px;
+  background: rgb(255 209 102 / 28%);
   font-weight: 800;
 }
 
