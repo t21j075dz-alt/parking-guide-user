@@ -16,6 +16,12 @@
    layout.background は管理画面の航空写真編集位置を再現するための情報。
    画像データ自体は保存せず、type / centerLat / centerLng / zoom / opacity を保持する。
 
+   parkingSpace では次の路面標示属性も保存できる。
+   - markingStyle: full / uShape / sides / headOnly / headTicks /
+     leftOnly / rightOnly / doubleFull / doubleSides / cornerMarks / none
+   - markingColor: #ffffff などの線色
+   - markingWidth: キャンバス上の線幅
+
    Supabase自動反映を有効にした場合、このファイルは通信失敗時の
    フォールバックとして残し、クラウド取得に成功した同一facilityIdを優先する。
    ========================================================= */
