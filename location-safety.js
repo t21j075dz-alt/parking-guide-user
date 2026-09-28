@@ -49,6 +49,8 @@
     lockPanel: document.getElementById("driving-lock-panel"),
     resume: document.getElementById("resume-after-stop-button"),
     lockStatus: document.getElementById("driving-lock-status"),
+    dialogTitle: document.getElementById("driving-dialog-title"),
+    dialogDescription: document.getElementById("driving-dialog-description"),
   };
 
   function lt(ja, en) {
@@ -74,6 +76,7 @@
     latestMovingTimestamp: null,
     previousFocus: null,
     suppressClickUntil: 0,
+    lastMovementNotificationAt: 0,
   };
   const controlSnapshots = new Map();
 
@@ -301,6 +304,33 @@
     return "unknown";
   }
 
+  /** 移動確定時に画面内確認を出し、許可済みならOS通知も送る。 */
+  function notifyMovementConfirmation() {
+    const now = Date.now();
+    if (now - state.lastMovementNotificationAt < 30000) {
+      return;
+    }
+    state.lastMovementNotificationAt = now;
+
+    if (typeof Notification === "function" && Notification.permission === "granted") {
+      try {
+        new Notification(lt("移動を検知しました", "Movement detected"), {
+          body: lt(
+            "操作を続ける場合は、運転者ではないことを確認してください。",
+            "Confirm that you are not the driver before continuing to use the app.",
+          ),
+          tag: "parking-guide-movement-confirmation",
+        });
+      } catch {
+        /* OS通知が利用できなくても画面内確認は必ず表示する。 */
+      }
+    }
+
+    if (!state.driverLocked && state.passengerUntil <= now) {
+      openSafetyDialog();
+    }
+  }
+
   /** 複数回の測位で移動・停止の継続を確認し、単発の誤差を除外する。 */
   function updateMotion(sample) {
     const previous = state.history[state.history.length - 1];
@@ -340,9 +370,13 @@
     const requiredDuration = classification === "moving"
       ? CONFIG.movingDuration : CONFIG.stoppedDuration;
     if (state.candidateCount >= 2 && sample.timestamp - state.candidateSince >= requiredDuration) {
+      const previousMotion = state.motion;
       state.motion = classification;
       if (classification === "moving") {
         state.needsConfirmation = true;
+        if (previousMotion !== "moving") {
+          notifyMovementConfirmation();
+        }
       } else {
         state.needsConfirmation = false;
         state.passengerUntil = 0;
@@ -678,6 +712,17 @@
     window.addEventListener(type, interceptOperation, { capture: true, passive: false });
   });
   window.addEventListener("parking:languagechange", () => {
+    setText(elements.dialogTitle, lt("移動を検知しました", "Movement detected"));
+    setText(elements.dialogDescription, lt(
+      "GPSだけでは運転者と同乗者を区別できません。操作を続ける場合は、運転者ではないことを確認してください。",
+      "GPS cannot distinguish the driver from a passenger. Confirm that you are not the driver before continuing.",
+    ));
+    if (elements.passenger) {
+      setText(elements.passenger, lt(
+        "運転者ではありません（同乗者）",
+        "I am not the driver (passenger)",
+      ));
+    }
     updateSafetyStatus();
     if (state.location) {
       const locale = document.documentElement.lang?.startsWith("en") ? "en-US" : "ja-JP";
