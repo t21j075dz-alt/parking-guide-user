@@ -247,6 +247,35 @@ function applyLanguage(language) {
     selectedFacilityName.textContent = state.selectedFacility.name;
     randomGuidanceNote.hidden = state.selectedFacility.id !== RANDOM_GUIDANCE_FACILITY_ID;
   }
+  if (state.recommendedSpace) {
+    const random = state.selectedFacility?.id === RANDOM_GUIDANCE_FACILITY_ID;
+    priorityBadge.textContent = random
+      ? `${getSpaceTypeLabel(state.requestedSpaceType)} / ${ui("ランダム", "Random")}`
+      : `${getSpaceTypeLabel(state.requestedSpaceType)} / ${getPriorityLabel(state.selectedPriority)}`;
+    if (Number.isFinite(state.recommendedSpace.entranceDistanceMeters)) {
+      spaceDescription.textContent = ui(
+        `建物入口まで約${Math.round(state.recommendedSpace.entranceDistanceMeters)}m`,
+        `About ${Math.round(state.recommendedSpace.entranceDistanceMeters)} m to the entrance`,
+      );
+    }
+    searchStatus.textContent = random
+      ? ui(
+          `${state.selectedFacility.name}では研究用として、条件に合う空き区画からランダムに案内しています。`,
+          `For ${state.selectedFacility.name}, this prototype randomly selects one matching available space.`,
+        )
+      : ui("案内先を表示しています。", "Showing the selected parking space.");
+    updatedTime.textContent = new Intl.DateTimeFormat(isEnglish() ? "en-US" : "ja-JP", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date());
+    if (state.currentSpaces.length) {
+      renderParkingMap(state.currentSpaces, state.recommendedSpace, state.currentLayout);
+    }
+    finalDirectionTitle.textContent = ui(
+      `${state.recommendedSpace.id} に到着`,
+      `Arrive at ${state.recommendedSpace.id}`,
+    );
+  }
   window.dispatchEvent(new CustomEvent("parking:languagechange", {
     detail: { language: state.language },
   }));
@@ -1362,7 +1391,9 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       }
 
       spaceNumber.textContent = state.recommendedSpace.id;
-      priorityBadge.textContent = `${getSpaceTypeLabel(state.requestedSpaceType)} / ${getPriorityLabel(priority)}`;
+      priorityBadge.textContent = facility.id === RANDOM_GUIDANCE_FACILITY_ID
+        ? `${getSpaceTypeLabel(state.requestedSpaceType)} / ${ui("ランダム", "Random")}`
+        : `${getSpaceTypeLabel(state.requestedSpaceType)} / ${getPriorityLabel(priority)}`;
 
       if (prepared.isSimulation) {
         spaceDescription.textContent = ui(
@@ -1408,7 +1439,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
         );
       }
 
-      updatedTime.textContent = new Intl.DateTimeFormat("ja-JP", {
+      updatedTime.textContent = new Intl.DateTimeFormat(isEnglish() ? "en-US" : "ja-JP", {
         hour: "2-digit",
         minute: "2-digit",
       }).format(new Date());
