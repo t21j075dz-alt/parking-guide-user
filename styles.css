@@ -1666,3 +1666,107 @@ html[data-theme="dark"] .map-object--parkingLot .user-polygon-fill {
 .parking-map--layout > .map-object {
   transform-origin: 50% 50%;
 }
+
+
+/* =========================================================
+   自動案内の待機画面
+   ========================================================= */
+.waiting-heading {
+  text-align: center;
+}
+.waiting-kicker {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 0.55rem;
+  gap: 0.45rem;
+  color: var(--color-primary);
+  font-size: var(--font-size-small);
+  font-weight: 800;
+}
+.waiting-pulse {
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 0 rgb(37 99 235 / 35%);
+  animation: waiting-pulse 1.8s ease-out infinite;
+}
+@keyframes waiting-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(37 99 235 / 35%); }
+  70% { box-shadow: 0 0 0 0.6rem rgb(37 99 235 / 0%); }
+  100% { box-shadow: 0 0 0 0 rgb(37 99 235 / 0%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .waiting-pulse { animation: none; }
+}
+.waiting-card {
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.waiting-card h2 {
+  margin: 0.1rem 0 0.85rem;
+  font-size: clamp(1.2rem, 4vw, 1.65rem);
+}
+.waiting-details {
+  display: grid;
+  margin: 0;
+  gap: 0;
+}
+.waiting-details > div {
+  display: grid;
+  grid-template-columns: minmax(6rem, 0.35fr) minmax(0, 1fr);
+  padding: 0.6rem 0;
+  gap: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+.waiting-details dt {
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+  font-weight: 700;
+}
+.waiting-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+.waiting-proximity-status {
+  margin: 0.9rem 0 0;
+  padding: 0.75rem;
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-surface-subtle);
+  font-weight: 700;
+  line-height: 1.55;
+}
+.google-maps-link {
+  display: inline-flex;
+  min-height: 2.8rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.85rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  color: var(--color-primary);
+  font-weight: 800;
+  text-decoration: none;
+}
+.google-maps-link:hover,
+.google-maps-link:focus-visible {
+  text-decoration: underline;
+}
+.waiting-map-note {
+  margin: 0.55rem 0 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+}
+.waiting-safety {
+  margin-top: 1rem;
+}
+@media (max-width: 42rem) {
+  .waiting-details > div {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+}
