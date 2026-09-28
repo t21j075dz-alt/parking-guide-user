@@ -444,6 +444,137 @@ function toPercent(value, total) {
   return Math.max(0, Math.min(100, (value / total) * 100));
 }
 
+/**
+ * Web Mercatorで扱える緯度の範囲へ収める。
+ * 管理画面と同じ計算式を使い、航空写真と配置オブジェクトの位置関係を一致させる。
+ */
+function clampMapLatitude(latitude) {
+  return Math.max(-85.05112878, Math.min(85.05112878, latitude));
+}
+
+/** 緯度経度を国土地理院XYZタイルと同じ世界ピクセル座標へ変換する。 */
+function toMapWorldPixel(latitude, longitude, zoom) {
+  const size = 256 * (2 ** zoom);
+  const lat = clampMapLatitude(latitude) * Math.PI / 180;
+  return {
+    x: ((longitude + 180) / 360) * size,
+    y: (1 - Math.log(Math.tan(lat) + (1 / Math.cos(lat))) / Math.PI) / 2 * size,
+  };
+}
+
+/**
+ * 利用者マップ用の航空写真タイルを1枚生成する。
+ * 高倍率タイルが取得できない場合は、管理画面と同様にズーム14まで
+ * 低い倍率の親タイルを順番に試し、該当部分を拡大して空白を補う。
+ */
+function createUserSatelliteTile(targetX, targetY, targetZoom, leftPx, topPx, canvasWidth, canvasHeight) {
+  const tile = document.createElement("div");
+  tile.className = "user-satellite-tile";
+  tile.style.left = `${toPercent(leftPx, canvasWidth)}%`;
+  tile.style.top = `${toPercent(topPx, canvasHeight)}%`;
+  tile.style.width = `${toPercent(257, canvasWidth)}%`;
+  tile.style.height = `${toPercent(257, canvasHeight)}%`;
+
+  function loadCandidate(candidateZoom) {
+    if (candidateZoom < 14) {
+      tile.classList.add("is-missing");
+      return;
+    }
+
+    const difference = targetZoom - candidateZoom;
+    const scale = 2 ** difference;
+    const candidateTileCount = 2 ** candidateZoom;
+    const parentX = Math.floor(targetX / scale);
+    const parentY = Math.floor(targetY / scale);
+    const wrappedParentX =
+      ((parentX % candidateTileCount) + candidateTileCount) % candidateTileCount;
+    const offsetX = targetX - parentX * scale;
+    const offsetY = targetY - parentY * scale;
+
+    const image = document.createElement("img");
+    image.alt = "";
+    image.draggable = false;
+    image.decoding = "async";
+    image.loading = "eager";
+    image.style.width = `${scale * 100}%`;
+    image.style.height = `${scale * 100}%`;
+    image.style.left = `${-offsetX * 100}%`;
+    image.style.top = `${-offsetY * 100}%`;
+
+    image.addEventListener("error", () => {
+      image.remove();
+      loadCandidate(candidateZoom - 1);
+    }, { once: true });
+
+    image.src =
+      `https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/${candidateZoom}/${wrappedParentX}/${parentY}.jpg`;
+    tile.append(image);
+  }
+
+  loadCandidate(targetZoom);
+  return tile;
+}
+
+/**
+ * 管理画面で位置合わせした航空写真を、利用者マップの最背面へ描画する。
+ * backgroundが未登録の施設では何も描画せず、従来どおり模式図だけを表示する。
+ */
+function renderRegisteredBackground(layout, canvasWidth, canvasHeight) {
+  const background = layout?.background;
+  if (!background || background.type !== "gsi-seamlessphoto") {
+    return;
+  }
+  if (!Number.isFinite(background.centerLat) || !Number.isFinite(background.centerLng)) {
+    return;
+  }
+
+  const zoom = Math.max(14, Math.min(18, Math.round(background.zoom ?? 18)));
+  const tileCount = 2 ** zoom;
+  const center = toMapWorldPixel(background.centerLat, background.centerLng, zoom);
+  const topLeftX = center.x - canvasWidth / 2;
+  const topLeftY = center.y - canvasHeight / 2;
+
+  const startTileX = Math.floor(topLeftX / 256) - 1;
+  const endTileX = Math.floor((topLeftX + canvasWidth) / 256) + 1;
+  const startTileY = Math.floor(topLeftY / 256) - 1;
+  const endTileY = Math.floor((topLeftY + canvasHeight) / 256) + 1;
+
+  const layer = document.createElement("div");
+  layer.className = "user-satellite-layer";
+  layer.style.opacity = String(
+    Math.max(0.15, Math.min(1, Number(background.opacity) || 0.75)),
+  );
+  layer.setAttribute("aria-hidden", "true");
+
+  for (let tileY = startTileY; tileY <= endTileY; tileY += 1) {
+    if (tileY < 0 || tileY >= tileCount) {
+      continue;
+    }
+
+    for (let tileX = startTileX; tileX <= endTileX; tileX += 1) {
+      const wrappedX = ((tileX % tileCount) + tileCount) % tileCount;
+      const tile = createUserSatelliteTile(
+        wrappedX,
+        tileY,
+        zoom,
+        tileX * 256 - topLeftX - 0.5,
+        tileY * 256 - topLeftY - 0.5,
+        canvasWidth,
+        canvasHeight,
+      );
+      layer.append(tile);
+    }
+  }
+
+  parkingMap.append(layer);
+
+  /* 国土地理院の航空写真を表示するため、利用者画面にも出典を明記する。 */
+  const attribution = document.createElement("span");
+  attribution.className = "map-photo-attribution";
+  attribution.textContent = "出典：国土地理院 全国最新写真（シームレス）";
+  parkingMap.append(attribution);
+}
+
 /** 管理画面で作成した実レイアウトを簡易表示する。 */
 function renderRegisteredLayout(layout, recommendedSpace) {
   parkingMap.replaceChildren();
@@ -453,6 +584,12 @@ function renderRegisteredLayout(layout, recommendedSpace) {
   const canvasWidth = Number(layout.canvas?.width) || 1000;
   const canvasHeight = Number(layout.canvas?.height) || 700;
   parkingMap.style.aspectRatio = `${canvasWidth} / ${canvasHeight}`;
+
+  /*
+   * 航空写真を先に描画し、その上へ管理画面で作成したオブジェクトを重ねる。
+   * x/y/width/heightは同じ論理キャンバスを基準にしているため位置関係が一致する。
+   */
+  renderRegisteredBackground(layout, canvasWidth, canvasHeight);
 
   const supportedTypes = new Set([
     "road",
