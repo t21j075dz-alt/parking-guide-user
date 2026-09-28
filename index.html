@@ -285,12 +285,12 @@
 
     <!-- 移動中の操作を止め、運転者か同乗者かを確認する安全ダイアログ。 -->
     <dialog id="driving-dialog" class="driving-dialog" aria-labelledby="driving-dialog-title" aria-describedby="driving-dialog-description">
-      <h2 id="driving-dialog-title" tabindex="-1">運転中ですか？</h2>
-      <p id="driving-dialog-description">移動を検知しました。GPSだけでは運転者と同乗者を区別できないため、操作する方の状況を確認します。</p>
+      <h2 id="driving-dialog-title" tabindex="-1">移動を検知しました</h2>
+      <p id="driving-dialog-description">GPSだけでは運転者と同乗者を区別できません。操作を続ける場合は、運転者ではないことを確認してください。</p>
       <div id="driving-question">
         <div class="dialog-actions">
           <button class="primary-button" id="confirm-driver-button" type="button">はい、運転中です</button>
-          <button class="secondary-button" id="confirm-passenger-button" type="button">いいえ、運転していません</button>
+          <button class="secondary-button" id="confirm-passenger-button" type="button">運転者ではありません（同乗者）</button>
           <button class="secondary-button" id="close-driving-dialog-button" type="button">操作をやめる</button>
         </div>
         <p class="dialog-help">運転中の操作は同乗者に依頼するか、安全な場所に停車してから行ってください。</p>
