@@ -149,6 +149,12 @@ const STATIC_JA_EN = Object.freeze({
   "今すぐ空き区画を確認": "Check available space now",
   "マルナカ 中井町店では現在、条件に合う空き区画から研究用にランダムで1区画を案内します。":
     "For Marunaka Nakaicho, this prototype currently selects one matching available space at random.",
+  "自宅テスト地点": "Home test location",
+  "正確な自宅位置は公開データに保存しません。自宅にいるときに現在地をこの端末だけへ登録してください。":
+    "Your exact home location is not stored in public data. While at the test location, save the current position only on this device.",
+  "テスト地点はまだ登録されていません。": "The test location has not been saved on this device.",
+  "現在地をテスト地点として登録": "Save current location as test point",
+  "登録地点を削除": "Delete saved test point",
   "← 条件選択へ戻る": "← Back to options",
   "案内先の駐車区画": "Recommended parking space",
   "案内先": "Destination",
@@ -245,10 +251,11 @@ function applyLanguage(language) {
   updateProximityStatus();
   if (state.selectedFacility) {
     selectedFacilityName.textContent = state.selectedFacility.name;
-    randomGuidanceNote.hidden = state.selectedFacility.id !== RANDOM_GUIDANCE_FACILITY_ID;
+    updateRandomGuidanceNote();
+    updatePrivateTestLocationPanel();
   }
   if (state.recommendedSpace) {
-    const random = state.selectedFacility?.id === RANDOM_GUIDANCE_FACILITY_ID;
+    const random = RANDOM_GUIDANCE_FACILITY_IDS.has(state.selectedFacility?.id);
     priorityBadge.textContent = random
       ? `${getSpaceTypeLabel(state.requestedSpaceType)} / ${ui("ランダム", "Random")}`
       : `${getSpaceTypeLabel(state.requestedSpaceType)} / ${getPriorityLabel(state.selectedPriority)}`;
@@ -299,7 +306,9 @@ function restoreLanguage() {
 /* 選択施設からこの距離以内へ入ると、自動で案内先を表示する。 */
 const AUTO_GUIDANCE_DISTANCE_KM = 0.25;
 const AUTO_GUIDANCE_MAX_ACCURACY_METERS = 80;
-const RANDOM_GUIDANCE_FACILITY_ID = "target_021";
+const PRIVATE_TEST_FACILITY_ID = "home-test-001";
+const PRIVATE_TEST_COORDINATE_STORAGE_KEY = "parkingGuidePrivateTestCoordinatesV1";
+const RANDOM_GUIDANCE_FACILITY_IDS = new Set(["target_021", PRIVATE_TEST_FACILITY_ID]);
 
 const SCREEN_ORDER = Object.freeze(["facility", "condition", "result", "guide"]);
 
@@ -314,6 +323,7 @@ const state = {
   autoProximityArmed: false,
   autoTriggeredFacilityId: null,
   proximitySearchRunning: false,
+  pendingPrivateTestCalibration: false,
   recommendedSpace: null,
   currentSpaces: [],
   currentLayout: null,
@@ -345,6 +355,10 @@ const conditionForm = document.querySelector("#condition-form");
 const searchNowButton = document.querySelector("#search-now-button");
 const voiceEnabledInput = document.querySelector("#voice-enabled");
 const randomGuidanceNote = document.querySelector("#random-guidance-note");
+const privateTestLocationPanel = document.querySelector("#private-test-location-panel");
+const privateTestLocationStatus = document.querySelector("#private-test-location-status");
+const savePrivateTestLocationButton = document.querySelector("#save-private-test-location-button");
+const clearPrivateTestLocationButton = document.querySelector("#clear-private-test-location-button");
 const proximityStatus = document.querySelector("#proximity-status");
 const selectedFacilityName = document.querySelector("#selected-facility-name");
 const searchStatus = document.querySelector("#search-status");
@@ -424,6 +438,79 @@ function calculateDistanceKm(lat1, lon1, lat2, lon2) {
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(clampedA), Math.sqrt(1 - clampedA));
 }
 
+/** 自宅テスト用の正確な座標は、このブラウザー端末内だけに保持する。 */
+function readPrivateTestCoordinate() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PRIVATE_TEST_COORDINATE_STORAGE_KEY) ?? "null");
+    if (!saved || !Number.isFinite(saved.latitude) || !Number.isFinite(saved.longitude)) {
+      return null;
+    }
+    return {
+      latitude: saved.latitude,
+      longitude: saved.longitude,
+      accuracy: Number.isFinite(saved.accuracy) ? saved.accuracy : null,
+      savedAt: saved.savedAt ?? null,
+      source: "端末内テスト地点",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 現在のGPS位置を公開せず端末内だけへ保存する。 */
+function savePrivateTestCoordinate(location) {
+  if (!location || !Number.isFinite(location.latitude) || !Number.isFinite(location.longitude)) {
+    return false;
+  }
+  try {
+    localStorage.setItem(PRIVATE_TEST_COORDINATE_STORAGE_KEY, JSON.stringify({
+      latitude: location.latitude,
+      longitude: location.longitude,
+      accuracy: Number.isFinite(location.accuracy) ? location.accuracy : null,
+      savedAt: new Date().toISOString(),
+    }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function clearPrivateTestCoordinate() {
+  try {
+    localStorage.removeItem(PRIVATE_TEST_COORDINATE_STORAGE_KEY);
+  } catch {
+    /* 保存領域を利用できない環境では何もしない。 */
+  }
+}
+
+/** 自宅テスト用の端末内登録状態を条件画面へ反映する。 */
+function updatePrivateTestLocationPanel() {
+  const isPrivateTest = state.selectedFacility?.id === PRIVATE_TEST_FACILITY_ID;
+  if (privateTestLocationPanel) privateTestLocationPanel.hidden = !isPrivateTest;
+  if (!isPrivateTest || !privateTestLocationStatus) return;
+
+  const saved = readPrivateTestCoordinate();
+  if (!saved) {
+    privateTestLocationStatus.textContent = ui(
+      state.pendingPrivateTestCalibration
+        ? "位置情報を取得中です。取得できしだい、この端末へテスト地点を登録します。"
+        : "テスト地点はまだ登録されていません。",
+      state.pendingPrivateTestCalibration
+        ? "Getting your location. The test point will be saved on this device when a valid position is available."
+        : "The test location has not been saved on this device.",
+    );
+    return;
+  }
+
+  const accuracyText = Number.isFinite(saved.accuracy)
+    ? ui(` / 登録時精度 約${Math.round(saved.accuracy)}m`, ` / accuracy about ${Math.round(saved.accuracy)} m`)
+    : "";
+  privateTestLocationStatus.textContent = ui(
+    `テスト地点をこの端末に登録済みです${accuracyText}。正確な座標は外部へ送信しません。`,
+    `Test point saved on this device${accuracyText}. The exact coordinate is not uploaded.`,
+  );
+}
+
 /**
  * 施設の代表座標を取得する。
  *
@@ -434,6 +521,11 @@ function calculateDistanceKm(lat1, lon1, lat2, lon2) {
  * 店舗名だけを検索した曖昧な座標は使わない。
  */
 function getFacilityCoordinate(facility) {
+  if (facility?.id === PRIVATE_TEST_FACILITY_ID || facility?.requiresLocalCalibration) {
+    const privateCoordinate = readPrivateTestCoordinate();
+    if (privateCoordinate) return privateCoordinate;
+  }
+
   if (Number.isFinite(facility?.latitude) && Number.isFinite(facility?.longitude)) {
     return {
       latitude: facility.latitude,
@@ -489,9 +581,11 @@ function updateFacilityDistance(button, facility) {
   if (distance === null) {
     distanceElement.textContent = getFacilityCoordinate(facility)
       ? ui("現在地を取得すると直線距離を表示", "Start location to show straight-line distance")
-      : facility.locationVerified
-        ? ui("住所確認済み・管理マップ位置の確定待ち", "Address verified; map coordinate pending")
-        : ui("位置情報は管理データから追加予定", "Location data will be added later");
+      : facility.id === PRIVATE_TEST_FACILITY_ID
+        ? ui("選択後にテスト地点を端末内へ登録", "Select this facility, then save the test point on this device")
+        : facility.locationVerified
+          ? ui("住所確認済み・管理マップ位置の確定待ち", "Address verified; map coordinate pending")
+          : ui("位置情報は管理データから追加予定", "Location data will be added later");
   } else {
     distanceElement.textContent = facility.isDemo && !state.userLocation
       ? ui(`参考距離 約${distance.toFixed(1)} km`, `Reference distance about ${distance.toFixed(1)} km`)
@@ -1199,6 +1293,18 @@ function showScreen(screenName, options = {}) {
   }
 }
 
+function updateRandomGuidanceNote() {
+  if (!randomGuidanceNote || !state.selectedFacility) return;
+  const random = RANDOM_GUIDANCE_FACILITY_IDS.has(state.selectedFacility.id);
+  randomGuidanceNote.hidden = !random;
+  if (random) {
+    randomGuidanceNote.textContent = ui(
+      `${state.selectedFacility.name}では、条件に合う空き区画から研究用にランダムで1区画を案内します。`,
+      `For ${state.selectedFacility.name}, this prototype selects one matching available space at random.`,
+    );
+  }
+}
+
 /** 条件画面の入力内容を検索状態へ保存する。 */
 function saveSearchConditions() {
   const checkedPriority = conditionForm.querySelector('input[name="priority"]:checked');
@@ -1247,10 +1353,15 @@ function updateProximityStatus() {
 
   const distanceKm = getSelectedFacilityProximityKm();
   if (distanceKm === null) {
-    proximityStatus.textContent = ui(
-      "この施設の位置座標を確認できないため、自動案内を開始できません。",
-      "Automatic guidance cannot start because this facility does not have a confirmed coordinate.",
-    );
+    proximityStatus.textContent = state.selectedFacility.id === PRIVATE_TEST_FACILITY_ID
+      ? ui(
+          "自宅テスト地点をこの端末に登録すると、250m接近時の自動案内を利用できます。",
+          "Save the home test point on this device to use automatic guidance within 250 m.",
+        )
+      : ui(
+          "この施設の位置座標を確認できないため、自動案内を開始できません。",
+          "Automatic guidance cannot start because this facility does not have a confirmed coordinate.",
+        );
     return;
   }
 
@@ -1373,7 +1484,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       state.currentLayout = prepared.layout;
       state.currentSpaces = prepared.spaces;
       state.guideEntrance = prepared.entrance;
-      const useRandomGuidance = facility.id === RANDOM_GUIDANCE_FACILITY_ID;
+      const useRandomGuidance = RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id);
       state.recommendedSpace = selectRecommendedSpace(
         prepared.spaces,
         priority,
@@ -1391,7 +1502,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       }
 
       spaceNumber.textContent = state.recommendedSpace.id;
-      priorityBadge.textContent = facility.id === RANDOM_GUIDANCE_FACILITY_ID
+      priorityBadge.textContent = RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id)
         ? `${getSpaceTypeLabel(state.requestedSpaceType)} / ${ui("ランダム", "Random")}`
         : `${getSpaceTypeLabel(state.requestedSpaceType)} / ${getPriorityLabel(priority)}`;
 
@@ -1426,7 +1537,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
         );
       }
 
-      if (facility.id === RANDOM_GUIDANCE_FACILITY_ID) {
+      if (RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id)) {
         searchStatus.textContent = ui(
           `${facility.name}では研究用として、条件に合う空き区画からランダムに案内しています。`,
           `For ${facility.name}, this prototype randomly selects one matching available space.`,
@@ -1611,6 +1722,7 @@ function resetApplication() {
   state.autoProximityArmed = false;
   state.autoTriggeredFacilityId = null;
   state.proximitySearchRunning = false;
+  state.pendingPrivateTestCalibration = false;
   state.recommendedSpace = null;
   state.currentSpaces = [];
   state.currentLayout = null;
@@ -1654,6 +1766,31 @@ languageButton.addEventListener("click", () => {
 voiceGuideButton?.addEventListener("click", () => {
   speakCurrentGuidance();
 });
+
+savePrivateTestLocationButton?.addEventListener("click", () => {
+  if (state.selectedFacility?.id !== PRIVATE_TEST_FACILITY_ID) return;
+
+  if (state.userLocation && savePrivateTestCoordinate(state.userLocation)) {
+    state.pendingPrivateTestCalibration = false;
+    updatePrivateTestLocationPanel();
+    updateProximityStatus();
+    updateFacilityDistances();
+    return;
+  }
+
+  state.pendingPrivateTestCalibration = true;
+  window.parkingSafety?.start?.();
+  updatePrivateTestLocationPanel();
+});
+
+clearPrivateTestLocationButton?.addEventListener("click", () => {
+  clearPrivateTestCoordinate();
+  state.pendingPrivateTestCalibration = false;
+  state.autoTriggeredFacilityId = null;
+  updatePrivateTestLocationPanel();
+  updateProximityStatus();
+  updateFacilityDistances();
+});
 filterForm.addEventListener("submit", (event) => event.preventDefault());
 
 prefectureFilter.addEventListener("change", () => {
@@ -1680,6 +1817,16 @@ sortDistanceButton.addEventListener("click", () => {
 
 window.addEventListener("parking:locationchange", (event) => {
   state.userLocation = event.detail.location;
+
+  if (state.pendingPrivateTestCalibration && state.userLocation
+      && state.selectedFacility?.id === PRIVATE_TEST_FACILITY_ID) {
+    if (savePrivateTestCoordinate(state.userLocation)) {
+      state.pendingPrivateTestCalibration = false;
+      updatePrivateTestLocationPanel();
+      updateProximityStatus();
+    }
+  }
+
   updateFacilityDistances();
   void checkAutomaticProximitySearch();
 });
