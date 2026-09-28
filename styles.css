@@ -1065,3 +1065,70 @@ html[data-theme="dark"] .map-object--sidewalk {
     --color-border: var(--color-border-strong);
   }
 }
+
+
+/* 管理画面で追加できる交通規制・駐車場設備。 */
+.map-object--road[data-traffic-direction="oneWay"] {
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  font-weight: 800;
+}
+.map-object--road[data-traffic-direction="oneWay"]::after {
+  content: " →";
+  font-size: 1.15em;
+}
+.map-object--stopLine {
+  z-index: 6;
+  overflow: visible;
+  border-top: 4px solid var(--color-text);
+  background: transparent;
+  color: var(--color-text);
+  text-align: center;
+}
+.map-object--speedBump {
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border-strong);
+  background: repeating-linear-gradient(90deg,#f4c95d 0 12%,#6b5b2c 12% 24%);
+  color: #111827;
+  font-weight: 700;
+}
+.map-object--cartCorral,
+.map-object--bicycleParking,
+.map-object--motorcycleParking,
+.map-object--loadingZone {
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 700;
+  text-align: center;
+}
+.map-object--noEntry,
+.map-object--evCharger {
+  z-index: 9;
+  display: inline-grid;
+  min-width: 2.6rem;
+  min-height: 2.6rem;
+  place-items: center;
+  padding: 0.15rem 0.25rem;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  background: var(--color-surface);
+  font-size: var(--font-size-label);
+  font-weight: 800;
+  text-align: center;
+}
+.map-object--noEntry {
+  color: var(--color-error);
+}
+.map-object--evCharger {
+  color: var(--color-available);
+}
+.map-object--parkingEntrance[data-access-type="entrance"]::before { content: "入口"; margin-right: 0.2rem; }
+.map-object--parkingEntrance[data-access-type="exit"]::before { content: "出口"; margin-right: 0.2rem; }
+.map-object--parkingEntrance[data-access-type="both"]::before { content: "出入口"; margin-right: 0.2rem; }
