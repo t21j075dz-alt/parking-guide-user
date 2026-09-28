@@ -44,7 +44,7 @@
     </header>
 
     <main id="main-content" class="main-content" tabindex="-1">
-      <!-- 4画面構成：施設 → 条件 → 区画 → 案内。 -->
+      <!-- 4画面構成：施設 → 条件 → 待機 → 区画。 -->
       <nav class="progress" aria-label="案内の進行状況">
         <ol class="progress-list">
           <li class="progress-item is-current" data-progress="facility" aria-current="step">
@@ -53,11 +53,11 @@
           <li class="progress-item" data-progress="condition">
             <span class="progress-number">2</span><span>条件</span>
           </li>
-          <li class="progress-item" data-progress="result">
-            <span class="progress-number">3</span><span>区画</span>
+          <li class="progress-item" data-progress="waiting">
+            <span class="progress-number">3</span><span>待機</span>
           </li>
-          <li class="progress-item" data-progress="guide">
-            <span class="progress-number">4</span><span>案内</span>
+          <li class="progress-item" data-progress="result">
+            <span class="progress-number">4</span><span>区画</span>
           </li>
         </ol>
       </nav>
@@ -211,11 +211,57 @@
         </form>
       </section>
 
-      <!-- 画面3：推奨区画と駐車場内レイアウトの表示。 -->
+      <!-- 画面3：目的施設への接近を待つ自動案内の待機画面。 -->
+      <section class="screen" id="waiting-screen" data-screen="waiting" aria-labelledby="waiting-title" hidden>
+        <button class="back-button" type="button" data-back="condition">← 条件選択へ戻る</button>
+        <div class="screen-heading waiting-heading">
+          <p class="step-label">3 / 4</p>
+          <p class="waiting-kicker"><span class="waiting-pulse" aria-hidden="true"></span> 自動案内中</p>
+          <h1 id="waiting-title" tabindex="-1">目的施設への接近を待っています</h1>
+          <p>約250m以内に入ると、空き区画を自動で検索して表示します。</p>
+        </div>
+
+        <section class="waiting-card" aria-labelledby="waiting-facility-name">
+          <p class="result-label">目的施設</p>
+          <h2 id="waiting-facility-name"></h2>
+          <dl class="waiting-details">
+            <div>
+              <dt>住所</dt>
+              <dd id="waiting-facility-address"></dd>
+            </div>
+            <div>
+              <dt>利用する区画</dt>
+              <dd id="waiting-space-type"></dd>
+            </div>
+            <div>
+              <dt>優先条件</dt>
+              <dd id="waiting-priority"></dd>
+            </div>
+          </dl>
+
+          <p id="waiting-proximity-status" class="waiting-proximity-status" role="status" aria-live="polite">
+            位置情報を確認しています…
+          </p>
+
+          <a id="waiting-google-maps-link" class="google-maps-link" href="#" target="_blank" rel="noopener noreferrer">
+            Google Mapsで目的施設を開く
+          </a>
+          <p id="waiting-google-maps-note" class="waiting-map-note" hidden>
+            自宅テスト用では、端末内に登録した座標をGoogle Mapsへ渡します。
+          </p>
+        </section>
+
+        <div class="safety-note waiting-safety" role="note">
+          <strong>安全上の注意</strong>
+          <p>走行中は画面を操作せず、自動案内が開始されるまでそのままお待ちください。</p>
+        </div>
+      </section>
+
+      <!-- 画面4：推奨区画と駐車場内レイアウトの表示。 -->
       <section class="screen" id="result-screen" data-screen="result" aria-labelledby="result-title" hidden>
         <button class="back-button" type="button" data-back="condition">← 条件選択へ戻る</button>
         <div class="screen-heading">
-          <p class="step-label">3 / 4</p>
+          <p class="step-label">4 / 4</p>
           <h1 id="result-title" tabindex="-1">案内先の駐車区画</h1>
         </div>
 
@@ -247,40 +293,13 @@
           </section>
 
           <div class="button-group result-actions">
-            <button class="primary-button" id="show-guide-button" type="button">区画までの案内を見る</button>
             <button class="secondary-button" id="voice-guide-button" type="button">音声で案内</button>
             <button class="secondary-button" id="retry-button" type="button">空き状況を更新</button>
+            <button class="primary-button" id="end-guidance-button" type="button">案内を終了</button>
           </div>
         </div>
       </section>
 
-      <!-- 画面4：推奨区画までの詳細案内。経路探索は将来拡張予定。 -->
-      <section class="screen" id="guide-screen" data-screen="guide" aria-labelledby="guide-title" hidden>
-        <button class="back-button" type="button" data-back="result">← 区画表示へ戻る</button>
-        <div class="screen-heading">
-          <p class="step-label">4 / 4</p>
-          <h1 id="guide-title" tabindex="-1">駐車区画までの案内</h1>
-          <p>現地の標識・一方通行・歩行者を優先してください。</p>
-        </div>
-
-        <section class="guide-summary" aria-label="案内先">
-          <p class="result-label">案内先</p>
-          <p id="guide-space-number" class="guide-space-number"></p>
-          <p id="guide-facility-name"></p>
-        </section>
-
-        <ol class="direction-list">
-          <li><span class="direction-number">1</span><div><h2>駐車場内へ進む</h2><p>現地の入口・進行方向を確認してください。</p></div></li>
-          <li><span class="direction-number">2</span><div><h2>案内先区画へ進む</h2><p>管理画面で経路データを登録すると、ここを実際の案内経路に置き換えられます。</p></div></li>
-          <li><span class="direction-number">3</span><div><h2 id="final-direction-title">案内先に到着</h2><p>路面の区画番号と画面表示を確認してください。</p></div></li>
-        </ol>
-
-        <div class="safety-note" role="note">
-          <strong>安全上の注意</strong>
-          <p>運転者は走行中に画面を操作しないでください。</p>
-        </div>
-        <button class="primary-button full-width" type="button" data-go-home>最初の画面へ戻る</button>
-      </section>
     </main>
 
     <!-- 移動中の操作を止め、運転者か同乗者かを確認する安全ダイアログ。 -->
