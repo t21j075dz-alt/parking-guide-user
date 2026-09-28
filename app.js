@@ -1750,7 +1750,7 @@ function speakText(message) {
 function speakAutomaticGuidanceStartMessage() {
   const message = isEnglish()
     ? "Search started. Guidance will begin automatically when you approach the destination facility. Using or looking at a smartphone while driving is prohibited by Japanese road traffic law. Do not operate the screen while driving."
-    : "探索を開始しました。目的施設へ接近後、自動的に駐車区画の案内を開始します。運転中のスマートフォンの操作や注視は道路交通法で禁止されています。走行中は画面を操作しないでください。";
+    : "探索を開始しました。目的施設へ接近後、自動的に駐車区画の案内を開始します。運転中にスマートフォンを手で持って操作したり、画面を注視したりする行為は道路交通法で禁止されています。走行中は画面を操作しないでください。";
   return speakText(message);
 }
 
