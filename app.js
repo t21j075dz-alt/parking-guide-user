@@ -675,6 +675,7 @@ function renderRegisteredLayout(layout, recommendedSpace) {
 
   const polygonTypes = new Set([
     "parkingLot",
+    "excludedParkingLot",
     "building",
     "road",
     "nationalRoad",
@@ -684,6 +685,7 @@ function renderRegisteredLayout(layout, recommendedSpace) {
 
   const supportedTypes = new Set([
     "parkingLot",
+    "excludedParkingLot",
     "nationalRoad",
     "prefecturalRoad",
     "publicRoad",
@@ -714,7 +716,7 @@ function renderRegisteredLayout(layout, recommendedSpace) {
       item.style.top = `${toPercent(object.y, canvasHeight)}%`;
 
       const hasSize = [
-        "parkingLot", "nationalRoad", "prefecturalRoad", "publicRoad",
+        "parkingLot", "excludedParkingLot", "nationalRoad", "prefecturalRoad", "publicRoad",
         "road", "sidewalk", "crosswalk", "building", "parkingSpace", "stopLine",
         "speedBump", "cartCorral", "bicycleParking", "motorcycleParking", "loadingZone",
       ].includes(object.objectType);
@@ -758,9 +760,28 @@ function renderRegisteredLayout(layout, recommendedSpace) {
       };
 
       if (object.objectType === "parkingSpace") {
+        item.dataset.spaceType = object.spaceType ?? "standard";
         item.dataset.markingStyle = object.markingStyle ?? "uShape";
         item.style.setProperty("--space-line-color", object.markingColor ?? "#ffffff");
         item.style.setProperty("--space-line-width", `${Math.max(1, Number(object.markingWidth) || 2)}px`);
+
+        const typeMark = document.createElement("span");
+        typeMark.className = "space-type-mark";
+        typeMark.setAttribute("aria-hidden", "true");
+        if (object.spaceType === "compact") typeMark.textContent = "軽";
+        if (object.spaceType === "accessible") typeMark.textContent = "♿";
+        if (object.spaceType === "ev") typeMark.textContent = "EV";
+        if (typeMark.textContent) item.append(typeMark);
+
+        const displayNumber = object.spaceNumber
+          ?? String(object.name ?? "").match(/(\d{1,4})$/)?.[1]
+          ?? "";
+        if (displayNumber) {
+          const numberMark = document.createElement("span");
+          numberMark.className = "space-number-mark";
+          numberMark.textContent = String(displayNumber).padStart(3, "0");
+          item.append(numberMark);
+        }
 
         const isRecommended = object.uid === recommendedSpace?.uid;
         const isOccupied = object.status === "occupied" || object.status === "unavailable";
@@ -809,6 +830,8 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         appendLabel(object.name || "建物");
       } else if (object.objectType === "parkingLot") {
         appendLabel(object.name || "駐車場敷地");
+      } else if (object.objectType === "excludedParkingLot") {
+        appendLabel(object.name || "対象外駐車場");
       } else if (object.objectType === "nationalRoad") {
         appendLabel(object.name || "国道");
       } else if (object.objectType === "prefecturalRoad") {
