@@ -1,2 +1,2 @@
-[functions.openai-realtime-token]
+[functions.gemini-live-token]
 verify_jwt = false
