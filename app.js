@@ -234,23 +234,23 @@ const STATIC_JA_EN = Object.freeze({
   "岡山理科大学 工学部 情報工学科 卒業研究": "Okayama University of Science — Graduation Research",
   "試作システムのため、実際の駐車案内には使用できません。":
     "Prototype system. Do not rely on it for real-world parking guidance.",
-  "OpenAI AI音声を優先し、利用できない場合は端末音声へ切り替えます。":
-    "OpenAI AI voice is preferred. The app falls back to the device voice if needed.",
+  "Gemini Live AI音声（無料枠）を優先し、利用できない場合は端末音声へ切り替えます。":
+    "Gemini Live AI voice (free tier) is preferred. The app falls back to the device voice if needed.",
   "音声方式": "Voice system",
-  "OpenAI AI音声（推奨）": "OpenAI AI voice (recommended)",
+  "Gemini Live AI音声（無料枠・推奨）": "Gemini Live AI voice (free tier, recommended)",
   "端末音声（予備）": "Device voice (fallback)",
   "音声を試す": "Test voice",
-  "OpenAI音声": "OpenAI voice",
-  "Marin（明瞭・推奨）": "Marin (clear, recommended)",
-  "Cedar（落ち着いた声）": "Cedar (calm)",
+  "Gemini音声": "Gemini voice",
+  "Kore（推奨）": "Kore (recommended)",
+  "Puck": "Puck",
   "端末音声": "Device voice",
   "自動（聞き取りやすい音声）": "Automatic (clear voice)",
-  "OpenAI音声は初回利用時に接続します。": "OpenAI voice connects when first used.",
-  "OpenAI音声では案内文をOpenAI APIへ送信します。AIアシスタント中のみマイクを使用し、会話音声もOpenAI APIへ送信します。":
-    "OpenAI voice sends guidance text to the OpenAI API. The microphone is used only while the AI assistant is active, and conversation audio is sent to the OpenAI API.",
+  "Gemini Live音声は初回利用時に接続します。": "Gemini Live voice connects when first used.",
+  "Gemini音声では案内文をGemini APIへ送信します。AIアシスタント中のみマイクを使用し、会話音声もGemini APIへ送信します。Free Tierでは送信内容がGoogleのサービス改善に利用される場合があります。":
+    "Gemini voice sends guidance text to the Gemini API. The microphone is used only while the AI assistant is active, and conversation audio is sent to the Gemini API. Free-tier content may be used by Google to improve its products.",
   "AIアシスタント": "AI assistant",
   "AIアシスタントを終了": "Stop AI assistant",
-  "OpenAI 駐車場アシスタント": "OpenAI Parking Assistant",
+  "Gemini 駐車場アシスタント": "Gemini Parking Assistant",
   "「AIアシスタント」を押すと、マイクで駐車場について質問できます。":
     "Press AI assistant to ask parking questions by voice."
 });
@@ -351,7 +351,7 @@ function applyLanguage(language) {
     localStorage.setItem("parkingGuideLanguage", state.language);
     localStorage.setItem("parkingGuideVoiceURI", state.selectedVoiceURI ?? "");
     localStorage.setItem("parkingGuideVoiceProvider", state.voiceProvider);
-    localStorage.setItem("parkingGuideOpenAIVoice", state.openAIVoice);
+    localStorage.setItem("parkingGuideGeminiVoice", state.geminiVoice);
   } catch {
     /* 保存できない環境でも現在の言語は維持する。 */
   }
@@ -366,17 +366,16 @@ function restoreLanguage() {
   }
   try {
     state.selectedVoiceURI = localStorage.getItem("parkingGuideVoiceURI") ?? "";
-    state.voiceProvider = localStorage.getItem("parkingGuideVoiceProvider") === "device"
-      ? "device"
-      : "openai";
-    const savedOpenAIVoice = localStorage.getItem("parkingGuideOpenAIVoice") ?? "marin";
-    state.openAIVoice = ["marin", "cedar", "coral", "alloy"].includes(savedOpenAIVoice)
-      ? savedOpenAIVoice
-      : "marin";
+    const savedProvider = localStorage.getItem("parkingGuideVoiceProvider");
+    state.voiceProvider = savedProvider === "device" ? "device" : "gemini";
+    const savedGeminiVoice = localStorage.getItem("parkingGuideGeminiVoice") ?? "Kore";
+    state.geminiVoice = ["Kore", "Puck", "Aoede", "Charon"].includes(savedGeminiVoice)
+      ? savedGeminiVoice
+      : "Kore";
   } catch {
     state.selectedVoiceURI = "";
-    state.voiceProvider = "openai";
-    state.openAIVoice = "marin";
+    state.voiceProvider = "gemini";
+    state.geminiVoice = "Kore";
   }
   applyLanguage(saved);
 }
@@ -394,10 +393,10 @@ const state = {
   currentScreen: "facility",
   language: "ja",
   voiceEnabled: true,
-  voiceProvider: "openai",
-  openAIVoice: "marin",
+  voiceProvider: "gemini",
+  geminiVoice: "Kore",
   selectedVoiceURI: "",
-  openAIAssistantActive: false,
+  geminiAssistantActive: false,
   lastSearchWasAuto: false,
   selectedFacility: null,
   selectedDestination: null,
@@ -440,10 +439,10 @@ const conditionForm = document.querySelector("#condition-form");
 const searchNowButton = document.querySelector("#search-now-button");
 const voiceEnabledInput = document.querySelector("#voice-enabled");
 const voiceProviderSelect = document.querySelector("#voice-provider-select");
-const openAIVoiceSelect = document.querySelector("#openai-voice-select");
-const openAIVoiceRow = document.querySelector("#openai-voice-row");
+const geminiVoiceSelect = document.querySelector("#gemini-voice-select");
+const geminiVoiceRow = document.querySelector("#gemini-voice-row");
 const deviceVoiceRow = document.querySelector("#device-voice-row");
-const openAIVoiceStatus = document.querySelector("#openai-voice-status");
+const geminiVoiceStatus = document.querySelector("#gemini-voice-status");
 const voiceSelect = document.querySelector("#voice-select");
 const voicePreviewButton = document.querySelector("#voice-preview-button");
 const randomGuidanceNote = document.querySelector("#random-guidance-note");
@@ -1659,8 +1658,8 @@ function saveSearchConditions() {
   state.selectedPriority = checkedPriority?.value ?? "balanced";
   state.requestedSpaceType = checkedSpaceType?.value ?? "standard";
   state.voiceEnabled = voiceEnabledInput?.checked !== false;
-  state.voiceProvider = voiceProviderSelect?.value === "device" ? "device" : "openai";
-  state.openAIVoice = openAIVoiceSelect?.value || state.openAIVoice || "marin";
+  state.voiceProvider = voiceProviderSelect?.value === "device" ? "device" : "gemini";
+  state.geminiVoice = geminiVoiceSelect?.value || state.geminiVoice || "Kore";
   state.selectedVoiceURI = voiceSelect?.value ?? state.selectedVoiceURI ?? "";
   saveSelectedDestination();
 }
@@ -1984,8 +1983,8 @@ function getSelectedSpeechVoice() {
   return voices[0];
 }
 
-/** OpenAIへ渡す現在の駐車場情報を、推測を含めず短いテキストへまとめる。 */
-function buildOpenAIVoiceContext() {
+/** Geminiへ渡す現在の駐車場情報を、推測を含めず短いテキストへまとめる。 */
+function buildGeminiVoiceContext() {
   const available = state.currentSpaces
     .filter((space) => space?.status === "available")
     .slice(0, 30)
@@ -2016,36 +2015,36 @@ function buildOpenAIVoiceContext() {
   return parts.join("\n");
 }
 
-/** OpenAI音声の状態表示を更新する。 */
-function setOpenAIVoiceStatus(message, stateName = "") {
-  if (!openAIVoiceStatus) return;
-  openAIVoiceStatus.textContent = message;
-  openAIVoiceStatus.classList.toggle("is-error", stateName === "error");
-  openAIVoiceStatus.classList.toggle(
+/** Gemini音声の状態表示を更新する。 */
+function setGeminiVoiceStatus(message, stateName = "") {
+  if (!geminiVoiceStatus) return;
+  geminiVoiceStatus.textContent = message;
+  geminiVoiceStatus.classList.toggle("is-error", stateName === "error");
+  geminiVoiceStatus.classList.toggle(
     "is-active",
     ["ready", "speaking", "listening", "thinking"].includes(stateName),
   );
 }
 
-/** OpenAI/端末音声の設定画面を現在値へ同期する。 */
+/** Gemini/端末音声の設定画面を現在値へ同期する。 */
 function updateVoiceControlUi() {
   if (voiceProviderSelect) voiceProviderSelect.value = state.voiceProvider;
-  if (openAIVoiceSelect) openAIVoiceSelect.value = state.openAIVoice;
-  if (openAIVoiceRow) openAIVoiceRow.hidden = state.voiceProvider !== "openai";
+  if (geminiVoiceSelect) geminiVoiceSelect.value = state.geminiVoice;
+  if (geminiVoiceRow) geminiVoiceRow.hidden = state.voiceProvider !== "gemini";
   if (deviceVoiceRow) deviceVoiceRow.hidden = state.voiceProvider !== "device";
 
-  const openAISupported = window.parkingOpenAIVoice?.isSupported?.() === true;
-  if (state.voiceProvider === "openai") {
-    setOpenAIVoiceStatus(
-      openAISupported
-        ? ui("OpenAI音声は初回利用時に接続します。", "OpenAI voice connects when first used.")
-        : ui("OpenAI音声を利用できないため、端末音声を使用します。", "OpenAI voice is unavailable. Device voice will be used."),
-      openAISupported ? "" : "error",
+  const geminiSupported = window.parkingGeminiVoice?.isSupported?.() === true;
+  if (state.voiceProvider === "gemini") {
+    setGeminiVoiceStatus(
+      geminiSupported
+        ? ui("Gemini Live音声は初回利用時に接続します。", "Gemini Live voice connects when first used.")
+        : ui("Gemini音声を利用できないため、端末音声を使用します。", "Gemini voice is unavailable. Device voice will be used."),
+      geminiSupported ? "" : "error",
     );
   }
 }
 
-/** 端末標準の読み上げ。OpenAIが利用できない場合のフォールバックにも使う。 */
+/** 端末標準の読み上げ。Geminiが利用できない場合のフォールバックにも使う。 */
 function speakDeviceText(message) {
   if (!message || !("speechSynthesis" in window)
       || !("SpeechSynthesisUtterance" in window)) {
@@ -2070,19 +2069,19 @@ function speakDeviceText(message) {
 function speakText(message) {
   if (!message) return false;
 
-  const openAIVoice = window.parkingOpenAIVoice;
-  if (state.voiceProvider === "openai" && openAIVoice?.isSupported?.()) {
+  const geminiVoice = window.parkingGeminiVoice;
+  if (state.voiceProvider === "gemini" && geminiVoice?.isSupported?.()) {
     window.speechSynthesis?.cancel?.();
-    void openAIVoice.speak(message, {
+    void geminiVoice.speak(message, {
       language: state.language,
-      voice: state.openAIVoice,
-      contextText: buildOpenAIVoiceContext(),
+      voice: state.geminiVoice,
+      contextText: buildGeminiVoiceContext(),
     }).catch((error) => {
-      console.warn("OpenAI音声へ接続できないため端末音声へ切り替えます。", error);
-      setOpenAIVoiceStatus(
+      console.warn("Gemini音声へ接続できないため端末音声へ切り替えます。", error);
+      setGeminiVoiceStatus(
         ui(
-          "OpenAI音声へ接続できなかったため、端末音声で読み上げます。",
-          "OpenAI voice could not connect. Using the device voice instead.",
+          "Gemini音声へ接続できなかったため、端末音声で読み上げます。",
+          "Gemini voice could not connect. Using the device voice instead.",
         ),
         "error",
       );
@@ -2127,8 +2126,8 @@ function previewSelectedVoice() {
 function updateVoiceAvailability() {
   const deviceSupported =
     "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-  const openAISupported = window.parkingOpenAIVoice?.isSupported?.() === true;
-  const anySupported = deviceSupported || openAISupported;
+  const geminiSupported = window.parkingGeminiVoice?.isSupported?.() === true;
+  const anySupported = deviceSupported || geminiSupported;
 
   [voiceGuideButton, voicePreviewButton].forEach((button) => {
     if (!button) return;
@@ -2143,20 +2142,20 @@ function updateVoiceAvailability() {
 
   if (voiceEnabledInput) voiceEnabledInput.disabled = !anySupported;
   if (voiceProviderSelect) voiceProviderSelect.disabled = !anySupported;
-  if (openAIVoiceSelect) openAIVoiceSelect.disabled = !openAISupported;
+  if (geminiVoiceSelect) geminiVoiceSelect.disabled = !geminiSupported;
   if (voiceSelect) voiceSelect.disabled = !deviceSupported;
-  if (aiAssistantButton) aiAssistantButton.disabled = !openAISupported;
+  if (aiAssistantButton) aiAssistantButton.disabled = !geminiSupported;
 
   if (deviceSupported) populateVoiceOptions();
   updateVoiceControlUi();
 }
 
-/** OpenAI Realtimeの会話モードを開始・終了する。 */
-async function toggleOpenAIAssistant() {
-  const openAIVoice = window.parkingOpenAIVoice;
-  if (!openAIVoice?.isSupported?.()) {
-    setOpenAIVoiceStatus(
-      ui("OpenAI AIアシスタントを利用できません。", "OpenAI AI assistant is unavailable."),
+/** Gemini Liveの会話モードを開始・終了する。 */
+async function toggleGeminiAssistant() {
+  const geminiVoice = window.parkingGeminiVoice;
+  if (!geminiVoice?.isSupported?.()) {
+    setGeminiVoiceStatus(
+      ui("Gemini AIアシスタントを利用できません。", "Gemini AI assistant is unavailable."),
       "error",
     );
     return;
@@ -2166,14 +2165,14 @@ async function toggleOpenAIAssistant() {
     return;
   }
 
-  if (openAIVoice.isAssistantActive()) {
-    openAIVoice.disconnect();
-    state.openAIAssistantActive = false;
+  if (geminiVoice.isAssistantActive()) {
+    geminiVoice.disconnect();
+    state.geminiAssistantActive = false;
     return;
   }
 
-  state.voiceProvider = "openai";
-  if (voiceProviderSelect) voiceProviderSelect.value = "openai";
+  state.voiceProvider = "gemini";
+  if (voiceProviderSelect) voiceProviderSelect.value = "gemini";
   updateVoiceControlUi();
 
   if (aiAssistantTranscript) {
@@ -2182,19 +2181,19 @@ async function toggleOpenAIAssistant() {
   }
 
   try {
-    await openAIVoice.startAssistant({
+    await geminiVoice.startAssistant({
       language: state.language,
-      voice: state.openAIVoice,
-      contextText: buildOpenAIVoiceContext(),
+      voice: state.geminiVoice,
+      contextText: buildGeminiVoiceContext(),
     });
-    state.openAIAssistantActive = true;
+    state.geminiAssistantActive = true;
   } catch (error) {
     console.error(error);
-    state.openAIAssistantActive = false;
-    setOpenAIVoiceStatus(
+    state.geminiAssistantActive = false;
+    setGeminiVoiceStatus(
       ui(
-        "AIアシスタントへ接続できませんでした。Supabase/OpenAI設定を確認してください。",
-        "Could not connect to the AI assistant. Check the Supabase/OpenAI setup.",
+        "AIアシスタントへ接続できませんでした。Supabase/Gemini設定を確認してください。",
+        "Could not connect to the AI assistant. Check the Supabase/Gemini setup.",
       ),
       "error",
     );
@@ -2283,8 +2282,8 @@ function endGuidance() {
   state.proximitySearchRunning = false;
   state.autoTriggeredFacilityId = null;
   window.speechSynthesis?.cancel?.();
-  window.parkingOpenAIVoice?.disconnect?.({ silent: true });
-  state.openAIAssistantActive = false;
+  window.parkingGeminiVoice?.disconnect?.({ silent: true });
+  state.geminiAssistantActive = false;
   window.parkingSafety?.stop?.(
     ui("案内を終了しました。位置情報の取得を停止しました。", "Guidance ended. Location tracking stopped."),
   );
@@ -2299,8 +2298,8 @@ function resetApplication() {
   state.selectedPriority = "balanced";
   state.requestedSpaceType = "standard";
   state.voiceEnabled = voiceEnabledInput?.checked !== false;
-  state.openAIAssistantActive = false;
-  window.parkingOpenAIVoice?.disconnect?.({ silent: true });
+  state.geminiAssistantActive = false;
+  window.parkingGeminiVoice?.disconnect?.({ silent: true });
   state.autoProximityArmed = false;
   state.autoTriggeredFacilityId = null;
   state.proximitySearchRunning = false;
@@ -2347,8 +2346,8 @@ facilityList.addEventListener("click", (event) => {
 textSizeButton.addEventListener("click", toggleTextSize);
 themeButton.addEventListener("click", toggleTheme);
 languageButton.addEventListener("click", () => {
-  window.parkingOpenAIVoice?.disconnect?.({ silent: true });
-  state.openAIAssistantActive = false;
+  window.parkingGeminiVoice?.disconnect?.({ silent: true });
+  state.geminiAssistantActive = false;
   applyLanguage(isEnglish() ? "ja" : "en");
 });
 destinationSelect?.addEventListener("change", () => {
@@ -2360,27 +2359,27 @@ voiceGuideButton?.addEventListener("click", () => {
 });
 voicePreviewButton?.addEventListener("click", previewSelectedVoice);
 aiAssistantButton?.addEventListener("click", () => {
-  void toggleOpenAIAssistant();
+  void toggleGeminiAssistant();
 });
 voiceEnabledInput?.addEventListener("change", () => {
   state.voiceEnabled = voiceEnabledInput.checked;
 });
 voiceProviderSelect?.addEventListener("change", () => {
-  state.voiceProvider = voiceProviderSelect.value === "device" ? "device" : "openai";
-  window.parkingOpenAIVoice?.disconnect?.({ silent: true });
-  state.openAIAssistantActive = false;
+  state.voiceProvider = voiceProviderSelect.value === "device" ? "device" : "gemini";
+  window.parkingGeminiVoice?.disconnect?.({ silent: true });
+  state.geminiAssistantActive = false;
   updateVoiceControlUi();
   try {
     localStorage.setItem("parkingGuideVoiceProvider", state.voiceProvider);
   } catch {}
 });
-openAIVoiceSelect?.addEventListener("change", () => {
-  state.openAIVoice = openAIVoiceSelect.value || "marin";
-  window.parkingOpenAIVoice?.disconnect?.({ silent: true });
-  state.openAIAssistantActive = false;
+geminiVoiceSelect?.addEventListener("change", () => {
+  state.geminiVoice = geminiVoiceSelect.value || "Kore";
+  window.parkingGeminiVoice?.disconnect?.({ silent: true });
+  state.geminiAssistantActive = false;
   updateVoiceControlUi();
   try {
-    localStorage.setItem("parkingGuideOpenAIVoice", state.openAIVoice);
+    localStorage.setItem("parkingGuideGeminiVoice", state.geminiVoice);
   } catch {}
 });
 voiceSelect?.addEventListener("change", () => {
@@ -2392,17 +2391,17 @@ voiceSelect?.addEventListener("change", () => {
   }
 });
 
-window.addEventListener("parking:openai-voice-status", (event) => {
+window.addEventListener("parking:gemini-voice-status", (event) => {
   const detail = event.detail ?? {};
   const statusMessage = detail.message ?? "";
 
   if (statusMessage) {
-    setOpenAIVoiceStatus(statusMessage, detail.state ?? "");
+    setGeminiVoiceStatus(statusMessage, detail.state ?? "");
     if (aiAssistantStatus) aiAssistantStatus.textContent = statusMessage;
   }
 
   const assistantActive = detail.assistantActive === true;
-  state.openAIAssistantActive = assistantActive;
+  state.geminiAssistantActive = assistantActive;
   if (aiAssistantButton) {
     aiAssistantButton.setAttribute("aria-pressed", String(assistantActive));
     aiAssistantButton.textContent = assistantActive
