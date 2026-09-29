@@ -83,6 +83,10 @@ Deno.serve(async (request) => {
       newSessionExpireTime,
       liveConnectConstraints: {
         model: MODEL,
+        config: {
+          sessionResumption: {},
+          responseModalities: ["AUDIO"],
+        },
       },
     }),
   });
