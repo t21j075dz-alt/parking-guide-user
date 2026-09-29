@@ -490,7 +490,7 @@ For normal conversation, answer in at most two short sentences unless more detai
           systemInstruction: {
             parts: [{ text: buildInstructions(normalizedLanguage, lastContext) }],
           },
-          inputAudioTranscription: { mode: "SMART" },
+          inputAudioTranscription: {},
           outputAudioTranscription: {},
         },
       });
