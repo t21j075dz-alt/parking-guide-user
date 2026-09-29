@@ -233,7 +233,24 @@ const STATIC_JA_EN = Object.freeze({
   "安全な場所に停車したので再開する": "I have stopped safely",
   "岡山理科大学 工学部 情報工学科 卒業研究": "Okayama University of Science — Graduation Research",
   "試作システムのため、実際の駐車案内には使用できません。":
-    "Prototype system. Do not rely on it for real-world parking guidance."
+    "Prototype system. Do not rely on it for real-world parking guidance.",
+  "OpenAI AI音声を優先し、利用できない場合は端末音声へ切り替えます。":
+    "OpenAI AI voice is preferred. The app falls back to the device voice if needed.",
+  "音声方式": "Voice system",
+  "OpenAI AI音声（推奨）": "OpenAI AI voice (recommended)",
+  "端末音声（予備）": "Device voice (fallback)",
+  "音声を試す": "Test voice",
+  "OpenAI音声": "OpenAI voice",
+  "Marin（明瞭・推奨）": "Marin (clear, recommended)",
+  "Cedar（落ち着いた声）": "Cedar (calm)",
+  "端末音声": "Device voice",
+  "自動（聞き取りやすい音声）": "Automatic (clear voice)",
+  "OpenAI音声は初回利用時に接続します。": "OpenAI voice connects when first used.",
+  "AIアシスタント": "AI assistant",
+  "AIアシスタントを終了": "Stop AI assistant",
+  "OpenAI 駐車場アシスタント": "OpenAI Parking Assistant",
+  "「AIアシスタント」を押すと、マイクで駐車場について質問できます。":
+    "Press AI assistant to ask parking questions by voice."
 });
 
 const STATIC_EN_JA = Object.freeze(
@@ -324,12 +341,15 @@ function applyLanguage(language) {
     }
   }
   populateVoiceOptions();
+  updateVoiceControlUi();
   window.dispatchEvent(new CustomEvent("parking:languagechange", {
     detail: { language: state.language },
   }));
   try {
     localStorage.setItem("parkingGuideLanguage", state.language);
     localStorage.setItem("parkingGuideVoiceURI", state.selectedVoiceURI ?? "");
+    localStorage.setItem("parkingGuideVoiceProvider", state.voiceProvider);
+    localStorage.setItem("parkingGuideOpenAIVoice", state.openAIVoice);
   } catch {
     /* 保存できない環境でも現在の言語は維持する。 */
   }
@@ -344,8 +364,17 @@ function restoreLanguage() {
   }
   try {
     state.selectedVoiceURI = localStorage.getItem("parkingGuideVoiceURI") ?? "";
+    state.voiceProvider = localStorage.getItem("parkingGuideVoiceProvider") === "device"
+      ? "device"
+      : "openai";
+    const savedOpenAIVoice = localStorage.getItem("parkingGuideOpenAIVoice") ?? "marin";
+    state.openAIVoice = ["marin", "cedar", "coral", "alloy"].includes(savedOpenAIVoice)
+      ? savedOpenAIVoice
+      : "marin";
   } catch {
     state.selectedVoiceURI = "";
+    state.voiceProvider = "openai";
+    state.openAIVoice = "marin";
   }
   applyLanguage(saved);
 }
@@ -363,7 +392,10 @@ const state = {
   currentScreen: "facility",
   language: "ja",
   voiceEnabled: true,
+  voiceProvider: "openai",
+  openAIVoice: "marin",
   selectedVoiceURI: "",
+  openAIAssistantActive: false,
   lastSearchWasAuto: false,
   selectedFacility: null,
   selectedDestination: null,
@@ -405,6 +437,11 @@ const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 const conditionForm = document.querySelector("#condition-form");
 const searchNowButton = document.querySelector("#search-now-button");
 const voiceEnabledInput = document.querySelector("#voice-enabled");
+const voiceProviderSelect = document.querySelector("#voice-provider-select");
+const openAIVoiceSelect = document.querySelector("#openai-voice-select");
+const openAIVoiceRow = document.querySelector("#openai-voice-row");
+const deviceVoiceRow = document.querySelector("#device-voice-row");
+const openAIVoiceStatus = document.querySelector("#openai-voice-status");
 const voiceSelect = document.querySelector("#voice-select");
 const voicePreviewButton = document.querySelector("#voice-preview-button");
 const randomGuidanceNote = document.querySelector("#random-guidance-note");
@@ -434,6 +471,10 @@ const parkingMap = document.querySelector("#parking-map");
 const parkingMapTitle = document.querySelector("#parking-map-title");
 const updatedTime = document.querySelector("#updated-time");
 const voiceGuideButton = document.querySelector("#voice-guide-button");
+const aiAssistantButton = document.querySelector("#ai-assistant-button");
+const aiAssistantPanel = document.querySelector(".ai-assistant-panel");
+const aiAssistantStatus = document.querySelector("#ai-assistant-status");
+const aiAssistantTranscript = document.querySelector("#ai-assistant-transcript");
 const retryButton = document.querySelector("#retry-button");
 const endGuidanceButton = document.querySelector("#end-guidance-button");
 
@@ -1616,6 +1657,8 @@ function saveSearchConditions() {
   state.selectedPriority = checkedPriority?.value ?? "balanced";
   state.requestedSpaceType = checkedSpaceType?.value ?? "standard";
   state.voiceEnabled = voiceEnabledInput?.checked !== false;
+  state.voiceProvider = voiceProviderSelect?.value === "device" ? "device" : "openai";
+  state.openAIVoice = openAIVoiceSelect?.value || state.openAIVoice || "marin";
   state.selectedVoiceURI = voiceSelect?.value ?? state.selectedVoiceURI ?? "";
   saveSelectedDestination();
 }
@@ -1939,8 +1982,69 @@ function getSelectedSpeechVoice() {
   return voices[0];
 }
 
-/** 指定文を現在の音声設定で読み上げる。 */
-function speakText(message) {
+/** OpenAIへ渡す現在の駐車場情報を、推測を含めず短いテキストへまとめる。 */
+function buildOpenAIVoiceContext() {
+  const available = state.currentSpaces
+    .filter((space) => space?.status === "available")
+    .slice(0, 30)
+    .map((space) => getSpokenSpaceId(space))
+    .filter(Boolean);
+
+  const parts = [
+    `language=${state.language}`,
+    `facility=${getFacilityDisplayName(state.selectedFacility) || "not selected"}`,
+    `destination=${getSelectedDestinationName() || "not selected"}`,
+    `requested_space_type=${getSpaceTypeLabel(state.requestedSpaceType)}`,
+    `priority=${getPriorityLabel(state.selectedPriority)}`,
+  ];
+
+  if (state.recommendedSpace) {
+    parts.push(`recommended_space=${getSpokenSpaceId(state.recommendedSpace)}`);
+    parts.push(`recommended_type=${getSpaceTypeLabel(state.recommendedSpace.spaceType)}`);
+    if (Number.isFinite(state.recommendedSpace.entranceDistanceMeters)) {
+      parts.push(`entrance_distance_m=${Math.round(state.recommendedSpace.entranceDistanceMeters)}`);
+    }
+  }
+
+  if (available.length) {
+    parts.push(`known_available_spaces=${available.join(",")}`);
+  }
+
+  parts.push("This is a research prototype. Do not claim live occupancy beyond the app data.");
+  return parts.join("\n");
+}
+
+/** OpenAI音声の状態表示を更新する。 */
+function setOpenAIVoiceStatus(message, stateName = "") {
+  if (!openAIVoiceStatus) return;
+  openAIVoiceStatus.textContent = message;
+  openAIVoiceStatus.classList.toggle("is-error", stateName === "error");
+  openAIVoiceStatus.classList.toggle(
+    "is-active",
+    ["ready", "speaking", "listening", "thinking"].includes(stateName),
+  );
+}
+
+/** OpenAI/端末音声の設定画面を現在値へ同期する。 */
+function updateVoiceControlUi() {
+  if (voiceProviderSelect) voiceProviderSelect.value = state.voiceProvider;
+  if (openAIVoiceSelect) openAIVoiceSelect.value = state.openAIVoice;
+  if (openAIVoiceRow) openAIVoiceRow.hidden = state.voiceProvider !== "openai";
+  if (deviceVoiceRow) deviceVoiceRow.hidden = state.voiceProvider !== "device";
+
+  const openAISupported = window.parkingOpenAIVoice?.isSupported?.() === true;
+  if (state.voiceProvider === "openai") {
+    setOpenAIVoiceStatus(
+      openAISupported
+        ? ui("OpenAI音声は初回利用時に接続します。", "OpenAI voice connects when first used.")
+        : ui("OpenAI音声を利用できないため、端末音声を使用します。", "OpenAI voice is unavailable. Device voice will be used."),
+      openAISupported ? "" : "error",
+    );
+  }
+}
+
+/** 端末標準の読み上げ。OpenAIが利用できない場合のフォールバックにも使う。 */
+function speakDeviceText(message) {
   if (!message || !("speechSynthesis" in window)
       || !("SpeechSynthesisUtterance" in window)) {
     return false;
@@ -1949,7 +2053,6 @@ function speakText(message) {
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(message);
   utterance.lang = isEnglish() ? "en-US" : "ja-JP";
-  /* 以前より少しゆっくりにして区画番号を聞き取りやすくする。 */
   utterance.rate = 0.84;
   utterance.pitch = 1;
   utterance.volume = 1;
@@ -1959,6 +2062,34 @@ function speakText(message) {
 
   window.speechSynthesis.speak(utterance);
   return true;
+}
+
+/** 指定文をOpenAI AI音声、または端末音声で読み上げる。 */
+function speakText(message) {
+  if (!message) return false;
+
+  const openAIVoice = window.parkingOpenAIVoice;
+  if (state.voiceProvider === "openai" && openAIVoice?.isSupported?.()) {
+    window.speechSynthesis?.cancel?.();
+    void openAIVoice.speak(message, {
+      language: state.language,
+      voice: state.openAIVoice,
+      contextText: buildOpenAIVoiceContext(),
+    }).catch((error) => {
+      console.warn("OpenAI音声へ接続できないため端末音声へ切り替えます。", error);
+      setOpenAIVoiceStatus(
+        ui(
+          "OpenAI音声へ接続できなかったため、端末音声で読み上げます。",
+          "OpenAI voice could not connect. Using the device voice instead.",
+        ),
+        "error",
+      );
+      speakDeviceText(message);
+    });
+    return true;
+  }
+
+  return speakDeviceText(message);
 }
 
 /** 自動案内開始時の安全メッセージを読み上げる。 */
@@ -1992,17 +2123,80 @@ function previewSelectedVoice() {
 }
 
 function updateVoiceAvailability() {
-  const supported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+  const deviceSupported =
+    "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+  const openAISupported = window.parkingOpenAIVoice?.isSupported?.() === true;
+  const anySupported = deviceSupported || openAISupported;
+
   [voiceGuideButton, voicePreviewButton].forEach((button) => {
     if (!button) return;
-    button.disabled = !supported;
-    button.title = supported
+    button.disabled = !anySupported;
+    button.title = anySupported
       ? ""
-      : ui("このブラウザーは音声読み上げに対応していません。", "This browser does not support speech synthesis.");
+      : ui(
+          "このブラウザーでは音声案内を利用できません。",
+          "Voice guidance is not available in this browser.",
+        );
   });
-  if (voiceEnabledInput) voiceEnabledInput.disabled = !supported;
-  if (voiceSelect) voiceSelect.disabled = !supported;
-  if (supported) populateVoiceOptions();
+
+  if (voiceEnabledInput) voiceEnabledInput.disabled = !anySupported;
+  if (voiceProviderSelect) voiceProviderSelect.disabled = !anySupported;
+  if (openAIVoiceSelect) openAIVoiceSelect.disabled = !openAISupported;
+  if (voiceSelect) voiceSelect.disabled = !deviceSupported;
+  if (aiAssistantButton) aiAssistantButton.disabled = !openAISupported;
+
+  if (deviceSupported) populateVoiceOptions();
+  updateVoiceControlUi();
+}
+
+/** OpenAI Realtimeの会話モードを開始・終了する。 */
+async function toggleOpenAIAssistant() {
+  const openAIVoice = window.parkingOpenAIVoice;
+  if (!openAIVoice?.isSupported?.()) {
+    setOpenAIVoiceStatus(
+      ui("OpenAI AIアシスタントを利用できません。", "OpenAI AI assistant is unavailable."),
+      "error",
+    );
+    return;
+  }
+
+  if (window.parkingSafety && !window.parkingSafety.guardOperation()) {
+    return;
+  }
+
+  if (openAIVoice.isAssistantActive()) {
+    openAIVoice.disconnect();
+    state.openAIAssistantActive = false;
+    return;
+  }
+
+  state.voiceProvider = "openai";
+  if (voiceProviderSelect) voiceProviderSelect.value = "openai";
+  updateVoiceControlUi();
+
+  if (aiAssistantTranscript) {
+    aiAssistantTranscript.hidden = true;
+    aiAssistantTranscript.textContent = "";
+  }
+
+  try {
+    await openAIVoice.startAssistant({
+      language: state.language,
+      voice: state.openAIVoice,
+      contextText: buildOpenAIVoiceContext(),
+    });
+    state.openAIAssistantActive = true;
+  } catch (error) {
+    console.error(error);
+    state.openAIAssistantActive = false;
+    setOpenAIVoiceStatus(
+      ui(
+        "AIアシスタントへ接続できませんでした。Supabase/OpenAI設定を確認してください。",
+        "Could not connect to the AI assistant. Check the Supabase/OpenAI setup.",
+      ),
+      "error",
+    );
+  }
 }
 
 /* =========================================================
@@ -2087,6 +2281,8 @@ function endGuidance() {
   state.proximitySearchRunning = false;
   state.autoTriggeredFacilityId = null;
   window.speechSynthesis?.cancel?.();
+  window.parkingOpenAIVoice?.disconnect?.({ silent: true });
+  state.openAIAssistantActive = false;
   window.parkingSafety?.stop?.(
     ui("案内を終了しました。位置情報の取得を停止しました。", "Guidance ended. Location tracking stopped."),
   );
@@ -2101,6 +2297,8 @@ function resetApplication() {
   state.selectedPriority = "balanced";
   state.requestedSpaceType = "standard";
   state.voiceEnabled = voiceEnabledInput?.checked !== false;
+  state.openAIAssistantActive = false;
+  window.parkingOpenAIVoice?.disconnect?.({ silent: true });
   state.autoProximityArmed = false;
   state.autoTriggeredFacilityId = null;
   state.proximitySearchRunning = false;
@@ -2147,6 +2345,8 @@ facilityList.addEventListener("click", (event) => {
 textSizeButton.addEventListener("click", toggleTextSize);
 themeButton.addEventListener("click", toggleTheme);
 languageButton.addEventListener("click", () => {
+  window.parkingOpenAIVoice?.disconnect?.({ silent: true });
+  state.openAIAssistantActive = false;
   applyLanguage(isEnglish() ? "ja" : "en");
 });
 destinationSelect?.addEventListener("change", () => {
@@ -2157,12 +2357,71 @@ voiceGuideButton?.addEventListener("click", () => {
   speakCurrentGuidance();
 });
 voicePreviewButton?.addEventListener("click", previewSelectedVoice);
+aiAssistantButton?.addEventListener("click", () => {
+  void toggleOpenAIAssistant();
+});
+voiceEnabledInput?.addEventListener("change", () => {
+  state.voiceEnabled = voiceEnabledInput.checked;
+});
+voiceProviderSelect?.addEventListener("change", () => {
+  state.voiceProvider = voiceProviderSelect.value === "device" ? "device" : "openai";
+  window.parkingOpenAIVoice?.disconnect?.({ silent: true });
+  state.openAIAssistantActive = false;
+  updateVoiceControlUi();
+  try {
+    localStorage.setItem("parkingGuideVoiceProvider", state.voiceProvider);
+  } catch {}
+});
+openAIVoiceSelect?.addEventListener("change", () => {
+  state.openAIVoice = openAIVoiceSelect.value || "marin";
+  window.parkingOpenAIVoice?.disconnect?.({ silent: true });
+  state.openAIAssistantActive = false;
+  updateVoiceControlUi();
+  try {
+    localStorage.setItem("parkingGuideOpenAIVoice", state.openAIVoice);
+  } catch {}
+});
 voiceSelect?.addEventListener("change", () => {
   state.selectedVoiceURI = voiceSelect.value;
   try {
     localStorage.setItem("parkingGuideVoiceURI", state.selectedVoiceURI);
   } catch {
     /* 保存できない環境でも現在の選択は利用する。 */
+  }
+});
+
+window.addEventListener("parking:openai-voice-status", (event) => {
+  const detail = event.detail ?? {};
+  const statusMessage = detail.message ?? "";
+
+  if (statusMessage) {
+    setOpenAIVoiceStatus(statusMessage, detail.state ?? "");
+    if (aiAssistantStatus) aiAssistantStatus.textContent = statusMessage;
+  }
+
+  const assistantActive = detail.assistantActive === true;
+  state.openAIAssistantActive = assistantActive;
+  if (aiAssistantButton) {
+    aiAssistantButton.setAttribute("aria-pressed", String(assistantActive));
+    aiAssistantButton.textContent = assistantActive
+      ? ui("AIアシスタントを終了", "Stop AI assistant")
+      : ui("AIアシスタント", "AI assistant");
+  }
+  aiAssistantPanel?.classList.toggle("is-active", assistantActive);
+  aiAssistantPanel?.classList.toggle("is-error", detail.state === "error");
+
+  if (aiAssistantTranscript && (detail.userTranscript || detail.assistantTranscript)) {
+    const lines = [];
+    if (detail.userTranscript) {
+      lines.push(ui(`あなた：${detail.userTranscript}`, `You: ${detail.userTranscript}`));
+    }
+    if (detail.assistantTranscript) {
+      lines.push(ui(`AI：${detail.assistantTranscript}`, `AI: ${detail.assistantTranscript}`));
+    }
+    if (lines.length) {
+      aiAssistantTranscript.textContent = lines.join("\n");
+      aiAssistantTranscript.hidden = false;
+    }
   }
 });
 
@@ -2317,6 +2576,7 @@ restoreTheme();
 restoreTextSize();
 restoreLanguage();
 updateVoiceAvailability();
+updateVoiceControlUi();
 if ("speechSynthesis" in window) {
   window.speechSynthesis.addEventListener?.("voiceschanged", () => {
     populateVoiceOptions();
