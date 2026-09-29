@@ -239,8 +239,8 @@ const STATIC_JA_EN = Object.freeze({
   "日本語：Google 日本語（固定）": "Japanese: Google Japanese (fixed)",
   "音声案内言語": "Voice guidance language",
   "音声を試す": "Test voice",
-  "Google音声が端末にない場合のみ、同じ言語・地域の標準音声へ切り替えます。":
-    "If a Google voice is unavailable, the app falls back to the standard voice for the same language and region."
+  "言語を選ぶと、その言語の音声を自動で試聴します。対応音声が端末にない場合は画面に表示します。":
+    "Selecting a language automatically plays a voice sample. If the voice is unavailable on the device, the app shows that on screen."
 });
 
 const STATIC_EN_JA = Object.freeze(
@@ -1925,7 +1925,7 @@ function getSpeechVoices() {
  * Chromeでは音声一覧が初回表示直後に空のことがあるため、
  * voiceschanged または短い再試行で音声一覧の準備を待つ。
  */
-async function waitForSpeechVoices(timeoutMs = 2200) {
+async function waitForSpeechVoices(timeoutMs = 15000) {
   const initial = getSpeechVoices();
   if (initial.length) return initial;
 
@@ -1982,11 +1982,11 @@ function getGuidanceSpeechVoice(voices = getSpeechVoices()) {
   const languagePrefix = normalizedLocale.split("-")[0];
 
   const localeSpecificPatterns = {
-    "en-US": /google.*(us|united states).*english|google us english/i,
-    "en-GB": /google.*(uk|united kingdom).*english|google uk english/i,
-    "zh-CN": /google.*(普通话|普通話|mandarin|chinese|中文)/i,
-    "ko-KR": /google.*(한국|korean)/i,
-    "es-ES": /google.*(español|spanish)/i,
+    "en-US": /google.*(us|united states).*english|google us english|google.*english.*us/i,
+    "en-GB": /google.*(uk|united kingdom).*english|google uk english|google.*english.*uk/i,
+    "zh-CN": /google.*(普通话|普通話|mandarin|chinese|中文|中国)/i,
+    "ko-KR": /google.*(한국|한국어|korean|대한민국)/i,
+    "es-ES": /google.*(español|spanish|españa|castellano)/i,
   };
 
   const namePattern = localeSpecificPatterns[locale];
@@ -2106,6 +2106,28 @@ function updateVoiceModeUi() {
   updateVoiceStatus();
 }
 
+/** 音声案内ロケールの表示名を返す。 */
+function getGuidanceLanguageDisplayName(locale = getGuidanceSpeechLocale()) {
+  const labels = {
+    "ja-JP": "日本語",
+    "en-US": "English (US)",
+    "en-GB": "English (UK)",
+    "zh-CN": "中文",
+    "ko-KR": "한국어",
+    "es-ES": "Español",
+  };
+  return labels[locale] ?? locale;
+}
+
+/** 選択言語の音声が端末に存在しない場合の表示文。 */
+function getMissingVoiceMessage(locale = getGuidanceSpeechLocale()) {
+  const languageName = getGuidanceLanguageDisplayName(locale);
+  return ui(
+    `${languageName}の音声がこの端末・ブラウザーにありません。端末の音声データを追加するか、対応ブラウザーで試してください。`,
+    `A ${languageName} voice is not available on this device or browser. Install the language voice data or try a supported browser.`,
+  );
+}
+
 /** 現在実際に使われる音声名を表示する。 */
 function updateVoiceStatus(message = "", stateName = "") {
   if (!voiceStatus) return;
@@ -2127,10 +2149,7 @@ function updateVoiceStatus(message = "", stateName = "") {
             `Google voice is unavailable, so ${voice.name} (${voice.lang}) will be used.`,
           );
     } else {
-      voiceStatus.textContent = ui(
-        "対応音声が見つからないため、ブラウザー標準音声を使用します。",
-        "No matching voice was found. The browser default voice will be used.",
-      );
+      voiceStatus.textContent = getMissingVoiceMessage();
     }
   }
 
@@ -2156,12 +2175,20 @@ async function speakTextWhenVoicesReady(message) {
 
   const utterance = new SpeechSynthesisUtterance(message);
   const voice = getSelectedSpeechVoice(voices);
+  const locale = getGuidanceSpeechLocale();
+
+  if (isEnglish() && !voice) {
+    updateVoiceStatus(
+      getMissingVoiceMessage(locale),
+      "error",
+    );
+  }
 
   if (voice) {
     utterance.voice = voice;
     utterance.lang = voice.lang;
   } else {
-    utterance.lang = getGuidanceSpeechLocale();
+    utterance.lang = locale;
   }
 
   /* 日本語1.2倍、英語0.90倍、中国語・韓国語・スペイン語0.95倍。 */
@@ -2444,6 +2471,9 @@ guidanceVoiceInputs.forEach((input) => {
         ? selectedLanguage
         : "en-US";
     updateVoiceModeUi();
+
+    /* 選択した言語に音声が付いていることをその場で確認できるよう自動試聴する。 */
+    previewSelectedVoice();
 
     try {
       localStorage.setItem(
