@@ -166,48 +166,18 @@ background: {
 
 置換店舗では `facilityRevision` とレイアウトの店舗識別キーを照合し、旧店舗の航空写真・配置図が残っていても新店舗へ誤表示しないようにしています。
 
-## Gemini Live 無料音声案内
+## 無料の多言語音声案内
 
-利用者画面のAI音声は **Gemini 3.8 Live** を使用します。
+利用者画面の音声案内は、外部AI APIではなくブラウザー標準の **Web Speech API（SpeechSynthesis）** を使用します。
 
-- Free Tierで利用可能
-- 日本語・英語に対応
-- 音声：Kore / Puck / Aoede / Charon
-- 案内結果をGeminiのネイティブ音声で読み上げ
-- 結果画面からAIアシスタントを開始すると、マイクで質問可能
-- Geminiへ接続できない場合は端末標準のspeechSynthesisへフォールバック
-- 読み上げだけの場合はマイクを取得しない
-- AIアシスタント中だけマイクを取得する
+- APIキー不要
+- 従量課金なし
+- 日本語・英語の表示切替に合わせて音声も自動切替
+- 端末に搭載されている対応音声を一覧から手動選択可能
+- Natural / Neural / Premium / Enhanced と表示される音声を優先
+- 日本語ではGoogle 日本語、Microsoft Nanami・Keita、Apple Kyoko・O-Ren系などを優先候補にする
+- 英語ではNatural系、Google English、Microsoft Aria・Jenny等、Apple Samantha・Ava等を優先候補にする
+- 読み上げ速度は、日本語0.92、英語0.90を標準にする
 
-### 構成
-
-```text
-GitHub Pages（利用者画面）
-        ↓ ephemeral token要求
-Supabase Edge Function
-        ↓ GEMINI_API_KEY
-Gemini Live API
-        ↕ WebSocket
-利用者ブラウザー
-```
-
-通常のGemini APIキーはGitHub Pagesへ置きません。
-`supabase/functions/gemini-live-token/index.ts` がGeminiのephemeral tokenを生成し、
-ブラウザーには短時間有効なトークンだけを返します。
-
-### 有効化
-
-Google AI StudioでFree TierのAPIキーを作成し、Supabase Secretへ登録します。
-
-```bash
-supabase secrets set GEMINI_API_KEY=AIza...
-supabase functions deploy gemini-live-token --no-verify-jwt
-```
-
-詳細は `supabase/GEMINI_VOICE_SETUP.md` を参照してください。
-
-### 無料枠とデータ利用
-
-Gemini 3.8 Liveには無料枠がありますが、レート上限があります。
-Free Tierで送信したコンテンツはGoogleのサービス改善に利用される場合があります。
-研究では個人情報・機密情報を入力しない運用にしてください。
+利用できる音声と品質はOS・ブラウザー・インストール済み音声によって異なります。
+外部AIへ案内文やマイク音声を送信しません。
