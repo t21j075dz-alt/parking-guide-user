@@ -246,6 +246,8 @@ const STATIC_JA_EN = Object.freeze({
   "端末音声": "Device voice",
   "自動（聞き取りやすい音声）": "Automatic (clear voice)",
   "OpenAI音声は初回利用時に接続します。": "OpenAI voice connects when first used.",
+  "OpenAI音声では案内文をOpenAI APIへ送信します。AIアシスタント中のみマイクを使用し、会話音声もOpenAI APIへ送信します。":
+    "OpenAI voice sends guidance text to the OpenAI API. The microphone is used only while the AI assistant is active, and conversation audio is sent to the OpenAI API.",
   "AIアシスタント": "AI assistant",
   "AIアシスタントを終了": "Stop AI assistant",
   "OpenAI 駐車場アシスタント": "OpenAI Parking Assistant",
