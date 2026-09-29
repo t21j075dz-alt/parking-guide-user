@@ -1816,3 +1816,44 @@ html[data-theme="dark"] .map-object--parkingLot .user-polygon-fill {
   color: var(--color-danger);
   font-weight: 700;
 }
+
+
+/* English時だけ表示するGoogle US / UKの明示的な2択 */
+.english-voice-options {
+  margin: 0.65rem 0 0;
+  padding: 0.7rem;
+  grid-template-columns: auto 1fr 1fr;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+.english-voice-options legend {
+  padding: 0 0.3rem;
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+  font-weight: 700;
+}
+.english-voice-option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.6rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+.english-voice-option:has(input:checked) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.english-voice-option input {
+  margin: 0;
+}
+@media (max-width: 42rem) {
+  .english-voice-options {
+    grid-template-columns: 1fr;
+  }
+}
