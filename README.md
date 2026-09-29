@@ -166,17 +166,16 @@ background: {
 
 置換店舗では `facilityRevision` とレイアウトの店舗識別キーを照合し、旧店舗の航空写真・配置図が残っていても新店舗へ誤表示しないようにしています。
 
+## Gemini Live 無料音声案内
 
-## OpenAI Realtime 音声案内
+利用者画面のAI音声は **Gemini 3.8 Live** を使用します。
 
-利用者画面にはOpenAI Realtime APIを使った音声案内を追加しています。
-
-- 既定：OpenAI AI音声
-- 音声：Marin / Cedar / Coral / Alloy
+- Free Tierで利用可能
 - 日本語・英語に対応
-- 案内結果をOpenAI音声で読み上げ
+- 音声：Kore / Puck / Aoede / Charon
+- 案内結果をGeminiのネイティブ音声で読み上げ
 - 結果画面からAIアシスタントを開始すると、マイクで質問可能
-- OpenAIへ接続できない場合は端末標準のspeechSynthesisへフォールバック
+- Geminiへ接続できない場合は端末標準のspeechSynthesisへフォールバック
 - 読み上げだけの場合はマイクを取得しない
 - AIアシスタント中だけマイクを取得する
 
@@ -184,33 +183,31 @@ background: {
 
 ```text
 GitHub Pages（利用者画面）
-        ↓ ephemeral key要求
+        ↓ ephemeral token要求
 Supabase Edge Function
-        ↓ OPENAI_API_KEY
-OpenAI Realtime API
-        ↕ WebRTC
+        ↓ GEMINI_API_KEY
+Gemini Live API
+        ↕ WebSocket
 利用者ブラウザー
 ```
 
-通常のOpenAI APIキーはGitHub Pagesへ置きません。
-`supabase/functions/openai-realtime-token/index.ts` がOpenAIのclient secretを生成し、
-ブラウザーには短時間だけ有効な `ek_...` トークンだけを返します。
+通常のGemini APIキーはGitHub Pagesへ置きません。
+`supabase/functions/gemini-live-token/index.ts` がGeminiのephemeral tokenを生成し、
+ブラウザーには短時間有効なトークンだけを返します。
 
 ### 有効化
 
-Supabase側へOpenAI APIキーをSecretとして登録します。
+Google AI StudioでFree TierのAPIキーを作成し、Supabase Secretへ登録します。
 
 ```bash
-supabase secrets set OPENAI_API_KEY=sk-proj-...
-supabase functions deploy openai-realtime-token
+supabase secrets set GEMINI_API_KEY=AIza...
+supabase functions deploy gemini-live-token --no-verify-jwt
 ```
 
-詳細は `supabase/OPENAI_VOICE_SETUP.md` を参照してください。
+詳細は `supabase/GEMINI_VOICE_SETUP.md` を参照してください。
 
-### 研究上の安全策
+### 無料枠とデータ利用
 
-AIへは現在の施設、目的店舗、案内区画、区画種類、入口距離、アプリが把握している空き区画などの情報だけを渡します。
-プロンプトでは、アプリにない空き状況・区画番号・距離・経路を推測しないよう制限しています。
-
-OpenAI音声では案内文をOpenAI APIへ送信します。
-AIアシスタントを開始した場合のみマイクを有効にし、会話音声をOpenAI APIへ送信します。
+Gemini 3.8 Liveには無料枠がありますが、レート上限があります。
+Free Tierで送信したコンテンツはGoogleのサービス改善に利用される場合があります。
+研究では個人情報・機密情報を入力しない運用にしてください。
