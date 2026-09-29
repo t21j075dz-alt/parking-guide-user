@@ -144,6 +144,17 @@
         </div>
 
         <form id="condition-form">
+          <fieldset id="destination-fieldset" class="condition-fieldset destination-fieldset" hidden>
+            <legend>目的店舗</legend>
+            <p class="fieldset-help">この敷地内で行きたい店舗を選択してください。</p>
+            <label class="destination-select-label" for="destination-select">
+              行き先
+              <select id="destination-select">
+                <option value="">目的店舗を選択</option>
+              </select>
+            </label>
+          </fieldset>
+
           <fieldset class="condition-fieldset">
             <legend>利用する駐車区画</legend>
             <div class="choice-list">
@@ -236,6 +247,10 @@
             <div>
               <dt>優先条件</dt>
               <dd id="waiting-priority"></dd>
+            </div>
+            <div id="waiting-destination-row" hidden>
+              <dt>目的店舗</dt>
+              <dd id="waiting-destination-name"></dd>
             </div>
           </dl>
 
