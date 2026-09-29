@@ -215,13 +215,17 @@
               <button class="secondary-button" id="voice-preview-button" type="button">音声を試す</button>
             </div>
 
-            <div class="voice-choice-row" id="english-voice-row" hidden>
-              <label for="english-voice-select">英語音声</label>
-              <select id="english-voice-select">
-                <option value="en-US">Google US English</option>
-                <option value="en-GB">Google UK English</option>
-              </select>
-            </div>
+            <fieldset class="english-voice-options" id="english-voice-row" hidden>
+              <legend>英語音声</legend>
+              <label class="english-voice-option">
+                <input type="radio" name="englishVoiceRegion" value="en-US" checked>
+                <span>Google US English</span>
+              </label>
+              <label class="english-voice-option">
+                <input type="radio" name="englishVoiceRegion" value="en-GB">
+                <span>Google UK English</span>
+              </label>
+            </fieldset>
 
             <p id="voice-status" class="voice-status" role="status" aria-live="polite">
               Google音声が端末にない場合のみ、同じ言語・地域の標準音声へ切り替えます。
