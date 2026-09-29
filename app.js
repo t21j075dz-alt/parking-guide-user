@@ -47,6 +47,10 @@ const CATEGORY_LABELS = Object.freeze({
   supermarket: "スーパー・食品店",
   "home-center": "ホームセンター",
   "discount-store": "ディスカウントストア",
+  drugstore: "ドラッグストア",
+  restaurant: "ファミレス・飲食店",
+  "roadside-station": "道の駅",
+  "shopping-center": "複合商業施設",
   experiment: "実験用駐車場",
 });
 
@@ -54,11 +58,23 @@ const CATEGORY_LABELS_EN = Object.freeze({
   supermarket: "Supermarket / grocery",
   "home-center": "Home center",
   "discount-store": "Discount store",
+  drugstore: "Drugstore",
+  restaurant: "Family restaurant / dining",
+  "roadside-station": "Roadside station",
+  "shopping-center": "Shopping complex",
   experiment: "Test parking lot",
 });
 
 function getCategoryLabel(category) {
   return (isEnglish() ? CATEGORY_LABELS_EN : CATEGORY_LABELS)[category] ?? category;
+}
+
+function getFacilityDisplayName(facility) {
+  return facility?.displayName || facility?.name || "";
+}
+
+function getSelectedDestinationName() {
+  return state.selectedDestination?.name ?? null;
 }
 
 const PRIORITY_LABELS = Object.freeze({
@@ -123,6 +139,10 @@ const STATIC_JA_EN = Object.freeze({
   "条件に一致する施設がありません。": "No facilities match the selected filters.",
   "← 施設選択へ戻る": "← Back to facilities",
   "駐車区画の条件": "Parking options",
+  "目的店舗": "Destination store",
+  "この敷地内で行きたい店舗を選択してください。": "Choose the store you want to visit within this site.",
+  "行き先": "Destination",
+  "目的店舗を選択": "Select a destination store",
   "利用する駐車区画": "Parking space type",
   "普通車": "Standard vehicle",
   "普通車用の空き区画から案内": "Guide to an available standard space",
@@ -269,7 +289,8 @@ function applyLanguage(language) {
   renderFacilities();
   updateProximityStatus();
   if (state.selectedFacility) {
-    selectedFacilityName.textContent = state.selectedFacility.name;
+    selectedFacilityName.textContent = getFacilityDisplayName(state.selectedFacility);
+    updateDestinationPanel();
     updateRandomGuidanceNote();
     updatePrivateTestLocationPanel();
     updateWaitingScreen();
@@ -287,8 +308,8 @@ function applyLanguage(language) {
     }
     searchStatus.textContent = random
       ? ui(
-          `${state.selectedFacility.name}では研究用として、条件に合う空き区画からランダムに案内しています。`,
-          `For ${state.selectedFacility.name}, this prototype randomly selects one matching available space.`,
+          `${getFacilityDisplayName(state.selectedFacility)}では研究用として、条件に合う空き区画からランダムに案内しています。`,
+          `For ${getFacilityDisplayName(state.selectedFacility)}, this prototype randomly selects one matching available space.`,
         )
       : ui("案内先を表示しています。", "Showing the selected parking space.");
     updatedTime.textContent = new Intl.DateTimeFormat(isEnglish() ? "en-US" : "ja-JP", {
@@ -342,6 +363,9 @@ const state = {
   selectedVoiceURI: "",
   lastSearchWasAuto: false,
   selectedFacility: null,
+  selectedDestination: null,
+  resolvedFacilityCoordinates: new Map(),
+  resolvingFacilityCoordinates: new Map(),
   selectedPriority: "balanced",
   requestedSpaceType: "standard",
   autoProximityArmed: false,
@@ -387,10 +411,14 @@ const savePrivateTestLocationButton = document.querySelector("#save-private-test
 const clearPrivateTestLocationButton = document.querySelector("#clear-private-test-location-button");
 const proximityStatus = document.querySelector("#proximity-status");
 const selectedFacilityName = document.querySelector("#selected-facility-name");
+const destinationFieldset = document.querySelector("#destination-fieldset");
+const destinationSelect = document.querySelector("#destination-select");
 const waitingFacilityName = document.querySelector("#waiting-facility-name");
 const waitingFacilityAddress = document.querySelector("#waiting-facility-address");
 const waitingSpaceType = document.querySelector("#waiting-space-type");
 const waitingPriority = document.querySelector("#waiting-priority");
+const waitingDestinationRow = document.querySelector("#waiting-destination-row");
+const waitingDestinationName = document.querySelector("#waiting-destination-name");
 const waitingProximityStatus = document.querySelector("#waiting-proximity-status");
 const waitingGoogleMapsLink = document.querySelector("#waiting-google-maps-link");
 const waitingGoogleMapsNote = document.querySelector("#waiting-google-maps-note");
@@ -542,6 +570,65 @@ function updatePrivateTestLocationPanel() {
 }
 
 /**
+ * 固定座標がない新規候補は、管理画面と同じ国土地理院住所検索で補完する。
+ * 取得値はページ内メモリだけに保持し、施設マスター自体は書き換えない。
+ */
+async function ensureFacilityCoordinate(facility) {
+  if (!facility || facility.id === PRIVATE_TEST_FACILITY_ID || facility.requiresLocalCalibration) {
+    return getFacilityCoordinate(facility);
+  }
+
+  const existing = getFacilityCoordinate(facility);
+  if (existing) return existing;
+
+  if (state.resolvingFacilityCoordinates.has(facility.id)) {
+    return state.resolvingFacilityCoordinates.get(facility.id);
+  }
+
+  const address = String(facility.address ?? "").trim();
+  if (facility.locationVerified !== true || !address) {
+    return null;
+  }
+
+  const task = (async () => {
+    try {
+      const response = await fetch(
+        `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(address)}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      const candidates = Array.isArray(data) ? data : (data.features ?? []);
+      const coordinates = candidates[0]?.geometry?.coordinates;
+      const longitude = Number(coordinates?.[0]);
+      const latitude = Number(coordinates?.[1]);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+      const resolved = {
+        latitude,
+        longitude,
+        source: "確認済み住所から国土地理院住所検索",
+      };
+      state.resolvedFacilityCoordinates.set(facility.id, resolved);
+      updateFacilityDistances();
+      if (state.selectedFacility?.id === facility.id) {
+        updateProximityStatus();
+        if (state.currentScreen === "waiting") updateWaitingScreen();
+      }
+      return resolved;
+    } catch {
+      return null;
+    } finally {
+      state.resolvingFacilityCoordinates.delete(facility.id);
+    }
+  })();
+
+  state.resolvingFacilityCoordinates.set(facility.id, task);
+  return task;
+}
+
+/**
  * 施設の代表座標を取得する。
  *
  * 優先順位：
@@ -554,6 +641,13 @@ function getFacilityCoordinate(facility) {
   if (facility?.id === PRIVATE_TEST_FACILITY_ID || facility?.requiresLocalCalibration) {
     const privateCoordinate = readPrivateTestCoordinate();
     if (privateCoordinate) return privateCoordinate;
+  }
+
+  const resolvedCoordinate = facility?.id
+    ? state.resolvedFacilityCoordinates.get(facility.id)
+    : null;
+  if (resolvedCoordinate) {
+    return resolvedCoordinate;
   }
 
   if (Number.isFinite(facility?.latitude) && Number.isFinite(facility?.longitude)) {
@@ -624,7 +718,7 @@ function updateFacilityDistance(button, facility) {
 
   button.setAttribute(
     "aria-label",
-    `${facility.name}、${getCategoryLabel(facility.category)}、${distanceElement.textContent}`,
+    `${getFacilityDisplayName(facility)}、${getCategoryLabel(facility.category)}、${distanceElement.textContent}`,
   );
 }
 
@@ -659,7 +753,7 @@ function renderFacilities() {
 
     const name = document.createElement("span");
     name.className = "facility-name";
-    name.textContent = facility.name;
+    name.textContent = getFacilityDisplayName(facility);
 
     const meta = document.createElement("span");
     meta.className = "facility-meta";
@@ -796,23 +890,31 @@ function getFacilityLayout(facility) {
 
 /** 案内基準に使用できる建物出入口を取得する。 */
 function getGuideEntrance(layout, facility) {
-  if (!layout) {
-    return null;
-  }
+  if (!layout) return null;
 
   const entrances = layout.objects.filter((object) =>
     object.objectType === "buildingEntrance" &&
-    object.guideTarget === true &&
     object.publicAccess !== false &&
     Number.isFinite(object.x) &&
     Number.isFinite(object.y),
   );
 
-  if (facility.targetBuildingId) {
-    return entrances.find((entrance) => entrance.buildingId === facility.targetBuildingId) ?? null;
+  const targetBuildingId =
+    state.selectedDestination?.buildingId ?? facility?.targetBuildingId ?? null;
+
+  if (targetBuildingId) {
+    const matching = entrances.filter(
+      (entrance) => entrance.buildingId === targetBuildingId,
+    );
+    return matching.find((entrance) => entrance.guideTarget === true)
+      ?? matching[0]
+      ?? entrances.find((entrance) => entrance.guideTarget === true)
+      ?? null;
   }
 
-  return entrances[0] ?? null;
+  return entrances.find((entrance) => entrance.guideTarget === true)
+    ?? entrances[0]
+    ?? null;
 }
 
 /** レイアウト上の2点間距離を計算する。 */
@@ -1401,14 +1503,47 @@ function showScreen(screenName, options = {}) {
   }
 }
 
+/** 複合施設だけ目的店舗選択を表示する。 */
+function updateDestinationPanel() {
+  const facility = state.selectedFacility;
+  const destinations = Array.isArray(facility?.destinations) ? facility.destinations : [];
+  const isCompound = destinations.length > 0;
+
+  destinationFieldset.hidden = !isCompound;
+  destinationSelect.required = isCompound;
+  destinationSelect.replaceChildren(
+    new Option(ui("目的店舗を選択", "Select a destination store"), ""),
+  );
+
+  destinations.forEach((destination) => {
+    destinationSelect.add(new Option(destination.name, destination.id));
+  });
+
+  if (isCompound && state.selectedDestination
+      && destinations.some((item) => item.id === state.selectedDestination.id)) {
+    destinationSelect.value = state.selectedDestination.id;
+  } else {
+    state.selectedDestination = null;
+    destinationSelect.value = "";
+  }
+}
+
+/** 現在のプルダウンから目的店舗を状態へ反映する。 */
+function saveSelectedDestination() {
+  const destinations = state.selectedFacility?.destinations ?? [];
+  state.selectedDestination = destinations.find(
+    (destination) => destination.id === destinationSelect.value,
+  ) ?? null;
+}
+
 function updateRandomGuidanceNote() {
   if (!randomGuidanceNote || !state.selectedFacility) return;
   const random = RANDOM_GUIDANCE_FACILITY_IDS.has(state.selectedFacility.id);
   randomGuidanceNote.hidden = !random;
   if (random) {
     randomGuidanceNote.textContent = ui(
-      `${state.selectedFacility.name}では、条件に合う空き区画から研究用にランダムで1区画を案内します。`,
-      `For ${state.selectedFacility.name}, this prototype selects one matching available space at random.`,
+      `${getFacilityDisplayName(state.selectedFacility)}では、条件に合う空き区画から研究用にランダムで1区画を案内します。`,
+      `For ${getFacilityDisplayName(state.selectedFacility)}, this prototype selects one matching available space at random.`,
     );
   }
 }
@@ -1425,7 +1560,11 @@ function getFacilityGoogleMapsUrl(facility) {
   }
 
   const address = String(facility.address ?? "").trim();
-  const query = [facility.name, address].filter(Boolean).join(" ");
+  const destination = state.selectedDestination?.name;
+  const query = [
+    destination || getFacilityDisplayName(facility),
+    address,
+  ].filter(Boolean).join(" ");
   if (!query) return null;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
@@ -1435,7 +1574,7 @@ function updateWaitingScreen() {
   const facility = state.selectedFacility;
   if (!facility) return;
 
-  waitingFacilityName.textContent = facility.name;
+  waitingFacilityName.textContent = getFacilityDisplayName(facility);
   waitingFacilityAddress.textContent = facility.id === PRIVATE_TEST_FACILITY_ID
     ? ui(
         "自宅テスト用（正確な位置はこの端末内に保存）",
@@ -1446,6 +1585,9 @@ function updateWaitingScreen() {
   waitingPriority.textContent = RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id)
     ? ui("ランダム", "Random")
     : getPriorityLabel(state.selectedPriority);
+  const destinationName = getSelectedDestinationName();
+  waitingDestinationRow.hidden = !destinationName;
+  waitingDestinationName.textContent = destinationName ?? "";
 
   const mapsUrl = getFacilityGoogleMapsUrl(facility);
   if (mapsUrl) {
@@ -1472,6 +1614,7 @@ function saveSearchConditions() {
   state.requestedSpaceType = checkedSpaceType?.value ?? "standard";
   state.voiceEnabled = voiceEnabledInput?.checked !== false;
   state.selectedVoiceURI = voiceSelect?.value ?? state.selectedVoiceURI ?? "";
+  saveSelectedDestination();
 }
 
 /** 選択施設までの実測距離を返す。位置情報がない場合はnull。 */
@@ -1673,8 +1816,8 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
           `About ${Math.round(state.recommendedSpace.entranceDistanceMeters)} m to the entrance (simulation)`,
         );
         searchStatus.textContent = ui(
-          `${facility.name}の研究用シミュレーション結果です。`,
-          `Research simulation result for ${facility.name}.`,
+          `${getFacilityDisplayName(facility)}の研究用シミュレーション結果です。`,
+          `Research simulation result for ${getFacilityDisplayName(facility)}.`,
         );
       } else if (Number.isFinite(state.recommendedSpace.entranceDistanceMeters)) {
         const entranceName = prepared.entrance?.name || "建物入口";
@@ -1683,8 +1826,8 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
           `About ${Math.round(state.recommendedSpace.entranceDistanceMeters)} m to the entrance`,
         );
         searchStatus.textContent = ui(
-          `${facility.name}の登録レイアウトから案内先を選びました。`,
-          `A parking space was selected from the registered layout for ${facility.name}.`,
+          `${getFacilityDisplayName(facility)}の登録レイアウトから案内先を選びました。`,
+          `A parking space was selected from the registered layout for ${getFacilityDisplayName(facility)}.`,
         );
       } else {
         const entranceName = prepared.entrance?.name || "建物入口";
@@ -1693,21 +1836,21 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
           "Selected by comparing the layout distance to the entrance",
         );
         searchStatus.textContent = ui(
-          `${facility.name}の登録レイアウトから案内先を選びました。`,
-          `A parking space was selected from the registered layout for ${facility.name}.`,
+          `${getFacilityDisplayName(facility)}の登録レイアウトから案内先を選びました。`,
+          `A parking space was selected from the registered layout for ${getFacilityDisplayName(facility)}.`,
         );
       }
 
       if (RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id)) {
         searchStatus.textContent = ui(
-          `${facility.name}では研究用として、条件に合う空き区画からランダムに案内しています。`,
-          `For ${facility.name}, this prototype randomly selects one matching available space.`,
+          `${getFacilityDisplayName(facility)}では研究用として、条件に合う空き区画からランダムに案内しています。`,
+          `For ${getFacilityDisplayName(facility)}, this prototype randomly selects one matching available space.`,
         );
       }
       if (autoTriggered) {
         searchStatus.textContent = ui(
-          `${facility.name}への接近を検知して案内先を自動表示しました。運転中は画面を操作しないでください。`,
-          `You are near ${facility.name}. Parking guidance was displayed automatically. Do not operate the screen while driving.`,
+          `${getFacilityDisplayName(facility)}への接近を検知して案内先を自動表示しました。運転中は画面を操作しないでください。`,
+          `You are near ${getFacilityDisplayName(facility)}. Parking guidance was displayed automatically. Do not operate the screen while driving.`,
         );
       }
 
@@ -1829,9 +1972,10 @@ function speakCurrentGuidance() {
 
   const number = getSpokenSpaceId(state.recommendedSpace);
   const type = getSpaceTypeLabel(state.recommendedSpace.spaceType);
+  const destination = getSelectedDestinationName();
   const message = isEnglish()
-    ? `Parking space ${number}. ${type}. Please check the map and on-site signs.`
-    : `駐車区画、${number}番です。${type}です。マップと現地の標識を確認してください。`;
+    ? `Parking space ${number}. ${type}.${destination ? ` Destination: ${destination}.` : ""} Please check the map and on-site signs.`
+    : `駐車区画、${number}番です。${type}です。${destination ? `目的店舗は、${destination}です。` : ""}マップと現地の標識を確認してください。`;
 
   return speakText(message);
 }
@@ -1950,6 +2094,7 @@ function endGuidance() {
 function resetApplication() {
   state.searchRequestId += 1;
   state.selectedFacility = null;
+  state.selectedDestination = null;
   state.selectedPriority = "balanced";
   state.requestedSpaceType = "standard";
   state.voiceEnabled = voiceEnabledInput?.checked !== false;
@@ -1987,9 +2132,12 @@ facilityList.addEventListener("click", (event) => {
   state.autoTriggeredFacilityId = null;
   state.proximitySearchRunning = false;
   state.recommendedSpace = null;
-  selectedFacilityName.textContent = facility.name;
+  state.selectedDestination = null;
+  selectedFacilityName.textContent = getFacilityDisplayName(facility);
+  updateDestinationPanel();
   updateRandomGuidanceNote();
   updatePrivateTestLocationPanel();
+  void ensureFacilityCoordinate(facility);
   showScreen("condition");
 });
 
@@ -1997,6 +2145,10 @@ textSizeButton.addEventListener("click", toggleTextSize);
 themeButton.addEventListener("click", toggleTheme);
 languageButton.addEventListener("click", () => {
   applyLanguage(isEnglish() ? "ja" : "en");
+});
+destinationSelect?.addEventListener("change", () => {
+  saveSelectedDestination();
+  updateWaitingScreen();
 });
 voiceGuideButton?.addEventListener("click", () => {
   speakCurrentGuidance();
@@ -2078,9 +2230,20 @@ window.addEventListener("parking:locationchange", (event) => {
   void checkAutomaticProximitySearch();
 });
 
-conditionForm.addEventListener("submit", (event) => {
+conditionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   saveSearchConditions();
+
+  if (Array.isArray(state.selectedFacility?.destinations)
+      && state.selectedFacility.destinations.length > 0
+      && !state.selectedDestination) {
+    destinationSelect.reportValidity();
+    destinationSelect.focus();
+    return;
+  }
+
+  await ensureFacilityCoordinate(state.selectedFacility);
+
   if (state.voiceEnabled) {
     speakAutomaticGuidanceStartMessage();
   }
@@ -2098,6 +2261,13 @@ conditionForm.addEventListener("submit", (event) => {
 
 searchNowButton?.addEventListener("click", () => {
   saveSearchConditions();
+  if (Array.isArray(state.selectedFacility?.destinations)
+      && state.selectedFacility.destinations.length > 0
+      && !state.selectedDestination) {
+    destinationSelect.reportValidity();
+    destinationSelect.focus();
+    return;
+  }
   void runSpaceSearch();
 });
 
