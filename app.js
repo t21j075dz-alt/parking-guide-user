@@ -238,6 +238,8 @@ const STATIC_JA_EN = Object.freeze({
     "Japanese uses Google Japanese by default. In English, you can switch between Google US and UK.",
   "日本語：Google 日本語（固定）": "Japanese: Google Japanese (fixed)",
   "英語音声": "English voice",
+  "Google US English": "Google US English",
+  "Google UK English": "Google UK English",
   "音声を試す": "Test voice",
   "Google音声が端末にない場合のみ、同じ言語・地域の標準音声へ切り替えます。":
     "If a Google voice is unavailable, the app falls back to the standard voice for the same language and region."
@@ -416,7 +418,7 @@ const searchNowButton = document.querySelector("#search-now-button");
 const voiceEnabledInput = document.querySelector("#voice-enabled");
 const voiceModeLabel = document.querySelector("#voice-mode-label");
 const englishVoiceRow = document.querySelector("#english-voice-row");
-const englishVoiceSelect = document.querySelector("#english-voice-select");
+const englishVoiceInputs = [...document.querySelectorAll('input[name="englishVoiceRegion"]')];
 const voicePreviewButton = document.querySelector("#voice-preview-button");
 const voiceStatus = document.querySelector("#voice-status");
 const randomGuidanceNote = document.querySelector("#random-guidance-note");
@@ -1628,7 +1630,9 @@ function saveSearchConditions() {
   state.selectedPriority = checkedPriority?.value ?? "balanced";
   state.requestedSpaceType = checkedSpaceType?.value ?? "standard";
   state.voiceEnabled = voiceEnabledInput?.checked !== false;
-  state.englishVoiceRegion = englishVoiceSelect?.value === "en-GB" ? "en-GB" : "en-US";
+  const checkedEnglishVoice = englishVoiceInputs.find((input) => input.checked);
+  state.englishVoiceRegion =
+    checkedEnglishVoice?.value === "en-GB" ? "en-GB" : "en-US";
   saveSelectedDestination();
 }
 
@@ -1907,61 +1911,109 @@ function getSpeechVoices() {
   return window.speechSynthesis.getVoices?.() ?? [];
 }
 
-/** 日本語ではGoogle 日本語を最優先し、なければ日本語標準音声へ切り替える。 */
-function getJapaneseSpeechVoice() {
-  const voices = getSpeechVoices();
+/**
+ * Chromeでは音声一覧が初回表示直後に空のことがあるため、
+ * voiceschanged または短い再試行で音声一覧の準備を待つ。
+ */
+async function waitForSpeechVoices(timeoutMs = 2200) {
+  const initial = getSpeechVoices();
+  if (initial.length) return initial;
+
+  return new Promise((resolve) => {
+    let finished = false;
+    const started = Date.now();
+
+    const finish = () => {
+      if (finished) return;
+      const voices = getSpeechVoices();
+      if (voices.length || Date.now() - started >= timeoutMs) {
+        finished = true;
+        window.speechSynthesis?.removeEventListener?.("voiceschanged", onVoicesChanged);
+        resolve(voices);
+      }
+    };
+
+    const onVoicesChanged = () => finish();
+    window.speechSynthesis?.addEventListener?.("voiceschanged", onVoicesChanged);
+
+    const timer = window.setInterval(() => {
+      finish();
+      if (finished) window.clearInterval(timer);
+    }, 120);
+
+    window.setTimeout(() => {
+      finish();
+      window.clearInterval(timer);
+    }, timeoutMs);
+  });
+}
+
+/** 日本語では名称が「Google 日本語」の音声を直接最優先する。 */
+function getJapaneseSpeechVoice(voices = getSpeechVoices()) {
+  const directGoogle = voices.find((voice) =>
+    /^(googles*)?(日本語|japanese)$/i.test(String(voice.name).trim())
+      || /google.*(日本語|japanese)/i.test(String(voice.name))
+  );
+  if (directGoogle) return directGoogle;
+
   const japanese = voices.filter(
-    (voice) => voice.lang?.toLowerCase().startsWith("ja"),
+    (voice) => String(voice.lang ?? "").toLowerCase().startsWith("ja"),
   );
 
-  return japanese.find((voice) =>
-    /google.*(日本語|japanese)/i.test(voice.name)
-  )
-    ?? japanese.find((voice) => /^google/i.test(voice.name))
+  return japanese.find((voice) => /google/i.test(String(voice.name)))
     ?? japanese[0]
     ?? null;
 }
 
-/** Englishでは指定地域のGoogle音声だけを優先し、なければ同地域の標準音声へ切り替える。 */
-function getEnglishSpeechVoice() {
-  const voices = getSpeechVoices();
+/** EnglishではUS/UKの指定地域に一致するGoogle音声を最優先する。 */
+function getEnglishSpeechVoice(voices = getSpeechVoices()) {
   const region = state.englishVoiceRegion === "en-GB" ? "en-GB" : "en-US";
   const normalizedRegion = region.toLowerCase();
-  const english = voices.filter(
-    (voice) => voice.lang?.toLowerCase().startsWith("en"),
-  );
 
-  const googleRegional = english.find((voice) =>
-    voice.lang?.toLowerCase() === normalizedRegion
-      && /google/i.test(voice.name)
-  );
-  if (googleRegional) return googleRegional;
-
-  const googleNamePattern = region === "en-GB"
+  const directNamePattern = region === "en-GB"
     ? /google.*(uk|united kingdom).*english|google uk english/i
     : /google.*(us|united states).*english|google us english/i;
-  const googleByName = english.find((voice) => googleNamePattern.test(voice.name));
-  if (googleByName) return googleByName;
 
-  return english.find((voice) => voice.lang?.toLowerCase() === normalizedRegion)
+  const directByName = voices.find((voice) =>
+    directNamePattern.test(String(voice.name))
+  );
+  if (directByName) return directByName;
+
+  const english = voices.filter(
+    (voice) => String(voice.lang ?? "").toLowerCase().startsWith("en"),
+  );
+
+  return english.find((voice) =>
+    String(voice.lang ?? "").toLowerCase() === normalizedRegion
+      && /google/i.test(String(voice.name))
+  )
+    ?? english.find((voice) =>
+      String(voice.lang ?? "").toLowerCase() === normalizedRegion
+    )
     ?? english[0]
     ?? null;
 }
 
 /** 現在の言語設定に対応する固定音声を返す。 */
-function getSelectedSpeechVoice() {
-  return isEnglish() ? getEnglishSpeechVoice() : getJapaneseSpeechVoice();
+function getSelectedSpeechVoice(voices = getSpeechVoices()) {
+  return isEnglish()
+    ? getEnglishSpeechVoice(voices)
+    : getJapaneseSpeechVoice(voices);
 }
 
 /** 日本語固定 / English US・UK選択の表示を同期する。 */
 function updateVoiceModeUi() {
   const english = isEnglish();
 
-  if (englishVoiceRow) englishVoiceRow.hidden = !english;
-  if (englishVoiceSelect) {
-    englishVoiceSelect.value =
-      state.englishVoiceRegion === "en-GB" ? "en-GB" : "en-US";
+  if (englishVoiceRow) {
+    englishVoiceRow.hidden = !english;
+    englishVoiceRow.style.display = english ? "grid" : "none";
   }
+
+  englishVoiceInputs.forEach((input) => {
+    input.checked = input.value === state.englishVoiceRegion;
+  });
+
   if (voiceModeLabel) {
     voiceModeLabel.textContent = english
       ? ui("英語：Google音声", "English: Google voice")
@@ -2010,10 +2062,17 @@ function speakText(message) {
     return false;
   }
 
+  void speakTextWhenVoicesReady(message);
+  return true;
+}
+
+/** 音声一覧の読み込みを待ってからGoogle音声を指定して読み上げる。 */
+async function speakTextWhenVoicesReady(message) {
+  const voices = await waitForSpeechVoices();
   window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(message);
-  const voice = getSelectedSpeechVoice();
+  const voice = getSelectedSpeechVoice(voices);
 
   if (voice) {
     utterance.voice = voice;
@@ -2041,16 +2100,12 @@ function speakText(message) {
   utterance.addEventListener("end", () => updateVoiceStatus());
   utterance.addEventListener("error", () => {
     updateVoiceStatus(
-      ui(
-        "音声の再生に失敗しました。",
-        "Voice playback failed.",
-      ),
+      ui("音声の再生に失敗しました。", "Voice playback failed."),
       "error",
     );
   });
 
   window.speechSynthesis.speak(utterance);
-  return true;
 }
 
 /** 自動案内開始時の安全メッセージを読み上げる。 */
@@ -2094,7 +2149,7 @@ function updateVoiceAvailability() {
   });
 
   if (voiceEnabledInput) voiceEnabledInput.disabled = !supported;
-  if (englishVoiceSelect) englishVoiceSelect.disabled = !supported;
+  englishVoiceInputs.forEach((input) => { input.disabled = !supported; });
 
   if (supported) {
     updateVoiceModeUi();
@@ -2265,18 +2320,23 @@ voicePreviewButton?.addEventListener("click", previewSelectedVoice);
 voiceEnabledInput?.addEventListener("change", () => {
   state.voiceEnabled = voiceEnabledInput.checked;
 });
-englishVoiceSelect?.addEventListener("change", () => {
-  state.englishVoiceRegion =
-    englishVoiceSelect.value === "en-GB" ? "en-GB" : "en-US";
-  updateVoiceModeUi();
-  try {
-    localStorage.setItem(
-      "parkingGuideEnglishVoiceRegion",
-      state.englishVoiceRegion,
-    );
-  } catch {
-    /* 保存できない環境でも現在の選択は利用する。 */
-  }
+englishVoiceInputs.forEach((input) => {
+  input.addEventListener("change", () => {
+    if (!input.checked) return;
+
+    state.englishVoiceRegion =
+      input.value === "en-GB" ? "en-GB" : "en-US";
+    updateVoiceModeUi();
+
+    try {
+      localStorage.setItem(
+        "parkingGuideEnglishVoiceRegion",
+        state.englishVoiceRegion,
+      );
+    } catch {
+      /* 保存できない環境でも現在の選択は利用する。 */
+    }
+  });
 });
 
 savePrivateTestLocationButton?.addEventListener("click", () => {
