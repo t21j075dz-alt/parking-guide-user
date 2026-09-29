@@ -206,20 +206,25 @@
               <input id="voice-enabled" type="checkbox" checked>
               <span>
                 <strong id="voice-settings-title">音声案内を使用</strong>
-                <small>端末・ブラウザーに搭載された無料音声を使用します。日本語・英語とも自然な音声を優先して自動選択します。</small>
+                <small>日本語はGoogle 日本語を固定で使用します。EnglishではGoogle US / UKのみ切り替えられます。</small>
               </span>
             </label>
 
             <div class="voice-choice-row">
-              <label for="voice-select">音声</label>
-              <select id="voice-select">
-                <option value="">自動（自然な音声を優先）</option>
-              </select>
+              <span id="voice-mode-label">日本語：Google 日本語（固定）</span>
               <button class="secondary-button" id="voice-preview-button" type="button">音声を試す</button>
             </div>
 
+            <div class="voice-choice-row" id="english-voice-row" hidden>
+              <label for="english-voice-select">英語音声</label>
+              <select id="english-voice-select">
+                <option value="en-US">Google US English</option>
+                <option value="en-GB">Google UK English</option>
+              </select>
+            </div>
+
             <p id="voice-status" class="voice-status" role="status" aria-live="polite">
-              日本語 / English の切替に合わせて対応音声を選びます。利用できる音声は端末によって異なります。
+              Google音声が端末にない場合のみ、同じ言語・地域の標準音声へ切り替えます。
             </p>
           </section>
 
