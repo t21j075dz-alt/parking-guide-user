@@ -2078,11 +2078,17 @@ function speakText(message) {
       contextText: buildGeminiVoiceContext(),
     }).catch((error) => {
       console.warn("Gemini音声へ接続できないため端末音声へ切り替えます。", error);
+      const reason = String(error?.message ?? "").trim();
       setGeminiVoiceStatus(
-        ui(
-          "Gemini音声へ接続できなかったため、端末音声で読み上げます。",
-          "Gemini voice could not connect. Using the device voice instead.",
-        ),
+        reason
+          ? ui(
+              `Gemini音声へ接続できなかったため、端末音声で読み上げます。原因: ${reason}`,
+              `Gemini voice could not connect. Using the device voice instead. Reason: ${reason}`,
+            )
+          : ui(
+              "Gemini音声へ接続できなかったため、端末音声で読み上げます。",
+              "Gemini voice could not connect. Using the device voice instead.",
+            ),
         "error",
       );
       speakDeviceText(message);
