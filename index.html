@@ -16,7 +16,7 @@
     <script src="./facilities.js" defer></script>
     <script src="./sync-config.js" defer></script>
     <script src="./parking-layouts.js" defer></script>
-    <!-- OpenAI Realtime音声。通常APIキーはブラウザーへ置かず、Supabase Edge Function経由で接続する。 -->
+    <!-- Gemini Live音声。通常APIキーはブラウザーへ置かず、Supabase Edge Function経由で接続する。 -->
     <script src="./voice-assistant.js" defer></script>
     <script src="./app.js" defer></script>
   </head>
@@ -208,28 +208,28 @@
               <input id="voice-enabled" type="checkbox" checked>
               <span>
                 <strong id="voice-settings-title">音声案内を使用</strong>
-                <small>OpenAI AI音声を優先し、利用できない場合は端末音声へ切り替えます。</small>
+                <small>Gemini Live AI音声（無料枠）を優先し、利用できない場合は端末音声へ切り替えます。</small>
               </span>
             </label>
 
             <div class="voice-choice-row">
               <label for="voice-provider-select">音声方式</label>
               <select id="voice-provider-select">
-                <option value="openai">OpenAI AI音声（推奨）</option>
+                <option value="gemini">Gemini Live AI音声（無料枠・推奨）</option>
                 <option value="device">端末音声（予備）</option>
               </select>
               <button class="secondary-button" id="voice-preview-button" type="button">音声を試す</button>
             </div>
 
-            <div class="voice-choice-row" id="openai-voice-row">
-              <label for="openai-voice-select">OpenAI音声</label>
-              <select id="openai-voice-select">
-                <option value="marin">Marin（明瞭・推奨）</option>
-                <option value="cedar">Cedar（落ち着いた声）</option>
-                <option value="coral">Coral</option>
-                <option value="alloy">Alloy</option>
+            <div class="voice-choice-row" id="gemini-voice-row">
+              <label for="gemini-voice-select">Gemini音声</label>
+              <select id="gemini-voice-select">
+                <option value="Kore">Kore（推奨）</option>
+                <option value="Puck">Puck</option>
+                <option value="Aoede">Aoede</option>
+                <option value="Charon">Charon</option>
               </select>
-              <span class="voice-badge">AI</span>
+              <span class="voice-badge">無料枠</span>
             </div>
 
             <div class="voice-choice-row" id="device-voice-row" hidden>
@@ -240,11 +240,11 @@
               <span class="voice-badge">端末</span>
             </div>
 
-            <p id="openai-voice-status" class="voice-status" role="status" aria-live="polite">
-              OpenAI音声は初回利用時に接続します。
+            <p id="gemini-voice-status" class="voice-status" role="status" aria-live="polite">
+              Gemini Live音声は初回利用時に接続します。
             </p>
             <p class="voice-status">
-              OpenAI音声では案内文をOpenAI APIへ送信します。AIアシスタント中のみマイクを使用し、会話音声もOpenAI APIへ送信します。
+              Gemini音声では案内文をGemini APIへ送信します。AIアシスタント中のみマイクを使用し、会話音声もGemini APIへ送信します。Free Tierでは送信内容がGoogleのサービス改善に利用される場合があります。
             </p>
           </section>
 
@@ -349,7 +349,7 @@
 
           <section class="ai-assistant-panel" aria-labelledby="ai-assistant-title">
             <div class="ai-assistant-heading">
-              <h2 id="ai-assistant-title">OpenAI 駐車場アシスタント</h2>
+              <h2 id="ai-assistant-title">Gemini 駐車場アシスタント</h2>
               <span class="ai-status-dot" aria-hidden="true"></span>
             </div>
             <p id="ai-assistant-status" class="voice-status" role="status" aria-live="polite">
