@@ -170,14 +170,13 @@ background: {
 
 利用者画面の音声案内は、外部AI APIではなくブラウザー標準の **Web Speech API（SpeechSynthesis）** を使用します。
 
-- APIキー不要
-- 従量課金なし
-- 日本語・英語の表示切替に合わせて音声も自動切替
-- 端末に搭載されている対応音声を一覧から手動選択可能
-- Natural / Neural / Premium / Enhanced と表示される音声を優先
-- 日本語ではGoogle 日本語、Microsoft Nanami・Keita、Apple Kyoko・O-Ren系などを優先候補にする
-- 英語ではNatural系、Google English、Microsoft Aria・Jenny等、Apple Samantha・Ava等を優先候補にする
-- 読み上げ速度は、日本語0.92、英語0.90を標準にする
+- APIキー不要・従量課金なし
+- 日本語は **Google 日本語** を固定で優先
+- 日本語の読み上げ速度は **1.2倍**
+- 英語は **Google US English / Google UK English** の2択のみ
+- Google音声が端末にない場合だけ、同じ言語・地域の標準音声へ自動フォールバック
+- それ以外の音声を利用者が選択するUIは表示しない
+- 外部AIへ案内文やマイク音声を送信しない
 
-利用できる音声と品質はOS・ブラウザー・インストール済み音声によって異なります。
-外部AIへ案内文やマイク音声を送信しません。
+Web Speech APIで利用できるGoogle音声はOS・ブラウザーによって異なります。
+特にGoogle音声を提供していない環境では、同じ言語・地域の端末標準音声を使用します。
