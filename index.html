@@ -16,8 +16,6 @@
     <script src="./facilities.js" defer></script>
     <script src="./sync-config.js" defer></script>
     <script src="./parking-layouts.js" defer></script>
-    <!-- Gemini Live音声。通常APIキーはブラウザーへ置かず、Supabase Edge Function経由で接続する。 -->
-    <script src="./voice-assistant.js" defer></script>
     <script src="./app.js" defer></script>
   </head>
 
@@ -208,43 +206,20 @@
               <input id="voice-enabled" type="checkbox" checked>
               <span>
                 <strong id="voice-settings-title">音声案内を使用</strong>
-                <small>Gemini Live AI音声（無料枠）を優先し、利用できない場合は端末音声へ切り替えます。</small>
+                <small>端末・ブラウザーに搭載された無料音声を使用します。日本語・英語とも自然な音声を優先して自動選択します。</small>
               </span>
             </label>
 
             <div class="voice-choice-row">
-              <label for="voice-provider-select">音声方式</label>
-              <select id="voice-provider-select">
-                <option value="gemini">Gemini Live AI音声（無料枠・推奨）</option>
-                <option value="device">端末音声（予備）</option>
+              <label for="voice-select">音声</label>
+              <select id="voice-select">
+                <option value="">自動（自然な音声を優先）</option>
               </select>
               <button class="secondary-button" id="voice-preview-button" type="button">音声を試す</button>
             </div>
 
-            <div class="voice-choice-row" id="gemini-voice-row">
-              <label for="gemini-voice-select">Gemini音声</label>
-              <select id="gemini-voice-select">
-                <option value="Kore">Kore（推奨）</option>
-                <option value="Puck">Puck</option>
-                <option value="Aoede">Aoede</option>
-                <option value="Charon">Charon</option>
-              </select>
-              <span class="voice-badge">無料枠</span>
-            </div>
-
-            <div class="voice-choice-row" id="device-voice-row" hidden>
-              <label for="voice-select">端末音声</label>
-              <select id="voice-select">
-                <option value="">自動（聞き取りやすい音声）</option>
-              </select>
-              <span class="voice-badge">端末</span>
-            </div>
-
-            <p id="gemini-voice-status" class="voice-status" role="status" aria-live="polite">
-              Gemini Live音声は初回利用時に接続します。
-            </p>
-            <p class="voice-status">
-              Gemini音声では案内文をGemini APIへ送信します。AIアシスタント中のみマイクを使用し、会話音声もGemini APIへ送信します。Free Tierでは送信内容がGoogleのサービス改善に利用される場合があります。
+            <p id="voice-status" class="voice-status" role="status" aria-live="polite">
+              日本語 / English の切替に合わせて対応音声を選びます。利用できる音声は端末によって異なります。
             </p>
           </section>
 
@@ -342,21 +317,9 @@
 
           <div class="button-group result-actions">
             <button class="secondary-button" id="voice-guide-button" type="button">音声で案内</button>
-            <button class="secondary-button ai-assistant-button" id="ai-assistant-button" type="button">AIアシスタント</button>
             <button class="secondary-button" id="retry-button" type="button">空き状況を更新</button>
             <button class="primary-button" id="end-guidance-button" type="button">案内を終了</button>
           </div>
-
-          <section class="ai-assistant-panel" aria-labelledby="ai-assistant-title">
-            <div class="ai-assistant-heading">
-              <h2 id="ai-assistant-title">Gemini 駐車場アシスタント</h2>
-              <span class="ai-status-dot" aria-hidden="true"></span>
-            </div>
-            <p id="ai-assistant-status" class="voice-status" role="status" aria-live="polite">
-              「AIアシスタント」を押すと、マイクで駐車場について質問できます。
-            </p>
-            <p id="ai-assistant-transcript" class="ai-assistant-transcript" aria-live="polite" hidden></p>
-          </section>
         </div>
       </section>
 
