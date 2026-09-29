@@ -2065,7 +2065,7 @@ function speakDeviceText(message) {
   return true;
 }
 
-/** 指定文をOpenAI AI音声、または端末音声で読み上げる。 */
+/** 指定文をGemini Live AI音声、または端末音声で読み上げる。 */
 function speakText(message) {
   if (!message) return false;
 
