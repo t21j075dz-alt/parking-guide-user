@@ -6,8 +6,6 @@
    ========================================================= */
 
 const GEMINI_TOKEN_URL = "https://generativelanguage.googleapis.com/v1beta/auth_tokens";
-const MODEL = "models/gemini-3.8-live";
-
 function corsHeaders(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
@@ -78,16 +76,14 @@ Deno.serve(async (request) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
+      /*
+       * ephemeral token自体にはモデル・音声を固定しない。
+       * Gemini Live接続時のsetupでモデル、音声、システム指示を指定する。
+       * これによりKore/Puck等の音声切替も維持できる。
+       */
       uses: 1,
       expireTime,
       newSessionExpireTime,
-      liveConnectConstraints: {
-        model: MODEL,
-        config: {
-          sessionResumption: {},
-          responseModalities: ["AUDIO"],
-        },
-      },
     }),
   });
 
