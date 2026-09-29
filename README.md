@@ -165,3 +165,52 @@ background: {
 - `target_117`：ホームプラザナフコ 谷山店（鹿児島県）
 
 置換店舗では `facilityRevision` とレイアウトの店舗識別キーを照合し、旧店舗の航空写真・配置図が残っていても新店舗へ誤表示しないようにしています。
+
+
+## OpenAI Realtime 音声案内
+
+利用者画面にはOpenAI Realtime APIを使った音声案内を追加しています。
+
+- 既定：OpenAI AI音声
+- 音声：Marin / Cedar / Coral / Alloy
+- 日本語・英語に対応
+- 案内結果をOpenAI音声で読み上げ
+- 結果画面からAIアシスタントを開始すると、マイクで質問可能
+- OpenAIへ接続できない場合は端末標準のspeechSynthesisへフォールバック
+- 読み上げだけの場合はマイクを取得しない
+- AIアシスタント中だけマイクを取得する
+
+### 構成
+
+```text
+GitHub Pages（利用者画面）
+        ↓ ephemeral key要求
+Supabase Edge Function
+        ↓ OPENAI_API_KEY
+OpenAI Realtime API
+        ↕ WebRTC
+利用者ブラウザー
+```
+
+通常のOpenAI APIキーはGitHub Pagesへ置きません。
+`supabase/functions/openai-realtime-token/index.ts` がOpenAIのclient secretを生成し、
+ブラウザーには短時間だけ有効な `ek_...` トークンだけを返します。
+
+### 有効化
+
+Supabase側へOpenAI APIキーをSecretとして登録します。
+
+```bash
+supabase secrets set OPENAI_API_KEY=sk-proj-...
+supabase functions deploy openai-realtime-token
+```
+
+詳細は `supabase/OPENAI_VOICE_SETUP.md` を参照してください。
+
+### 研究上の安全策
+
+AIへは現在の施設、目的店舗、案内区画、区画種類、入口距離、アプリが把握している空き区画などの情報だけを渡します。
+プロンプトでは、アプリにない空き状況・区画番号・距離・経路を推測しないよう制限しています。
+
+OpenAI音声では案内文をOpenAI APIへ送信します。
+AIアシスタントを開始した場合のみマイクを有効にし、会話音声をOpenAI APIへ送信します。
