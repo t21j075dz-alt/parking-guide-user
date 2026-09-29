@@ -16,6 +16,8 @@
     <script src="./facilities.js" defer></script>
     <script src="./sync-config.js" defer></script>
     <script src="./parking-layouts.js" defer></script>
+    <!-- OpenAI Realtime音声。通常APIキーはブラウザーへ置かず、Supabase Edge Function経由で接続する。 -->
+    <script src="./voice-assistant.js" defer></script>
     <script src="./app.js" defer></script>
   </head>
 
@@ -204,15 +206,43 @@
           <section class="voice-settings" aria-labelledby="voice-settings-title">
             <label class="voice-option">
               <input id="voice-enabled" type="checkbox" checked>
-              <span><strong id="voice-settings-title">音声案内を使用</strong><small>案内先が決まったときに端末の音声で読み上げます。</small></span>
+              <span>
+                <strong id="voice-settings-title">音声案内を使用</strong>
+                <small>OpenAI AI音声を優先し、利用できない場合は端末音声へ切り替えます。</small>
+              </span>
             </label>
+
             <div class="voice-choice-row">
-              <label for="voice-select">音声</label>
-              <select id="voice-select">
-                <option value="">自動（聞き取りやすい音声）</option>
+              <label for="voice-provider-select">音声方式</label>
+              <select id="voice-provider-select">
+                <option value="openai">OpenAI AI音声（推奨）</option>
+                <option value="device">端末音声（予備）</option>
               </select>
               <button class="secondary-button" id="voice-preview-button" type="button">音声を試す</button>
             </div>
+
+            <div class="voice-choice-row" id="openai-voice-row">
+              <label for="openai-voice-select">OpenAI音声</label>
+              <select id="openai-voice-select">
+                <option value="marin">Marin（明瞭・推奨）</option>
+                <option value="cedar">Cedar（落ち着いた声）</option>
+                <option value="coral">Coral</option>
+                <option value="alloy">Alloy</option>
+              </select>
+              <span class="voice-badge">AI</span>
+            </div>
+
+            <div class="voice-choice-row" id="device-voice-row" hidden>
+              <label for="voice-select">端末音声</label>
+              <select id="voice-select">
+                <option value="">自動（聞き取りやすい音声）</option>
+              </select>
+              <span class="voice-badge">端末</span>
+            </div>
+
+            <p id="openai-voice-status" class="voice-status" role="status" aria-live="polite">
+              OpenAI音声は初回利用時に接続します。
+            </p>
           </section>
 
           <div class="condition-actions">
@@ -309,9 +339,21 @@
 
           <div class="button-group result-actions">
             <button class="secondary-button" id="voice-guide-button" type="button">音声で案内</button>
+            <button class="secondary-button ai-assistant-button" id="ai-assistant-button" type="button">AIアシスタント</button>
             <button class="secondary-button" id="retry-button" type="button">空き状況を更新</button>
             <button class="primary-button" id="end-guidance-button" type="button">案内を終了</button>
           </div>
+
+          <section class="ai-assistant-panel" aria-labelledby="ai-assistant-title">
+            <div class="ai-assistant-heading">
+              <h2 id="ai-assistant-title">OpenAI 駐車場アシスタント</h2>
+              <span class="ai-status-dot" aria-hidden="true"></span>
+            </div>
+            <p id="ai-assistant-status" class="voice-status" role="status" aria-live="polite">
+              「AIアシスタント」を押すと、マイクで駐車場について質問できます。
+            </p>
+            <p id="ai-assistant-transcript" class="ai-assistant-transcript" aria-live="polite" hidden></p>
+          </section>
         </div>
       </section>
 
