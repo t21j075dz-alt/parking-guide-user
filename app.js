@@ -841,6 +841,10 @@ function updateFacilityDistances() {
    管理画面からのクラウドレイアウト取得
    ========================================================= */
 
+// クラウドで削除された施設を過去の通信結果から復活させないよう、同梱分を分離する。
+const bundledParkingLayouts = window.PARKING_LAYOUTS ?? {};
+let remoteLayoutRequestId = 0;
+
 /** Supabaseに保存された最新レイアウトを読み込み、同梱データより優先する。 */
 async function loadRemoteParkingLayouts() {
   const config = window.PARKING_REMOTE_CONFIG ?? {};
@@ -850,21 +854,25 @@ async function loadRemoteParkingLayouts() {
     return;
   }
 
+  const requestId = ++remoteLayoutRequestId;
   try {
     const response = await fetch(`${url}/rest/v1/parking_layouts?select=facility_id,layout_data,updated_at`, {
       headers: {
         apikey: publishableKey,
-        Authorization: `Bearer ${publishableKey}`,
       },
       cache: "no-store",
+      signal: AbortSignal.timeout(10000),
     });
     if (!response.ok) {
       return;
     }
     const rows = await response.json();
-    const layouts = { ...(window.PARKING_LAYOUTS ?? {}) };
+    if (!Array.isArray(rows) || requestId !== remoteLayoutRequestId) return;
+    const layouts = { ...bundledParkingLayouts };
     rows.forEach((row) => {
-      if (row?.facility_id && row.layout_data && Array.isArray(row.layout_data.objects)) {
+      if (row?.facility_id && row.layout_data?.facilityId === row.facility_id
+          && Array.isArray(row.layout_data.objects)
+          && row.layout_data.objects.every((item) => item && typeof item === "object")) {
         layouts[row.facility_id] = row.layout_data;
       }
     });
@@ -1051,145 +1059,6 @@ function selectRecommendedSpace(spaces, priority, requestedSpaceType = "standard
     (first, second) => first.distanceScore - second.distanceScore,
   );
   return nearSpaces.find((space) => space.isWide) ?? nearSpaces[0];
-}
-
-/** オブジェクト座標をキャンバス比率へ変換する。 */
-function toPercent(value, total) {
-  if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) {
-    return 0;
-  }
-  return Math.max(0, Math.min(100, (value / total) * 100));
-}
-
-/**
- * Web Mercatorで扱える緯度の範囲へ収める。
- * 管理画面と同じ計算式を使い、航空写真と配置オブジェクトの位置関係を一致させる。
- */
-function clampMapLatitude(latitude) {
-  return Math.max(-85.05112878, Math.min(85.05112878, latitude));
-}
-
-/** 緯度経度を国土地理院XYZタイルと同じ世界ピクセル座標へ変換する。 */
-function toMapWorldPixel(latitude, longitude, zoom) {
-  const size = 256 * (2 ** zoom);
-  const lat = clampMapLatitude(latitude) * Math.PI / 180;
-  return {
-    x: ((longitude + 180) / 360) * size,
-    y: (1 - Math.log(Math.tan(lat) + (1 / Math.cos(lat))) / Math.PI) / 2 * size,
-  };
-}
-
-/**
- * 利用者マップ用の航空写真タイルを1枚生成する。
- * 高倍率タイルが取得できない場合は、管理画面と同様にズーム14まで
- * 低い倍率の親タイルを順番に試し、該当部分を拡大して空白を補う。
- */
-function createUserSatelliteTile(targetX, targetY, targetZoom, leftPx, topPx, canvasWidth, canvasHeight) {
-  const tile = document.createElement("div");
-  tile.className = "user-satellite-tile";
-  tile.style.left = `${toPercent(leftPx, canvasWidth)}%`;
-  tile.style.top = `${toPercent(topPx, canvasHeight)}%`;
-  tile.style.width = `${toPercent(257, canvasWidth)}%`;
-  tile.style.height = `${toPercent(257, canvasHeight)}%`;
-
-  function loadCandidate(candidateZoom) {
-    if (candidateZoom < 14) {
-      tile.classList.add("is-missing");
-      return;
-    }
-
-    const difference = targetZoom - candidateZoom;
-    const scale = 2 ** difference;
-    const candidateTileCount = 2 ** candidateZoom;
-    const parentX = Math.floor(targetX / scale);
-    const parentY = Math.floor(targetY / scale);
-    const wrappedParentX =
-      ((parentX % candidateTileCount) + candidateTileCount) % candidateTileCount;
-    const offsetX = targetX - parentX * scale;
-    const offsetY = targetY - parentY * scale;
-
-    const image = document.createElement("img");
-    image.alt = "";
-    image.draggable = false;
-    image.decoding = "async";
-    image.loading = "eager";
-    image.style.width = `${scale * 100}%`;
-    image.style.height = `${scale * 100}%`;
-    image.style.left = `${-offsetX * 100}%`;
-    image.style.top = `${-offsetY * 100}%`;
-
-    image.addEventListener("error", () => {
-      image.remove();
-      loadCandidate(candidateZoom - 1);
-    }, { once: true });
-
-    image.src =
-      `https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/${candidateZoom}/${wrappedParentX}/${parentY}.jpg`;
-    tile.append(image);
-  }
-
-  loadCandidate(targetZoom);
-  return tile;
-}
-
-/**
- * 管理画面で位置合わせした航空写真を、利用者マップの最背面へ描画する。
- * backgroundが未登録の施設では何も描画せず、従来どおり模式図だけを表示する。
- */
-function renderRegisteredBackground(layout, canvasWidth, canvasHeight) {
-  const background = layout?.background;
-  if (!background || background.type !== "gsi-seamlessphoto") {
-    return;
-  }
-  if (!Number.isFinite(background.centerLat) || !Number.isFinite(background.centerLng)) {
-    return;
-  }
-
-  const zoom = Math.max(14, Math.min(18, Math.round(background.zoom ?? 18)));
-  const tileCount = 2 ** zoom;
-  const center = toMapWorldPixel(background.centerLat, background.centerLng, zoom);
-  const topLeftX = center.x - canvasWidth / 2;
-  const topLeftY = center.y - canvasHeight / 2;
-
-  const startTileX = Math.floor(topLeftX / 256) - 1;
-  const endTileX = Math.floor((topLeftX + canvasWidth) / 256) + 1;
-  const startTileY = Math.floor(topLeftY / 256) - 1;
-  const endTileY = Math.floor((topLeftY + canvasHeight) / 256) + 1;
-
-  const layer = document.createElement("div");
-  layer.className = "user-satellite-layer";
-  layer.style.opacity = String(
-    Math.max(0.15, Math.min(1, Number(background.opacity) || 0.75)),
-  );
-  layer.setAttribute("aria-hidden", "true");
-
-  for (let tileY = startTileY; tileY <= endTileY; tileY += 1) {
-    if (tileY < 0 || tileY >= tileCount) {
-      continue;
-    }
-
-    for (let tileX = startTileX; tileX <= endTileX; tileX += 1) {
-      const wrappedX = ((tileX % tileCount) + tileCount) % tileCount;
-      const tile = createUserSatelliteTile(
-        wrappedX,
-        tileY,
-        zoom,
-        tileX * 256 - topLeftX - 0.5,
-        tileY * 256 - topLeftY - 0.5,
-        canvasWidth,
-        canvasHeight,
-      );
-      layer.append(tile);
-    }
-  }
-
-  parkingMap.append(layer);
-
-  /* 国土地理院の航空写真を表示するため、利用者画面にも出典を明記する。 */
-  const attribution = document.createElement("span");
-  attribution.className = "map-photo-attribution";
-  attribution.textContent = "出典：国土地理院 全国最新写真（シームレス）";
-  parkingMap.append(attribution);
 }
 
 /** オブジェクトの描画サイズを管理画面と同じ保存値から取得する。 */
@@ -1597,6 +1466,15 @@ function showScreen(screenName, options = {}) {
     return;
   }
 
+  if (screenName !== state.currentScreen && screenName !== "result") {
+    state.searchRequestId += 1;
+    cancelSpeech();
+  }
+  if (screenName === "facility" || screenName === "condition") {
+    state.autoProximityArmed = false;
+    state.autoTriggeredFacilityId = null;
+  }
+
   document.querySelectorAll("[data-screen]").forEach((screen) => {
     screen.hidden = screen.dataset.screen !== screenName;
   });
@@ -1875,7 +1753,13 @@ function prepareSpaces(facility) {
 /** 空き区画検索を実行する。 */
 async function runSpaceSearch(priorityOverride = null, options = {}) {
   const { autoTriggered = false, skipSafetyGuard = false } = options;
+  // 通信を待つ前に依頼元を固定し、戻る操作・施設変更・再検索で無効化する。
+  const requestId = ++state.searchRequestId;
+  const facility = state.selectedFacility;
   await loadRemoteParkingLayouts();
+  if (requestId !== state.searchRequestId || state.selectedFacility !== facility) {
+    return { cancelled: true };
+  }
   if (!skipSafetyGuard && window.parkingSafety && !window.parkingSafety.guardOperation()) {
     return { cancelled: true };
   }
@@ -1892,8 +1776,6 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
   );
   if (matchingRadio) matchingRadio.checked = true;
 
-  const requestId = ++state.searchRequestId;
-  const facility = state.selectedFacility;
   const priority = state.selectedPriority;
   state.recommendedSpace = null;
 
@@ -1901,7 +1783,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
     showScreen("result", { moveFocus: !autoTriggered });
   }
   resultContent.hidden = true;
-  searchStatus.textContent = "空き区画を確認しています…";
+  searchStatus.textContent = ui("空き区画を確認しています…", "Checking available spaces…");
 
   return new Promise((resolve) => {
     window.setTimeout(() => {
@@ -1948,6 +1830,16 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
         searchStatus.textContent = ui(
           `${getFacilityDisplayName(facility)}の研究用シミュレーション結果です。`,
           `Research simulation result for ${getFacilityDisplayName(facility)}.`,
+        );
+      } else if (!prepared.entrance) {
+        // 入口がない場合、Infinityの比較結果を距離による案内と説明しない。
+        spaceDescription.textContent = ui(
+          "案内対象の店舗入口が未登録のため、入口までの距離は表示できません。",
+          "Distance is unavailable because no destination entrance is registered.",
+        );
+        searchStatus.textContent = ui(
+          `${getFacilityDisplayName(facility)}の登録レイアウトから案内先を選びました。`,
+          `A parking space was selected from the registered layout for ${getFacilityDisplayName(facility)}.`,
         );
       } else if (Number.isFinite(state.recommendedSpace.entranceDistanceMeters)) {
         const entranceName = prepared.entrance?.name || "建物入口";
@@ -2258,6 +2150,14 @@ function updateVoiceStatus(message = "", stateName = "") {
   voiceStatus.classList.toggle("is-error", stateName === "error");
 }
 
+let speechRequestId = 0;
+
+/** 再生中だけでなく、音声一覧を待っている読み上げも取り消す。 */
+function cancelSpeech() {
+  speechRequestId += 1;
+  window.speechSynthesis?.cancel?.();
+}
+
 /** Web Speech APIで無料読み上げを行う。 */
 function speakText(message) {
   if (!message || !("speechSynthesis" in window)
@@ -2271,7 +2171,9 @@ function speakText(message) {
 
 /** 音声一覧の読み込みを待ってからGoogle音声を指定して読み上げる。 */
 async function speakTextWhenVoicesReady(message) {
+  const requestId = ++speechRequestId;
   const voices = await waitForSpeechVoices();
+  if (requestId !== speechRequestId) return;
   window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(message);
@@ -2292,7 +2194,7 @@ async function speakTextWhenVoicesReady(message) {
     utterance.lang = locale;
   }
 
-  /* 日本語1.2倍、英語0.90倍、中国語・韓国語・スペイン語0.95倍。 */
+  /* 速度設定は getGuidanceSpeechRate に集約する。 */
   utterance.rate = getGuidanceSpeechRate();
   utterance.pitch = 1;
   utterance.volume = 1;
@@ -2487,7 +2389,7 @@ function endGuidance() {
   state.autoProximityArmed = false;
   state.proximitySearchRunning = false;
   state.autoTriggeredFacilityId = null;
-  window.speechSynthesis?.cancel?.();
+  cancelSpeech();
   window.parkingSafety?.stop?.(
     ui("案内を終了しました。位置情報の取得を停止しました。", "Guidance ended. Location tracking stopped."),
   );
@@ -2548,7 +2450,7 @@ facilityList.addEventListener("click", (event) => {
 textSizeButton.addEventListener("click", toggleTextSize);
 themeButton.addEventListener("click", toggleTheme);
 languageButton.addEventListener("click", () => {
-  window.speechSynthesis?.cancel?.();
+  cancelSpeech();
   applyLanguage(isEnglish() ? "ja" : "en");
 });
 destinationSelect?.addEventListener("change", () => {
@@ -2561,6 +2463,7 @@ voiceGuideButton?.addEventListener("click", () => {
 voicePreviewButton?.addEventListener("click", previewSelectedVoice);
 voiceEnabledInput?.addEventListener("change", () => {
   state.voiceEnabled = voiceEnabledInput.checked;
+  if (!state.voiceEnabled) cancelSpeech();
 });
 guidanceVoiceInputs.forEach((input) => {
   input.addEventListener("change", () => {
@@ -2666,11 +2569,11 @@ conditionForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  await ensureFacilityCoordinate(state.selectedFacility);
+  const facility = state.selectedFacility;
+  const requestId = ++state.searchRequestId;
+  await ensureFacilityCoordinate(facility);
+  if (requestId !== state.searchRequestId || state.selectedFacility !== facility) return;
 
-  if (state.voiceEnabled) {
-    speakAutomaticGuidanceStartMessage();
-  }
   state.autoProximityArmed = true;
   state.autoTriggeredFacilityId = null;
   state.recommendedSpace = null;
@@ -2680,6 +2583,9 @@ conditionForm.addEventListener("submit", async (event) => {
   updateWaitingScreen();
   updateProximityStatus();
   showScreen("waiting");
+  if (state.voiceEnabled) {
+    speakAutomaticGuidanceStartMessage();
+  }
   void checkAutomaticProximitySearch();
 });
 
