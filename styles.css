@@ -2008,3 +2008,21 @@ html[data-theme="dark"] .parking-map.parking-map--layout {
 @media (min-width: 42rem) {
   .map-legend { grid-template-columns: repeat(4, max-content); }
 }
+
+/* 路面標示なしの区画でも、利用者が区画同士の境界を判別できるようにする。 */
+.parking-map--layout .map-object--parkingSpace:not(.is-recommended) {
+  outline: 1px solid var(--color-available);
+  outline-offset: -1px;
+}
+.parking-map--layout .map-object--parkingSpace.is-occupied:not(.is-recommended) {
+  outline-color: var(--color-occupied);
+}
+.parking-map--layout .map-object--parkingEntrance {
+  overflow: visible;
+}
+.parking-map--layout .map-object--parkingEntrance .map-object-label {
+  width: max-content;
+  max-width: 140px;
+  font-size: 12px;
+  line-height: 1.3;
+}
