@@ -453,6 +453,12 @@ const spaceDescription = document.querySelector("#space-description");
 const priorityBadge = document.querySelector("#priority-badge");
 const parkingMap = document.querySelector("#parking-map");
 const parkingMapTitle = document.querySelector("#parking-map-title");
+const mapViewControls = document.querySelector("#map-view-controls");
+const mapFocusButton = document.querySelector("#map-focus-button");
+const mapOverviewButton = document.querySelector("#map-overview-button");
+// 表示倍率は利用者側だけの状態。保存された配置データには書き込まない。
+let mapViewMode = "focus";
+let renderedMap = null;
 const updatedTime = document.querySelector("#updated-time");
 const voiceGuideButton = document.querySelector("#voice-guide-button");
 const retryButton = document.querySelector("#retry-button");
@@ -1261,14 +1267,82 @@ function calculateLayoutCrop(layout, supportedTypes) {
   };
 }
 
-/** 管理画面で作成した実レイアウトを簡易表示する。 */
+/**
+ * 案内区画と対象入口の両方が入る範囲を作り、画面と同じ縦横比に広げる。
+ * 縦横を同じ倍率にするため、区画・道路の位置や回転は変形しない。
+ * 余白は画面上のラベル分を確保する。端の区画でも番号が切れない。
+ */
+function calculateGuidanceViewport(layout, recommendedSpace, supportedTypes, entrance) {
+  const screenWidth = parkingMap.clientWidth || 360;
+  const screenHeight = parkingMap.clientHeight || 400;
+  const aspect = screenWidth / screenHeight;
+  const target = recommendedSpace?.sourceObject;
+  const points = target ? [target, ...(entrance ? [entrance] : [])] : [];
+  let bounds;
+  if (mapViewMode === "focus" && points.length) {
+    const boxes = points.map(getRotatedObjectBounds);
+    bounds = {
+      x: Math.min(...boxes.map((box) => box.minX)),
+      y: Math.min(...boxes.map((box) => box.minY)),
+      width: Math.max(...boxes.map((box) => box.maxX)) - Math.min(...boxes.map((box) => box.minX)),
+      height: Math.max(...boxes.map((box) => box.maxY)) - Math.min(...boxes.map((box) => box.minY)),
+    };
+  } else {
+    bounds = calculateLayoutCrop(layout, supportedTypes);
+  }
+  const horizontalPadding = Math.min(90, screenWidth * 0.28);
+  const verticalPadding = 64;
+  const width = Math.max(100, bounds.width) / Math.max(0.1, 1 - 2 * horizontalPadding / screenWidth);
+  const height = Math.max(100, bounds.height) / Math.max(0.1, 1 - 2 * verticalPadding / screenHeight);
+  const viewWidth = Math.max(width, height * aspect);
+  const viewHeight = viewWidth / aspect;
+  return {
+    x: bounds.x + bounds.width / 2 - viewWidth / 2,
+    y: bounds.y + bounds.height / 2 - viewHeight / 2,
+    width: viewWidth,
+    height: viewHeight,
+    scale: screenWidth / viewWidth,
+  };
+}
+
+/** 読める大きさの番号・入口ラベルを、回転させず実際の中心位置に付ける。 */
+function appendGuidanceMarker(object, crop, kind, text) {
+  const { width, height } = getLayoutObjectSize(object);
+  const marker = document.createElement("div");
+  marker.className = `guidance-map-marker guidance-map-marker--${kind}`;
+  marker.style.left = `${((Number(object.x) + width / 2 - crop.x) / crop.width) * 100}%`;
+  marker.style.top = `${((Number(object.y) + height / 2 - crop.y) / crop.height) * 100}%`;
+  marker.setAttribute("aria-hidden", "true");
+  const label = document.createElement("span");
+  label.className = "guidance-map-label";
+  if (kind === "space") {
+    const caption = document.createElement("small");
+    caption.textContent = ui("案内先", "Your space");
+    const number = document.createElement("strong");
+    number.textContent = text;
+    label.append(caption, number);
+  } else {
+    label.textContent = text;
+  }
+  marker.append(label);
+  parkingMap.append(marker);
+}
+
+/** 管理画面の配置を使い、案内に必要な情報を利用者向けに表示する。 */
 function renderRegisteredLayout(layout, recommendedSpace) {
   parkingMap.replaceChildren();
   parkingMap.className = "parking-map parking-map--layout";
-  parkingMapTitle.textContent = "駐車場マップ";
+  parkingMapTitle.textContent = ui("駐車場マップ", "Parking map");
 
-  const canvasWidth = Number(layout.canvas?.width) || 1000;
-  const canvasHeight = Number(layout.canvas?.height) || 700;
+  if (renderedMap?.layout !== layout || renderedMap?.space?.uid !== recommendedSpace?.uid) {
+    mapViewMode = "focus";
+  }
+  renderedMap = { layout, space: recommendedSpace };
+  mapViewControls.hidden = false;
+  mapFocusButton.textContent = ui("案内先を拡大", "Focus on space");
+  mapOverviewButton.textContent = ui("全体を見る", "Show overview");
+  mapFocusButton.setAttribute("aria-pressed", String(mapViewMode === "focus"));
+  mapOverviewButton.setAttribute("aria-pressed", String(mapViewMode === "overview"));
 
   const polygonTypes = new Set([
     "parkingLot",
@@ -1303,9 +1377,15 @@ function renderRegisteredLayout(layout, recommendedSpace) {
     "evCharger",
   ]);
 
-  const crop = calculateLayoutCrop(layout, supportedTypes);
-  parkingMap.style.aspectRatio = `${crop.width} / ${crop.height}`;
+  const entrance = state.guideEntrance;
+  const crop = calculateGuidanceViewport(layout, recommendedSpace, supportedTypes, entrance);
+  parkingMap.removeAttribute("style");
   parkingMap.dataset.cropped = "true";
+  parkingMap.dataset.viewMode = mapViewMode;
+  parkingMap.setAttribute("aria-label", ui(
+    `駐車場マップ。案内先 ${recommendedSpace?.id ?? ""}。${entrance ? "対象の店舗入口を表示しています。" : "案内対象の入口は未登録です。"}`,
+    `Parking map. Your space: ${recommendedSpace?.id ?? ""}. ${entrance ? "The destination entrance is shown." : "No destination entrance is registered."}`,
+  ));
 
   layout.objects
     .filter((object) => supportedTypes.has(object.objectType))
@@ -1317,16 +1397,16 @@ function renderRegisteredLayout(layout, recommendedSpace) {
        * 管理画面と同じ仕様：x/y は常にオブジェクト外接矩形の左上。
        * 小型設備も中心座標へ変換せず、同じwidth/height/rotationを比率縮小する。
        */
-      item.style.left = `${toPercent((Number(object.x) || 0) - crop.x, crop.width)}%`;
-      item.style.top = `${toPercent((Number(object.y) || 0) - crop.y, crop.height)}%`;
+      item.style.left = `${(((Number(object.x) || 0) - crop.x) / crop.width) * 100}%`;
+      item.style.top = `${(((Number(object.y) || 0) - crop.y) / crop.height) * 100}%`;
 
       const { width: objectWidth, height: objectHeight } = getLayoutObjectSize(object);
       const hasSize = Number.isFinite(objectWidth) && Number.isFinite(objectHeight)
         && objectWidth > 0 && objectHeight > 0;
 
       if (hasSize) {
-        item.style.width = `${toPercent(objectWidth, crop.width)}%`;
-        item.style.height = `${toPercent(objectHeight, crop.height)}%`;
+        item.style.width = `${(objectWidth / crop.width) * 100}%`;
+        item.style.height = `${(objectHeight / crop.height) * 100}%`;
         item.style.transform = `rotate(${Number(object.rotation) || 0}deg)`;
 
         if (polygonTypes.has(object.objectType)) {
@@ -1372,37 +1452,24 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         if (object.spaceType === "compact") typeMark.textContent = "軽";
         if (object.spaceType === "accessible") typeMark.textContent = "♿";
         if (object.spaceType === "ev") typeMark.textContent = "EV";
-        if (typeMark.textContent) item.append(typeMark);
-
-        const displayNumber = object.spaceNumber
-          ?? String(object.name ?? "").match(/(\d{1,4})$/)?.[1]
-          ?? "";
-        if (displayNumber) {
-          const numberMark = document.createElement("span");
-          numberMark.className = "space-number-mark";
-          numberMark.textContent = String(displayNumber).padStart(3, "0");
-          item.append(numberMark);
+        if (typeMark.textContent && Math.min(objectWidth, objectHeight) * crop.scale >= 24) {
+          item.append(typeMark);
         }
 
         const isRecommended = object.uid === recommendedSpace?.uid;
         const isOccupied = object.status === "occupied" || object.status === "unavailable";
         item.classList.toggle("is-occupied", isOccupied);
         item.classList.toggle("is-recommended", isRecommended);
-        appendLabel(object.name || object.spaceNumber || "区画");
+        item.setAttribute("role", "listitem");
         item.setAttribute(
           "aria-label",
           `${object.name || object.spaceNumber || "区画"}、${isRecommended ? "案内先" : isOccupied ? "使用中" : "空き"}`,
         );
       } else if (object.objectType === "buildingEntrance") {
-        const marker = document.createElement("span");
-        marker.className = "entrance-icon";
-        marker.setAttribute("aria-hidden", "true");
-        marker.textContent = "↥";
-        const label = document.createElement("span");
-        label.className = "entrance-label";
-        label.textContent = object.name || "建物入口";
-        item.append(marker, label);
-        item.setAttribute("aria-label", label.textContent);
+        // 非公開入口は利用者の入口表示から除く。対象入口だけに大きいラベルを付ける。
+        if (object.publicAccess === false) return;
+        item.setAttribute("aria-label", object.name || ui("建物入口", "Building entrance"));
+        item.classList.toggle("is-guide-entrance", object.uid === entrance?.uid);
       } else if (object.objectType === "parkingEntrance") {
         const accessLabel = object.accessType === "entrance"
           ? "入口"
@@ -1425,12 +1492,8 @@ function renderRegisteredLayout(layout, recommendedSpace) {
       } else if (object.objectType === "evCharger") {
         appendLabel(object.name || "EV充電");
       } else if (["stopLine", "speedBump", "cartCorral", "bicycleParking",
-        "motorcycleParking", "loadingZone"].includes(object.objectType)) {
-        appendLabel(object.name || "");
-      } else if (object.objectType === "building") {
-        appendLabel(object.name || "建物");
-      } else if (object.objectType === "parkingLot") {
-        appendLabel(object.name || "駐車場敷地");
+        "motorcycleParking", "loadingZone", "building", "parkingLot"].includes(object.objectType)) {
+        // 形状を残し、管理用の名称・コピー名は利用者マップへ表示しない。
       } else if (object.objectType === "excludedParkingLot") {
         appendLabel(object.name || "対象外駐車場");
       } else if (object.objectType === "nationalRoad") {
@@ -1443,14 +1506,29 @@ function renderRegisteredLayout(layout, recommendedSpace) {
 
       parkingMap.append(item);
     });
+  if (recommendedSpace?.sourceObject) {
+    const object = recommendedSpace.sourceObject;
+    const number = object.spaceNumber ?? String(object.name ?? "").match(/(\d{1,4})$/)?.[1];
+    appendGuidanceMarker(object, crop, "space", number != null
+      ? String(number).padStart(3, "0") : recommendedSpace.id);
+  }
+  if (entrance) {
+    appendGuidanceMarker(entrance, crop, "entrance", ui("店舗入口", "Store entrance"));
+  }
+
 }
 
 /** レイアウト未登録時の研究用区画図を表示する。 */
 function renderDemoParkingMap(spaces, recommendedSpace) {
+  renderedMap = null;
+  mapViewControls.hidden = true;
+  delete parkingMap.dataset.viewMode;
+  delete parkingMap.dataset.cropped;
+  parkingMap.setAttribute("aria-label", ui("デモ駐車区画", "Demo parking spaces"));
   parkingMap.replaceChildren();
   parkingMap.className = "parking-map parking-map--demo";
   parkingMap.removeAttribute("style");
-  parkingMapTitle.textContent = "デモ区画図";
+  parkingMapTitle.textContent = ui("デモ区画図", "Demo parking spaces");
 
   spaces.forEach((space) => {
     const item = document.createElement("div");
@@ -1483,6 +1561,29 @@ function renderParkingMap(spaces, recommendedSpace, layout) {
   } else {
     renderDemoParkingMap(spaces, recommendedSpace);
   }
+}
+
+/** 表示範囲の変更は検索や空き状況の更新を行わず、現在の案内先を維持する。 */
+function setMapViewMode(mode) {
+  if (!renderedMap) return;
+  mapViewMode = mode;
+  renderRegisteredLayout(renderedMap.layout, renderedMap.space);
+}
+mapFocusButton.addEventListener("click", () => setMapViewMode("focus"));
+mapOverviewButton.addEventListener("click", () => setMapViewMode("overview"));
+
+// スマホの回転・文字拡大・非表示画面からの復帰でも同じ縦横倍率で再配置する。
+if ("ResizeObserver" in window) {
+  let mapResizeFrame = 0;
+  const observer = new ResizeObserver(() => {
+    cancelAnimationFrame(mapResizeFrame);
+    mapResizeFrame = requestAnimationFrame(() => {
+      if (renderedMap && parkingMap.clientWidth && parkingMap.clientHeight) {
+        renderRegisteredLayout(renderedMap.layout, renderedMap.space);
+      }
+    });
+  });
+  observer.observe(parkingMap);
 }
 
 /* =========================================================
@@ -2029,7 +2130,7 @@ function getGuidanceSpeechLocale() {
 
 /** 音声案内言語に応じた読み上げ速度を返す。 */
 function getGuidanceSpeechRate() {
-  if (!isEnglish()) return 1.20;
+  if (!isEnglish()) return 1.00;
   if (state.guidanceVoiceLanguage === "en-US"
       || state.guidanceVoiceLanguage === "en-GB") {
     return 0.90;

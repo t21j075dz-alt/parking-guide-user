@@ -333,13 +333,17 @@
               <span><span class="legend-sample is-occupied" aria-hidden="true"></span>使用中</span>
               <span><span class="legend-entrance" aria-hidden="true">↥</span>建物入口</span>
             </div>
+            <div class="map-view-controls" id="map-view-controls" hidden>
+              <button class="secondary-button" id="map-focus-button" type="button" aria-controls="parking-map" aria-pressed="true">案内先を拡大</button>
+              <button class="secondary-button" id="map-overview-button" type="button" aria-controls="parking-map" aria-pressed="false">全体を見る</button>
+            </div>
             <div id="parking-map" class="parking-map parking-map--demo" role="list" aria-label="駐車場内の区画"></div>
           </section>
 
           <div class="button-group result-actions">
-            <button class="secondary-button" id="voice-guide-button" type="button">音声で案内</button>
+            <button class="primary-button" id="voice-guide-button" type="button">音声で案内</button>
             <button class="secondary-button" id="retry-button" type="button">空き状況を更新</button>
-            <button class="primary-button" id="end-guidance-button" type="button">案内を終了</button>
+            <button class="secondary-button" id="end-guidance-button" type="button">案内を終了</button>
           </div>
         </div>
       </section>
