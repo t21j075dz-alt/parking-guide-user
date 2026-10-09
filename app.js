@@ -41,10 +41,8 @@ const DEMO_FACILITY = Object.freeze({
   isDemo: true,
 });
 
-const ACTIVE_FACILITY_CATALOG = FACILITY_CATALOG.filter(
-  (facility) => Boolean(facility.sampleRole) || facility.id === "home-test-001",
-);
-const FACILITIES = Object.freeze([DEMO_FACILITY, ...ACTIVE_FACILITY_CATALOG]);
+// sampleRole は研究上の分類に使用し、一覧の表示条件にはしない。
+const FACILITIES = Object.freeze([DEMO_FACILITY, ...FACILITY_CATALOG]);
 
 const CATEGORY_LABELS = Object.freeze({
   supermarket: "スーパー・食品店",
