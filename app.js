@@ -1,4 +1,5 @@
 "use strict";
+const mapDisplay = window.ParkingMapDisplay;
 
 /* =========================================================
    【利用者アプリのデータフロー】
@@ -1075,7 +1076,7 @@ function createLayoutParkingSpaces(layout, facility) {
       const height = Number(object.height) || 0;
 
       return {
-        id: object.name || object.spaceNumber || object.uid || `区画${index + 1}`,
+        id: mapDisplay.spaceName(object) || object.uid || `区画${index + 1}`,
         uid: object.uid || `space_${index + 1}`,
         number: index + 1,
         isOccupied: status !== "available",
@@ -1158,6 +1159,7 @@ function getLayoutObjectSize(object) {
     parkingEntrance: [26, 26],
     noEntry: [26, 26],
     evCharger: [22, 22],
+    roadSign: [10, 12],
   };
   const fallback = fallbackSizes[object.objectType] ?? [70, 70];
   return {
@@ -1264,6 +1266,8 @@ function calculateGuidanceViewport(layout, recommendedSpace, supportedTypes, ent
   };
 }
 
+let guidanceLabelRects = [];
+
 /** 読める大きさの番号・入口ラベルを、回転させず実際の中心位置に付ける。 */
 function appendGuidanceMarker(object, crop, kind, text) {
   const { width, height } = getLayoutObjectSize(object);
@@ -1283,6 +1287,19 @@ function appendGuidanceMarker(object, crop, kind, text) {
   } else {
     label.textContent = text;
   }
+  const bounds = {width:parkingMap.clientWidth || 360,height:parkingMap.clientHeight || 400};
+  const anchor = {x:(Number(object.x)+width/2-crop.x)*crop.scale,y:(Number(object.y)+height/2-crop.y)*crop.scale};
+  const labelWidth = Math.min(bounds.width-8, kind === "space" ? Math.max(90,Math.min(164,mapDisplay.units(text)*25+20)) : 112);
+  const labelHeight = kind === "space" ? 62 : 38;
+  const rect = mapDisplay.placeLabel(anchor,labelWidth,labelHeight,guidanceLabelRects,bounds);
+  guidanceLabelRects.push(rect);
+  label.style.left = `${rect.x-anchor.x}px`;
+  label.style.top = `${rect.y-anchor.y}px`;
+  label.style.bottom = "auto";
+  label.style.width = `${rect.width}px`;
+  label.style.height = `${rect.height}px`;
+  label.style.transform = "none";
+  label.style.setProperty("--guidance-number-size", `${mapDisplay.fitLabel(text,rect.width-20,38,28)}px`);
   marker.append(label);
   parkingMap.append(marker);
 }
@@ -1290,6 +1307,7 @@ function appendGuidanceMarker(object, crop, kind, text) {
 /** 管理画面の配置を使い、案内に必要な情報を利用者向けに表示する。 */
 function renderRegisteredLayout(layout, recommendedSpace) {
   parkingMap.replaceChildren();
+  guidanceLabelRects = [];
   parkingMap.className = "parking-map parking-map--layout";
   parkingMapTitle.textContent = ui("駐車場マップ", "Parking map");
 
@@ -1313,28 +1331,7 @@ function renderRegisteredLayout(layout, recommendedSpace) {
     "publicRoad",
   ]);
 
-  const supportedTypes = new Set([
-    "parkingLot",
-    "excludedParkingLot",
-    "nationalRoad",
-    "prefecturalRoad",
-    "publicRoad",
-    "road",
-    "sidewalk",
-    "crosswalk",
-    "building",
-    "parkingSpace",
-    "buildingEntrance",
-    "parkingEntrance",
-    "stopLine",
-    "speedBump",
-    "noEntry",
-    "cartCorral",
-    "bicycleParking",
-    "motorcycleParking",
-    "loadingZone",
-    "evCharger",
-  ]);
+  const supportedTypes = new Set(mapDisplay.types);
 
   const entrance = state.guideEntrance;
   const crop = calculateGuidanceViewport(layout, recommendedSpace, supportedTypes, entrance);
@@ -1352,6 +1349,7 @@ function renderRegisteredLayout(layout, recommendedSpace) {
       const item = document.createElement("div");
       item.className = `map-object map-object--${object.objectType}`;
       item.dataset.objectType = object.objectType;
+      item.dataset.screenScale = String(crop.scale);
       /*
        * 管理画面と同じ仕様：x/y は常にオブジェクト外接矩形の左上。
        * 小型設備も中心座標へ変換せず、同じwidth/height/rotationを比率縮小する。
@@ -1391,11 +1389,26 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         }
       }
 
+      if (object.objectType === "roadSign") mapDisplay.appendSign(item,object);
+      if (mapDisplay.roads.has(object.objectType)) {
+        mapDisplay.appendRoute(item,object,layout);
+        mapDisplay.appendSurface(item,object,layout);
+      }
       const appendLabel = (text) => {
         if (!text) return;
         const label = document.createElement("span");
         label.className = "map-object-label";
         label.textContent = text;
+        item.style.setProperty("--map-label-size", `${mapDisplay.fitLabel(text,objectWidth*crop.scale*.8,objectHeight*crop.scale*.8,16)}px`);
+        if (object.objectType === "building" && object.labelAutoScale === false) {
+          const cap = Math.max(3,Math.min(18,Number(object.labelFontSize)||6))*crop.scale;
+          const fitted = mapDisplay.fitLabel(text,objectWidth*crop.scale*.8,objectHeight*crop.scale*.8,18);
+          item.style.setProperty("--map-label-size", `${Math.min(cap,fitted)}px`);
+        }
+        label.title = text;
+        label.style.position = "absolute";
+        label.style.inset = "10%";
+        label.style.transform = "none";
         item.append(label);
       };
 
@@ -1403,7 +1416,9 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         item.dataset.spaceType = object.spaceType ?? "standard";
         item.dataset.markingStyle = object.markingStyle ?? "uShape";
         item.style.setProperty("--space-line-color", object.markingColor ?? "#ffffff");
-        item.style.setProperty("--space-line-width", `${Math.max(1, Number(object.markingWidth) || 2)}px`);
+        item.style.setProperty("--space-line-width", `${Math.max(.2,(Number(object.markingWidth)||.35)*crop.scale)}px`);
+        item.style.setProperty("--map-number-color", "var(--color-text)");
+        mapDisplay.appendParking(item,object);
 
         const typeMark = document.createElement("span");
         typeMark.className = "space-type-mark";
@@ -1411,25 +1426,34 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         if (object.spaceType === "compact") typeMark.textContent = "軽";
         if (object.spaceType === "accessible") typeMark.textContent = "♿";
         if (object.spaceType === "ev") typeMark.textContent = "EV";
-        if (typeMark.textContent && Math.min(objectWidth, objectHeight) * crop.scale >= 24) {
-          item.append(typeMark);
+        const hasType = Boolean(typeMark.textContent);
+        item.style.setProperty("--space-type-size", `${mapDisplay.fitLabel(typeMark.textContent,objectWidth*crop.scale*.9,objectHeight*crop.scale*.28,14)}px`);
+        if (hasType) item.append(typeMark);
+        const displayNumber = [mapDisplay.groupName(object),mapDisplay.spaceNumber(object)].filter(Boolean).join("\n");
+        item.style.setProperty("--number-top",hasType?"48%":"18%");
+        item.style.setProperty("--number-height",hasType?"45%":"65%");
+        item.style.setProperty("--space-number-size",`${mapDisplay.fitLabel(displayNumber,objectWidth*crop.scale*.9,objectHeight*crop.scale*(hasType?.45:.65),18)}px`);
+        if (object.uid !== recommendedSpace?.uid && objectWidth*crop.scale >= 6) {
+          const numberMark=document.createElement("span");numberMark.className="space-number-mark";numberMark.textContent=displayNumber;numberMark.setAttribute("aria-hidden","true");item.append(numberMark);
         }
 
         const isRecommended = object.uid === recommendedSpace?.uid;
-        const isOccupied = object.status === "occupied" || object.status === "unavailable";
+        const isOccupied = object.status !== "available";
         item.classList.toggle("is-occupied", isOccupied);
         item.classList.toggle("is-recommended", isRecommended);
         item.setAttribute("role", "listitem");
         item.setAttribute(
           "aria-label",
-          `${object.name || object.spaceNumber || "区画"}、${isRecommended ? "案内先" : isOccupied ? "使用中" : "空き"}`,
+          `${mapDisplay.spaceName(object) || "区画"}、${isRecommended ? "案内先" : object.status === "occupied" ? "使用中" : object.status === "unavailable" ? "利用不可" : isOccupied ? "未確認" : "空き"}`,
         );
       } else if (object.objectType === "buildingEntrance") {
+        mapDisplay.appendEntrance(item,object);
         // 非公開入口は利用者の入口表示から除く。対象入口だけに大きいラベルを付ける。
         if (object.publicAccess === false) return;
         item.setAttribute("aria-label", object.name || ui("建物入口", "Building entrance"));
         item.classList.toggle("is-guide-entrance", object.uid === entrance?.uid);
       } else if (object.objectType === "parkingEntrance") {
+        mapDisplay.appendEntrance(item,object);
         const accessLabel = object.accessType === "entrance"
           ? "入口"
           : object.accessType === "exit"
@@ -1443,22 +1467,27 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         item.dataset.accessType = object.accessType ?? "both";
       } else if (object.objectType === "road") {
         if (object.trafficDirection === "oneWay") {
-          appendLabel(object.name || "一方通行");
+          item.setAttribute("aria-label", ui("一方通行", "One way"));
           item.dataset.trafficDirection = "oneWay";
         }
       } else if (object.objectType === "noEntry") {
-        appendLabel(object.name || "進入禁止");
+        mapDisplay.appendSign(item,{...object,signType:"noEntry"});
+        item.setAttribute("aria-label",ui("進入禁止","No entry"));
       } else if (object.objectType === "evCharger") {
         appendLabel(object.name || "EV充電");
       } else if (["stopLine", "speedBump", "cartCorral", "bicycleParking",
-        "motorcycleParking", "loadingZone", "building", "parkingLot"].includes(object.objectType)) {
+        "motorcycleParking", "loadingZone", "parkingLot"].includes(object.objectType)) {
         // 形状を残し、管理用の名称・コピー名は利用者マップへ表示しない。
+      } else if (object.objectType === "building") {
+        appendLabel(object.name || ui("建物","Building"));
+      } else if (object.objectType === "roadSign") {
+        item.setAttribute("aria-label",object.name || "道路標識");
       } else if (object.objectType === "excludedParkingLot") {
         appendLabel(object.name || "対象外駐車場");
       } else if (object.objectType === "nationalRoad") {
-        appendLabel(object.name || "国道");
+        if (!object.routeNumber) appendLabel(object.name || "国道");
       } else if (object.objectType === "prefecturalRoad") {
-        appendLabel(object.name || "県道");
+        if (!object.routeNumber) appendLabel(object.name || "県道");
       } else if (object.objectType === "publicRoad") {
         appendLabel(object.name || "公道");
       }
@@ -1467,9 +1496,7 @@ function renderRegisteredLayout(layout, recommendedSpace) {
     });
   if (recommendedSpace?.sourceObject) {
     const object = recommendedSpace.sourceObject;
-    const number = object.spaceNumber ?? String(object.name ?? "").match(/(\d{1,4})$/)?.[1];
-    appendGuidanceMarker(object, crop, "space", number != null
-      ? String(number).padStart(3, "0") : recommendedSpace.id);
+    appendGuidanceMarker(object, crop, "space", mapDisplay.spaceName(object) || recommendedSpace.id);
   }
   if (entrance) {
     appendGuidanceMarker(entrance, crop, "entrance", ui("店舗入口", "Store entrance"));
@@ -2006,11 +2033,11 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
 /** 案内先の番号部分を読み上げ用に整える。 */
 function getSpokenSpaceId(space, locale = getGuidanceSpeechLocale()) {
   if (!space) return "";
-  const raw = String(space.sourceObject?.spaceNumber ?? space.id ?? "");
+  const raw = space.sourceObject ? mapDisplay.spaceName(space.sourceObject) : mapDisplay.normalizeNumber(space.id);
   if (locale === "ja-JP" && typeof japaneseSpaceReading === "function") {
     return space.sourceObject?.spaceNumberReading || space.sourceObject?.nameReading || japaneseSpaceReading(raw);
   }
-  return raw.replace(/^0+/, "") || raw;
+  return mapDisplay.normalizeNumber(raw);
 }
 
 /** SpeechSynthesisが提供する音声一覧を返す。 */

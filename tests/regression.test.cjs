@@ -3,18 +3,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
+const {element,walk}=require('./fake-dom.cjs');
 
 function app() {
   const nodes = new Map();
-  function element() {
-    return { value: '', checked: false, textContent: '', hidden: false, dataset: {},
-      style: {}, classList: { toggle() {} }, addEventListener() {}, setAttribute() {}, removeAttribute() {}, focus() {},
-      querySelector() { return null; }, replaceChildren(...children) { this.children = children; }, reset() {} };
-  }
   const document = { documentElement: { lang: 'ja' }, querySelector(selector) {
     if (!nodes.has(selector)) nodes.set(selector, element());
     return nodes.get(selector);
-  }, querySelectorAll() { return []; }, createElement: element };
+  }, querySelectorAll() { return []; }, createElement: element,createElementNS:(_,tag)=>element(tag) };
   const context = vm.createContext({ document, console, setTimeout, clearTimeout, AbortSignal, AbortController, URL, FACILITY_CATALOG: [],
     window: { PARKING_LAYOUTS: {}, PARKING_REMOTE_CONFIG: { enabled: true, supabaseUrl: 'https://example.test', publishableKey: 'sb_publishable_test' },
       addEventListener() {}, setTimeout, scrollTo() {}, history: { pushState() {} },
@@ -22,6 +18,7 @@ function app() {
     fetch: async () => ({ ok: true, json: async () => [] }),
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../speech-readings.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../map-display.js'), 'utf8'), context);
   const source = fs.readFileSync(process.env.PARKING_TEST_SOURCE || path.join(__dirname, '../app.js'), 'utf8');
   vm.runInContext(source.replace(/\r\n/g, '\n').split('/* =========================================================\n   操作イベント')[0], context);
   const run = (code) => vm.runInContext(code, context);
@@ -727,3 +724,6 @@ test('端末読み上げにも読み仮名変換を適用し、二重変換せ�
   await run("speakTextWhenVoicesReady('Parking space B-05')");
   assert.equal(spoken,'Parking space B-05');
 });
+
+test('実際のユーザーレンダラーは全21種類・全駐車線形式と標識を表示し、案内番号を二重表示しない',()=>{const {run,nodes}=app();run(`const fixtureObjects=mapDisplay.types.map((objectType,i)=>({uid:'o'+i,objectType,name:'名称',spaceNumber:'001',spaceGroup:'A',spaceGroupKind:'area',spaceType:'ev',markingStyle:'photoStall',routeNumber:'123',signType:'stop',publicAccess:true,status:'available',x:30*(i%6),y:30*Math.floor(i/6),width:25,height:25}));const parkingFixture=fixtureObjects.find(o=>o.objectType==='parkingSpace');const fixtureLayout={facilityId:'a',objects:fixtureObjects};const recommendedFixture={uid:parkingFixture.uid,id:'A区画 1',sourceObject:parkingFixture};state.guideEntrance=fixtureObjects.find(o=>o.objectType==='buildingEntrance');calculateGuidanceViewport=()=>({x:0,y:0,width:360,height:400,scale:1});renderRegisteredLayout(fixtureLayout,recommendedFixture);`);const map=nodes.get('#parking-map');const objects=map.children.filter(n=>n.dataset.objectType);assert.equal(objects.length,21);const parking=objects.find(n=>n.dataset.objectType==='parkingSpace');assert.equal(walk(parking).filter(n=>n.className==='space-number-mark').length,0);assert.equal(walk(map).filter(n=>n.tagName==='strong'&&n.textContent==='A区画 1').length,1);assert.ok(objects.find(n=>n.dataset.objectType==='building').children.some(n=>n.className==='map-object-label'));assert.equal(objects.find(n=>n.dataset.objectType==='roadSign').children.length,1);run(`fixtureLayout.objects=mapDisplay.markingStyles.map((markingStyle,i)=>({...parkingFixture,uid:'p'+i,markingStyle,spaceNumber:String(i+1)}));state.guideEntrance=null;renderRegisteredLayout(fixtureLayout,null);`);assert.equal(map.children.length,12);for(let i=0;i<12;i++)assert.equal(walk(map.children[i]).filter(n=>n.tagName==='path').length,i===11?0:1);});
+test('検索結果・音声・マップの区画番号に同じ列名とゼロを除いた番号を使う',()=>{const {run}=app();run(`const groupedItem={uid:'p',objectType:'parkingSpace',name:'普通車 001',spaceNumber:'001',spaceGroup:'A',spaceGroupKind:'row',status:'available',x:10,y:10,width:25,height:50};const groupedSpace=createLayoutParkingSpaces({objects:[groupedItem]},{id:'a'})[0];`);assert.equal(run('groupedSpace.id'),'A列 1');assert.match(run('getSpokenSpaceId(groupedSpace)'),/えー.*れつ.*いち/);assert.equal(run("getSpokenSpaceId(groupedSpace,'en-US')"),'A列 1');});

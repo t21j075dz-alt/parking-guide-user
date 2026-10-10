@@ -141,10 +141,10 @@ function japaneseNumber(value) {
 function japaneseSpaceReading(value) {
   const letters = ["えー","びー","しー","でぃー","いー","えふ","じー","えいち","あい","じぇー","けー","える","えむ","えぬ","おー","ぴー","きゅー","あーる","えす","てぃー","ゆー","ぶい","だぶりゅー","えっくす","わい","ぜっと"];
   return String(value).normalize("NFKC").replace(/[A-Za-z]/g, c => letters[c.toUpperCase().charCodeAt(0)-65]+"、")
-    .replace(/\d+/g, japaneseNumber).replace(/[-‐–—]/g,"、").replace(/、+/g,"、").replace(/、$/g,"");
+    .replace(/\d+/g, japaneseNumber).replace(/[-‐–—]/g,"、").replace(/、+/g,"、").replace(/列/g,"れつ").replace(/区画/g,"くかく").replace(/、$/g,"");
 }
 function normalizeJapaneseSpeech(message) {
-  const replacements = {"空き区画":"あきくかく","空き情報":"あきじょうほう","駐車区画":"ちゅうしゃくかく","駐車枠":"ちゅうしゃわく","駐車場":"ちゅうしゃじょう","区画":"くかく","混雑":"こんざつ","満車":"まんしゃ","公道":"こうどう","順番待ち":"じゅんばんまち","通過":"つうか","停車":"ていしゃ","周囲":"しゅうい","現地":"げんち","普通車":"ふつうしゃ","入口":"いりぐち","再探索":"さいたんさく"};
+  const replacements = {"空き区画":"あきくかく","空き情報":"あきじょうほう","駐車区画":"ちゅうしゃくかく","駐車枠":"ちゅうしゃわく","駐車場":"ちゅうしゃじょう","区画":"くかく","列":"れつ","混雑":"こんざつ","満車":"まんしゃ","公道":"こうどう","順番待ち":"じゅんばんまち","通過":"つうか","停車":"ていしゃ","周囲":"しゅうい","現地":"げんち","普通車":"ふつうしゃ","入口":"いりぐち","再探索":"さいたんさく"};
   let text = String(message);
   const catalog = typeof FACILITY_CATALOG === "undefined" ? [] : FACILITY_CATALOG;
   for (const f of [...catalog].sort((a,b) => b.name.length-a.name.length)) {
