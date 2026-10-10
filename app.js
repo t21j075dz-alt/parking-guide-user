@@ -237,6 +237,15 @@ const STATIC_JA_EN = Object.freeze({
   "日本語：Google 日本語（固定）": "Japanese: Google Japanese (fixed)",
   "音声案内言語": "Voice guidance language",
   "音声を試す": "Test voice",
+  "Bluetooth・CarPlayの音声設定": "Bluetooth / CarPlay audio settings",
+  "音楽と同時に再生": "Mix with music",
+  "案内音声を優先（音楽が止まる場合あり）": "Prioritize guidance (may pause music)",
+  "端末の標準設定に任せる": "Use device default",
+  "接続先のテスト音": "Test output sound",
+  "停車中に音声を試してください。音楽と重ねて聞こえない場合は「案内音声を優先」をお試しください。":
+    "Test audio while parked. If mixing is inaudible, try prioritizing guidance.",
+  "BluetoothやCarPlayの音量・出力先はWebアプリから直接変更できません。車載機とiPhoneの設定も確認してください。":
+    "Web apps cannot directly change Bluetooth or CarPlay volume and output routing. Check your car audio and iPhone settings.",
   "言語を選ぶと、その言語の音声を自動で試聴します。対応音声が端末にない場合は画面に表示します。":
     "Selecting a language automatically plays a voice sample. If the voice is unavailable on the device, the app shows that on screen.",
   "音声はアプリ側で最大音量に設定しています。音が小さい場合は、安全な場所に停車して「音声を試す」を押し、再生中に端末やBluetooth接続先の音量を上げてください。":
@@ -362,9 +371,13 @@ function restoreLanguage() {
     state.guidanceVoiceLanguage = supportedGuidanceLanguages.has(savedLanguage)
       ? savedLanguage
       : "en-US";
+    const savedOutputMode = localStorage.getItem("parkingGuideVoiceOutputMode");
+    state.voiceOutputMode = ["mix", "priority", "system"].includes(savedOutputMode)
+      ? savedOutputMode : "mix";
     localStorage.removeItem("parkingGuideVoiceURI");
   } catch {
     state.guidanceVoiceLanguage = "en-US";
+    state.voiceOutputMode = "mix";
   }
   applyLanguage(saved);
 }
@@ -383,6 +396,7 @@ const state = {
   language: "ja",
   voiceEnabled: true,
   guidanceVoiceLanguage: "en-US",
+  voiceOutputMode: "mix",
   lastSearchWasAuto: false,
   selectedFacility: null,
   selectedDestination: null,
@@ -428,6 +442,9 @@ const voiceModeLabel = document.querySelector("#voice-mode-label");
 const englishVoiceRow = document.querySelector("#english-voice-row");
 const guidanceVoiceInputs = [...document.querySelectorAll('input[name="guidanceVoiceLanguage"]')];
 const voicePreviewButton = document.querySelector("#voice-preview-button");
+const voiceOutputModeSelect = document.querySelector("#voice-output-mode");
+const voiceOutputTestButton = document.querySelector("#voice-output-test-button");
+const voiceOutputStatus = document.querySelector("#voice-output-status");
 const voiceStatus = document.querySelector("#voice-status");
 const randomGuidanceNote = document.querySelector("#random-guidance-note");
 const privateTestLocationPanel = document.querySelector("#private-test-location-panel");
@@ -2097,6 +2114,8 @@ function updateVoiceModeUi() {
       : ui("日本語：Google 日本語（固定）", "Japanese: Google Japanese (fixed)");
   }
 
+  if (voiceOutputModeSelect) voiceOutputModeSelect.value = state.voiceOutputMode;
+  updateVoiceOutputStatus();
   updateVoiceStatus();
 }
 
@@ -2151,15 +2170,107 @@ function updateVoiceStatus(message = "", stateName = "") {
   voiceStatus.classList.toggle("is-error", stateName === "error");
 }
 
-/** 音声案内を音楽と重ねられる環境では、端末に混合再生を要求する。 */
+/** 案内音声の再生優先度。音量や出力先の直接変更には使用できない。 */
+const VOICE_AUDIO_SESSION_TYPES = Object.freeze({
+  mix: "ambient",
+  priority: "transient-solo",
+  system: "auto",
+});
+
+/** 現在の再生方式と、このブラウザーの対応状況を表示する。 */
+function updateVoiceOutputStatus(message = "", isError = false) {
+  if (!voiceOutputStatus) return;
+  let hasSession = false;
+  try {
+    hasSession = typeof navigator !== "undefined" && Boolean(navigator.audioSession);
+  } catch {
+    hasSession = false;
+  }
+  voiceOutputStatus.textContent = message || (hasSession
+    ? ui(
+      "再生方式を選んで「音声を試す」で確認してください。実際の音量は接続先によって異なります。",
+      "Select a mode and use Test voice. Actual loudness depends on the connected device.",
+    )
+    : ui(
+      "このブラウザーでは再生優先度の切り替えに対応していません。端末・車載機の音量と出力先をご確認ください。",
+      "This browser does not support audio priority switching. Check the device and car audio output and volume.",
+    ));
+  voiceOutputStatus.classList.toggle("is-error", isError);
+}
+
+/** 対応環境のみ音声再生方式を指定し、未対応環境は標準の読み上げを維持する。 */
 function configureVoiceAudioSession() {
   try {
-    /* AudioSession API は未対応ブラウザーがあるため、存在するときだけ使用する。 */
     if (typeof navigator === "undefined" || !navigator.audioSession) return false;
-    navigator.audioSession.type = "ambient";
-    return navigator.audioSession.type === "ambient";
+    const type = VOICE_AUDIO_SESSION_TYPES[state.voiceOutputMode] ?? "ambient";
+    navigator.audioSession.type = type;
+    return navigator.audioSession.type === type;
   } catch {
-    /* 音声の再生自体は、従来の Web Speech API で継続する。 */
+    return false;
+  }
+}
+
+/** 独占再生終了時に、他のアプリの音声と混ぜられる設定へ復帰する。 */
+function releasePriorityAudioSession() {
+  try {
+    if (typeof navigator !== "undefined"
+        && navigator.audioSession?.type === "transient-solo") {
+      navigator.audioSession.type = "ambient";
+    }
+  } catch {
+    /* 未対応環境ではブラウザーに任せる。 */
+  }
+}
+
+/** 音声合成とは別の短いテスト音で、接続先への出力状態を確かめる。 */
+async function playVoiceOutputTestSound() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    updateVoiceOutputStatus(
+      ui("このブラウザーではテスト音を再生できません。", "Output sound test is unavailable in this browser."),
+      true,
+    );
+    return false;
+  }
+
+  cancelSpeech();
+  configureVoiceAudioSession();
+  let context = null;
+  try {
+    context = new AudioContextClass();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const startAt = context.currentTime;
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(660, startAt);
+    /* テスト音は急に鳴り始めないよう小さめの音量でフェードさせる。 */
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.12, startAt + 0.08);
+    gain.gain.setValueAtTime(0.12, startAt + 1.6);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 1.95);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.addEventListener("ended", () => {
+      void context.close().catch(() => {});
+      releasePriorityAudioSession();
+    }, { once: true });
+    /* ユーザーのボタン操作に連動して AudioContext を起動する。 */
+    const resumePromise = context.resume();
+    oscillator.start();
+    oscillator.stop(startAt + 2);
+    await resumePromise;
+    updateVoiceOutputStatus(ui(
+      "約2秒のテスト音を再生します。聞こえない場合はiPhoneの再生先と車載機の入力を確認してください。",
+      "Playing a two-second tone. If inaudible, check the iPhone output route and car audio source.",
+    ));
+    return true;
+  } catch {
+    if (context) void context.close().catch(() => {});
+    releasePriorityAudioSession();
+    updateVoiceOutputStatus(
+      ui("テスト音を再生できませんでした。", "Could not play the output test sound."),
+      true,
+    );
     return false;
   }
 }
@@ -2179,6 +2290,7 @@ let speechRequestId = 0;
 function cancelSpeech() {
   speechRequestId += 1;
   window.speechSynthesis?.cancel?.();
+  releasePriorityAudioSession();
 }
 
 /** Web Speech APIで無料読み上げを行う。 */
@@ -2197,7 +2309,7 @@ async function speakTextWhenVoicesReady(message) {
   const requestId = ++speechRequestId;
   const voices = await waitForSpeechVoices();
   if (requestId !== speechRequestId) return;
-  /* Safari 等では ambient 指定により他アプリの音楽と混合できる場合がある。 */
+  /* 接続先に応じて利用者が選んだ再生方式を適用する。 */
   configureVoiceAudioSession();
   window.speechSynthesis.cancel();
 
@@ -2234,8 +2346,14 @@ async function speakTextWhenVoicesReady(message) {
       "active",
     );
   });
-  utterance.addEventListener("end", () => updateVoiceStatus());
+  utterance.addEventListener("end", () => {
+    if (requestId !== speechRequestId) return;
+    releasePriorityAudioSession();
+    updateVoiceStatus();
+  });
   utterance.addEventListener("error", () => {
+    if (requestId !== speechRequestId) return;
+    releasePriorityAudioSession();
     updateVoiceStatus(
       ui("音声の再生に失敗しました。", "Voice playback failed."),
       "error",
@@ -2297,9 +2415,9 @@ function speakCurrentGuidance() {
 function previewSelectedVoice() {
   const locale = getGuidanceSpeechLocale();
   const messages = {
-    "ja-JP": "音声案内のテストです。駐車区画、5番です。",
-    "en-US": "Voice guidance test. Parking space number five.",
-    "en-GB": "Voice guidance test. Parking space number five.",
+    "ja-JP": "音声案内の接続テストです。駐車区画、5番です。普通車区画です。聞こえない場合は、停車中に再生方式を変更してください。",
+    "en-US": "Voice output test. Parking space number five. Please change the playback mode while parked if you cannot hear this.",
+    "en-GB": "Voice output test. Parking space number five. Please change the playback mode while parked if you cannot hear this.",
     "zh-CN": "语音导航测试。停车位5号。",
     "ko-KR": "음성 안내 테스트입니다. 주차 구역 5번입니다.",
     "es-ES": "Prueba de guía por voz. Plaza de aparcamiento número cinco.",
@@ -2320,6 +2438,9 @@ function updateVoiceAvailability() {
 
   if (voiceEnabledInput) voiceEnabledInput.disabled = !supported;
   guidanceVoiceInputs.forEach((input) => { input.disabled = !supported; });
+  if (voiceOutputTestButton) {
+    voiceOutputTestButton.disabled = !(window.AudioContext || window.webkitAudioContext);
+  }
 
   if (supported) {
     updateVoiceModeUi();
@@ -2487,6 +2608,19 @@ voiceGuideButton?.addEventListener("click", () => {
   speakCurrentGuidance();
 });
 voicePreviewButton?.addEventListener("click", previewSelectedVoice);
+voiceOutputTestButton?.addEventListener("click", () => { void playVoiceOutputTestSound(); });
+voiceOutputModeSelect?.addEventListener("change", () => {
+  const selected = voiceOutputModeSelect.value;
+  cancelSpeech();
+  state.voiceOutputMode = Object.hasOwn(VOICE_AUDIO_SESSION_TYPES, selected) ? selected : "mix";
+  updateVoiceOutputStatus();
+  try {
+    localStorage.setItem("parkingGuideVoiceOutputMode", state.voiceOutputMode);
+  } catch {
+    /* 保存できない場合も現在の選択は有効とする。 */
+  }
+  previewSelectedVoice();
+});
 voiceEnabledInput?.addEventListener("change", () => {
   state.voiceEnabled = voiceEnabledInput.checked;
   if (!state.voiceEnabled) cancelSpeech();
