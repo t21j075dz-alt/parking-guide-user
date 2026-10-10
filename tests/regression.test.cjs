@@ -118,3 +118,38 @@ test('入口未登録のレイアウトを距離比較したと説明しない',
   await run('runSpaceSearch()');
   assert.match(nodes.get('#space-description').textContent, /入口が未登録/);
 });
+
+test('AudioSession対応ブラウザーでは音楽との混合再生を指定する', async () => {
+  const { run, context } = app();
+  context.navigator = { audioSession: { type: 'auto' } };
+  let utterance;
+  context.SpeechSynthesisUtterance = class {
+    constructor(text) { this.text = text; }
+    addEventListener() {}
+  };
+  context.window.speechSynthesis.getVoices = () => [{ name: 'Google 日本語', lang: 'ja-JP' }];
+  context.window.speechSynthesis.speak = (voice) => { utterance = voice; };
+  await run("speakTextWhenVoicesReady('test')");
+  assert.equal(context.navigator.audioSession.type, 'ambient');
+  assert.equal(utterance.volume, 1);
+});
+
+test('AudioSession未対応でも従来の読み上げ機能を使用できる', () => {
+  const { run, context } = app();
+  assert.equal(run('configureVoiceAudioSession()'), false);
+  context.navigator = { audioSession: { get type() { return 'auto'; }, set type(_) { throw new Error('unsupported'); } } };
+  assert.equal(run('configureVoiceAudioSession()'), false);
+});
+
+test('画面を戻したときだけ中断した読み上げを再開する', () => {
+  const { run, context } = app();
+  let resumed = 0;
+  context.window.speechSynthesis.paused = true;
+  context.window.speechSynthesis.resume = () => { resumed++; };
+  context.document.hidden = true;
+  run('resumePausedSpeechOnReturn()');
+  assert.equal(resumed, 0);
+  context.document.hidden = false;
+  run('resumePausedSpeechOnReturn()');
+  assert.equal(resumed, 1);
+});
