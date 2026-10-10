@@ -2103,3 +2103,10 @@ html[data-theme="dark"] .parking-map.parking-map--layout {
 @media (max-width: 360px) {
   .space-type-choices { grid-template-columns: 1fr; }
 }
+
+.parking-map--layout .map-object--roadSign { z-index:30; overflow:visible; }
+.parking-map--layout .map-object--building > .map-object-label { display:grid; place-items:center; }
+.guidance-map-label::after { content:none; }
+.guidance-map-label strong { font-size:var(--guidance-number-size,28px); }
+.guidance-map-marker { border:3px solid var(--color-recommended); border-radius:50%; }
+.guidance-map-marker--entrance { border-color:var(--color-primary); }
