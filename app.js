@@ -250,7 +250,7 @@ const STATIC_JA_EN = Object.freeze({
     "Selecting a language automatically plays a voice sample. If the voice is unavailable on the device, the app shows that on screen.",
   "音声はアプリ側で最大音量に設定しています。音が小さい場合は、安全な場所に停車して「音声を試す」を押し、再生中に端末やBluetooth接続先の音量を上げてください。":
     "Voice guidance is already set to the maximum app volume. If it sounds quiet, stop in a safe place, tap “Test voice,” and increase your device or Bluetooth output volume while the sample plays.",
-  "音楽と重ねて流す設定を使います（対応端末のみ）。画面ロック中や他のアプリを使用中は、位置情報の更新や新しい音声案内が止まる場合があります。iPhoneの消音モードでは音が出ない場合があります。": "The app requests audio mixing with music on supported devices. While the screen is locked or another app is active, location updates and new voice prompts may stop. On iPhone, Silent mode may mute the guidance.",
+  "再生方式の切り替えは対応ブラウザーでのみ有効です。画面ロック中や他のアプリを使用中は、位置情報の更新や新しい音声案内が止まる場合があります。": "Playback mode selection works only in supported browsers. When the screen is locked or another app is active, location updates and new voice prompts may stop.",
 });
 
 const STATIC_EN_JA = Object.freeze(
