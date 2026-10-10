@@ -2013,3 +2013,9 @@ html[data-theme="dark"] .parking-map.parking-map--layout {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* 音声の調整項目はスマートフォンでも各ラベルと操作部を一緒に表示する。 */
+.voice-adjustments { display: grid; gap: 8px; margin: 12px 0; }
+.voice-adjustments select { width: 100%; min-width: 0; font: inherit; padding: 10px; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius); }
+.voice-adjustments input[type="range"] { width: 100%; min-height: 32px; }
+.voice-adjustments output { margin-left: 8px; font-variant-numeric: tabular-nums; }

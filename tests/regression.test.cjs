@@ -8,13 +8,13 @@ function app() {
   const nodes = new Map();
   function element() {
     return { value: '', checked: false, textContent: '', hidden: false, dataset: {},
-      classList: { toggle() {} }, addEventListener() {}, setAttribute() {}, removeAttribute() {}, focus() {},
-      querySelector() { return null; }, replaceChildren() {}, reset() {} };
+      style: {}, classList: { toggle() {} }, addEventListener() {}, setAttribute() {}, removeAttribute() {}, focus() {},
+      querySelector() { return null; }, replaceChildren(...children) { this.children = children; }, reset() {} };
   }
   const document = { documentElement: { lang: 'ja' }, querySelector(selector) {
     if (!nodes.has(selector)) nodes.set(selector, element());
     return nodes.get(selector);
-  }, querySelectorAll() { return []; } };
+  }, querySelectorAll() { return []; }, createElement: element };
   const context = vm.createContext({ document, console, setTimeout, clearTimeout, AbortSignal, AbortController, URL, FACILITY_CATALOG: [],
     window: { PARKING_LAYOUTS: {}, PARKING_REMOTE_CONFIG: { enabled: true, supabaseUrl: 'https://example.test', publishableKey: 'sb_publishable_test' },
       addEventListener() {}, setTimeout, scrollTo() {}, history: { pushState() {} },
@@ -121,6 +121,7 @@ test('入口未登録のレイアウトを距離比較したと説明しない',
 
 test('AudioSession対応ブラウザーでは音楽との混合再生を指定する', async () => {
   const { run, context } = app();
+  run("state.voiceOutputMode = 'mix'");
   context.navigator = { audioSession: { type: 'auto' } };
   let utterance;
   context.SpeechSynthesisUtterance = class {
@@ -284,7 +285,7 @@ test('自動案内と手動案内に標準の通話向け音声設定を適用�
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(history.length, 2);
   assert.equal(history[1].sessionType, 'play-and-record');
-  assert.match(history[1].utterance.text, /駐車区画/);
+  assert.match(history[1].utterance.text, /駐車枠/);
   history[1].utterance.handlers.end();
   assert.equal(context.navigator.audioSession.type, 'ambient');
 });
@@ -451,4 +452,161 @@ test('外部VOICEVOX接続エラーが画面に出て、端末の音声へ戻る
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(nodes.get('#cloud-voice-diagnostic').textContent, /429/);
   assert.equal(fallbackCalls, 1);
+});
+
+test('Safariだけ新しい既定値へ移行し、Googleアプリと明示した設定は保持する', () => {
+  const { run, context } = app();
+  const safari = 'Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 Version/18.0 Mobile Safari/604.1';
+  context.navigator = { userAgent: safari, audioSession: { type: 'auto' } };
+  assert.equal(run("restoreVoiceOutputMode(null, 'call-test')"), 'media');
+  assert.equal(run("restoreVoiceOutputMode('call-test', 'call-test')"), 'call-test');
+  assert.equal(run("restoreVoiceOutputMode('mix', 'call-test')"), 'mix');
+  run("state.voiceOutputMode = 'media'");
+  assert.equal(run('configureVoiceAudioSession()'), true);
+  assert.equal(context.navigator.audioSession.type, 'playback');
+  run('releasePriorityAudioSession()');
+  assert.equal(context.navigator.audioSession.type, 'ambient');
+  context.navigator.userAgent = safari + ' GSA/350.0';
+  assert.equal(run('getDefaultVoiceOutputMode()'), 'call-test');
+});
+
+test('各言語の音声・速度・音量を別々に適用し、音声一覧があれば同期的に発話する', async () => {
+  const { run, context } = app();
+  const voices = [
+    { name: '日本語', lang: 'ja-JP', voiceURI: 'ja' },
+    ...['en-US', 'en-GB', 'zh-CN', 'ko-KR', 'es-ES'].map((lang) => ({ name: lang, lang, voiceURI: lang })),
+  ];
+  let spoken;
+  context.SpeechSynthesisUtterance = class {
+    constructor(text) { this.text = text; }
+    addEventListener() {}
+  };
+  context.window.speechSynthesis.getVoices = () => voices;
+  context.window.speechSynthesis.speak = (u) => { spoken = u; };
+  for (const locale of ['en-US', 'en-GB', 'zh-CN', 'ko-KR', 'es-ES']) {
+    context.testLocale = locale;
+    run("state.language = 'en'; state.guidanceVoiceLanguage = testLocale; state.voiceProfiles[testLocale] = {voiceURI: testLocale, rate: 0.8, volume: 0.7}");
+    const pending = run("speakTextWhenVoicesReady('sample')");
+    assert.equal(spoken.lang, locale);
+    assert.equal(spoken.voice.voiceURI, locale);
+    assert.equal(spoken.rate, 0.8);
+    assert.equal(spoken.volume, 0.7);
+    await pending;
+  }
+  run("state.language = 'ja'");
+  assert.equal(run('getGuidanceSpeechRate()'), 1);
+  assert.equal(run('getGuidanceSpeechVolume()'), 1);
+  run("state.voiceProfiles['ja-JP'] = { volume: 99 }");
+  assert.equal(run('getGuidanceSpeechVolume()'), 1);
+});
+
+test('案内文に施設名・区画番号・停車後の再探索を含め、手動探索で接近を断定しない', () => {
+  const { run } = app();
+  run("state.selectedFacility = {name: 'テスト施設'}; state.recommendedSpace = {id: '005'}; state.lastSearchWasAuto = true");
+  assert.match(run('getAutomaticGuidanceStartMessage()'), /テスト施設に近づくと、自動で駐車枠の探索を開始/);
+  assert.match(run('getCurrentGuidanceMessage()'), /テスト施設に接近しました。ご案内する駐車枠は、5番/);
+  assert.match(run('getCurrentGuidanceMessage()'), /安全な場所に停車してから、再探索ボタン/);
+  for (const locale of ['en-US', 'en-GB', 'zh-CN', 'ko-KR', 'es-ES']) {
+    assert.ok(run(`getCurrentGuidanceMessage('${locale}')`).includes('5'));
+    assert.ok(run(`getAutomaticGuidanceStartMessage('${locale}')`).includes('テスト施設'));
+  }
+  run('state.lastSearchWasAuto = false');
+  assert.doesNotMatch(run('getCurrentGuidanceMessage()'), /接近しました/);
+});
+
+test('音声ファイルの小さい振幅を補正し、増幅上限とクリッピング余裕を守る', () => {
+  const { run, context } = app();
+  context.buffer = { numberOfChannels: 1, getChannelData: () => [0.1, -0.2] };
+  assert.equal(run('getAudioFileGain(buffer)'), 3);
+  context.buffer.getChannelData = () => [0, -1];
+  assert.equal(run('getAudioFileGain(buffer)'), 0.9);
+  context.buffer.getChannelData = () => [0, 0];
+  assert.equal(run('getAudioFileGain(buffer)'), 1);
+});
+
+function safetyApp() {
+  const nodes = new Map();
+  const documentEvents = {};
+  let now = 1000000, receive, error, notices = 0;
+  function element() {
+    return { hidden: false, open: false, handlers: {}, addEventListener(n, f) { this.handlers[n] = f; },
+      focus() {}, showModal() { this.open = true; }, close() { this.open = false; } };
+  }
+  const document = { hidden: false, documentElement: { lang: 'ja' }, getElementById(id) {
+    if (!nodes.has(id)) nodes.set(id, element()); return nodes.get(id);
+  }, querySelectorAll() { return []; }, addEventListener(n, f) { documentEvents[n] = f; } };
+  class Clock extends Date { static now() { return now; } }
+  const context = vm.createContext({ document, Date: Clock, console,
+    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
+    Notification: class { static permission = 'granted'; constructor() { notices++; } },
+    window: { isSecureContext: true, addEventListener() {}, dispatchEvent() {},
+      setInterval() { return 1; }, clearInterval() {}, setTimeout() { return 1; }, clearTimeout() {} },
+    navigator: { geolocation: { watchPosition(r, e) { receive = r; error = e; return 1; }, clearWatch() {} } },
+  });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../location-safety.js'), 'utf8'), context);
+  function movement(speed = 3, count = 5) {
+    for (let i = 0; i < count; i++) {
+      now += 2000;
+      receive({ timestamp: now, coords: { latitude: 34, longitude: 133, accuracy: 5, speed } });
+    }
+  }
+  return { nodes, document, context, movement, error: () => error({ code: 2 }),
+    advance: (ms) => { now += ms; }, notices: () => notices,
+    visibility: () => documentEvents.visibilitychange(), api: context.window.parkingSafety };
+}
+
+test('運転者ではない選択は時間経過・測位エラー・画面復帰・停止後の再移動でも保持する', () => {
+  const s = safetyApp();
+  s.api.start(); s.movement();
+  assert.equal(s.nodes.get('driving-dialog').open, true);
+  s.nodes.get('confirm-passenger-button').handlers.click();
+  assert.equal(s.api.guardOperation(), true);
+  const notices = s.notices();
+  s.advance(6 * 60 * 1000);
+  assert.equal(s.api.guardOperation(), true);
+  s.document.hidden = true; s.visibility();
+  s.document.hidden = false; s.visibility(); s.movement();
+  s.error(); s.api.stop(); s.api.start();
+  s.movement(0, 12); s.movement();
+  assert.equal(s.api.guardOperation(), true);
+  assert.equal(s.nodes.get('driving-dialog').open, false);
+  assert.equal(s.notices(), notices);
+  s.api.resetConfirmation();
+  assert.equal(s.api.guardOperation(), false);
+  assert.equal(s.nodes.get('driving-dialog').open, true);
+});
+
+test('運転者を選んだ場合は操作制限を維持する', () => {
+  const s = safetyApp();
+  s.api.start(); s.movement();
+  s.nodes.get('confirm-driver-button').handlers.click();
+  assert.equal(s.api.guardOperation(), false);
+  s.nodes.get('confirm-passenger-button').handlers.click();
+  s.api.resetConfirmation();
+  assert.equal(s.api.guardOperation(), false);
+});
+
+test('音声調整UIは選択言語の実在音声を表示し、選択を保存・復元できる', () => {
+  const { run, context, nodes } = app();
+  const saved = new Map();
+  context.localStorage = { setItem(k,v) { saved.set(k,v); } };
+  context.window.speechSynthesis.getVoices = () => [
+    { name: '日本語', lang: 'ja-JP', voiceURI: 'ja' },
+    { name: 'Korean enhanced', lang: 'ko-KR', voiceURI: 'ko' },
+    { name: 'English', lang: 'en-US', voiceURI: 'en' },
+  ];
+  run("state.language = 'en'; state.guidanceVoiceLanguage = 'ko-KR'; updateVoiceControls()");
+  assert.deepEqual(nodes.get('#voice-select').children.map(c=>c.value), ['', 'ko']);
+  nodes.get('#voice-select').value = 'ko';
+  nodes.get('#voice-rate').value = '0.8';
+  nodes.get('#voice-volume').value = '80';
+  run('saveVoiceProfile(); updateVoiceControls()');
+  const profile = JSON.parse(saved.get('parkingGuideVoiceProfiles'))['ko-KR'];
+  assert.deepEqual(profile, { voiceURI: 'ko', rate: 0.8, volume: 0.8 });
+  assert.equal(nodes.get('#voice-volume-label').textContent, '80%');
+  run("state.language = 'ja'; updateVoiceControls()");
+  assert.equal(nodes.get('#voice-volume').value, '100');
+  run("state.language = 'en'; updateVoiceControls()");
+  assert.equal(nodes.get('#voice-select').value, 'ko');
+  assert.equal(nodes.get('#voice-rate').value, '0.8');
 });

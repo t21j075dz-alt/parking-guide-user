@@ -218,7 +218,8 @@
             <div class="voice-output-settings">
               <label for="voice-output-mode">Bluetooth・CarPlayの音声設定</label>
               <select id="voice-output-mode">
-                <option value="call-test" selected>通話向け音声（標準）</option>
+                <option value="media">メディア再生（Safari向け・音楽が止まる場合あり）</option>
+                <option value="call-test" selected>通話向け音声</option>
                 <option value="mix">音楽と同時に再生</option>
                 <option value="priority">案内音声を優先（音楽が止まる場合あり）</option>
                 <option value="system">端末の標準設定に任せる</option>
@@ -232,7 +233,7 @@
               <p class="voice-status">VOICEVOX:春日部つむぎ（外部サービス tts.quest に接続）</p>
               <p id="cloud-voice-diagnostic" class="voice-status" role="status" aria-live="polite">接続診断：音声ファイル方式をオンにし「音声を試す」を押すと、ここに接続結果が表示されます。</p>
               <p class="voice-status" id="voice-output-status" role="status" aria-live="polite"></p>
-              <p class="voice-status">標準では通話向け音声を使います。音が聞こえない場合は、安全な場所に停車して再生方式を切り替えてください。</p>
+              <p class="voice-status">Safariではメディア再生、その他のブラウザーでは通話向け音声を初期設定にします。停車中に「音声を試す」で確認してください。</p>
               <p class="voice-status">通話向け音声では、電子音で出力先を準備してから読み上げます。接続先のテスト音は電子音、音声を試すは読み上げ音声なので、音量は一致しません。</p>
               <p class="voice-status">BluetoothやCarPlayの音量・出力先はWebアプリから直接変更できません。車載機とiPhoneの設定も確認してください。</p>
               <p class="voice-status">通話向けの設定は本物の電話ではありません。マイクは起動せず、音が小さくなったり受話口から出たりする場合もあります。停車中にお試しください。</p>
@@ -262,10 +263,22 @@
               </label>
             </fieldset>
 
+            <div class="voice-adjustments">
+              <label for="voice-select">読み上げ音声</label>
+              <select id="voice-select"><option value="">自動（端末の音声）</option></select>
+              <label for="voice-rate">読み上げ速度</label>
+              <select id="voice-rate">
+                <option value="0.8">0.8倍</option><option value="0.9">0.9倍</option>
+                <option value="1" selected>1.0倍</option><option value="1.1">1.1倍</option>
+              </select>
+              <label for="voice-volume">アプリ内の音声音量 <output id="voice-volume-label" for="voice-volume">100%</output></label>
+              <input id="voice-volume" type="range" min="10" max="100" step="10" value="100">
+            </div>
+            <p class="voice-status">音声・速度・音量は言語ごとに保存します。小さく聞こえる場合は別の読み上げ音声も試してください。端末音声は100%が上限です。外部音声ファイルは小さい音を補正して再生します。</p>
             <p id="voice-status" class="voice-status" role="status" aria-live="polite">
               言語を選ぶと、その言語の音声を自動で試聴します。対応音声が端末にない場合は画面に表示します。
             </p>
-            <p class="voice-status">音声はアプリ側で最大音量に設定しています。音が小さい場合は、安全な場所に停車して「音声を試す」を押し、再生中に端末やBluetooth接続先の音量を上げてください。</p>
+            <p class="voice-status">音量の初期値は100%です。音が小さい場合は、安全な場所に停車して「音声を試す」を押し、再生中に端末やBluetooth接続先の音量を上げてください。</p>
             <p class="voice-status">再生方式の切り替えは対応ブラウザーでのみ有効です。画面ロック中や他のアプリを使用中は、位置情報の更新や新しい音声案内が止まる場合があります。</p>
           </section>
 

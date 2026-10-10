@@ -31,7 +31,6 @@
     maximumPositionAge: 20000,
     maximumSampleGap: 15000,
     historyDuration: 60000,
-    passengerDuration: 5 * 60 * 1000,
     retryDelay: 10000,
   });
 
@@ -57,7 +56,7 @@
     return document.documentElement.lang?.toLowerCase().startsWith("en") ? en : ja;
   }
 
-    const state = {
+  const state = {
     enabled: false,
     watchId: null,
     generation: 0,
@@ -71,7 +70,7 @@
     candidateSince: null,
     candidateCount: 0,
     needsConfirmation: false,
-    passengerUntil: 0,
+    passengerConfirmed: false,
     driverLocked: false,
     latestMovingTimestamp: null,
     previousFocus: null,
@@ -128,7 +127,7 @@
 
   /** 移動状態、確認期限、停止後の再開条件を画面に反映する。 */
   function updateSafetyStatus() {
-    const passenger = state.passengerUntil > Date.now();
+    const passenger = state.passengerConfirmed;
     let message = lt(
       "移動状態：位置情報の取得を開始してください。",
       "Movement: start location tracking to check your status.",
@@ -140,8 +139,8 @@
       );
     } else if (passenger) {
       message = lt(
-        "同乗者・運転者以外として操作できます。確認は最大5分間有効です。",
-        "Passenger mode is active. Confirmation remains valid for up to 5 minutes.",
+        "同乗者・運転者以外として操作できます。確認はアプリをリセットするまで有効です。",
+        "Passenger mode is active. Confirmation remains valid until the app is reset.",
       );
     } else if (state.motion === "moving") {
       message = lt(
@@ -230,23 +229,18 @@
     stopTimer();
     clearLocation();
     resetSamples();
-    state.passengerUntil = 0;
     /* GPS停止は、移動が終わったという根拠にはしない。 */
     setText(elements.locationStatus, message);
     updateButtons();
     updateSafetyStatus();
   }
 
-  /** 古い位置情報と期限が切れた同乗者確認を無効にする。 */
+  /** 古い位置情報を無効にする。同乗者の選択はリセットまで保持する。 */
   function checkFreshness() {
     if (state.location && Date.now() - state.location.timestamp > CONFIG.maximumPositionAge) {
       clearLocation();
       resetSamples();
-      state.passengerUntil = 0;
       setText(elements.locationStatus, lt("位置情報の更新が途切れています。再取得を待っています。", "Location updates were interrupted. Waiting to reacquire your position."));
-    }
-    if (state.passengerUntil && state.passengerUntil <= Date.now()) {
-      state.passengerUntil = 0;
     }
     updateSafetyStatus();
   }
@@ -306,6 +300,7 @@
 
   /** 移動確定時に画面内確認を出し、許可済みならOS通知も送る。 */
   function notifyMovementConfirmation() {
+    if (state.passengerConfirmed) return;
     const now = Date.now();
     if (now - state.lastMovementNotificationAt < 30000) {
       return;
@@ -326,7 +321,7 @@
       }
     }
 
-    if (!state.driverLocked && state.passengerUntil <= now) {
+    if (!state.driverLocked && !state.passengerConfirmed) {
       openSafetyDialog();
     }
   }
@@ -379,7 +374,6 @@
         }
       } else {
         state.needsConfirmation = false;
-        state.passengerUntil = 0;
         state.latestMovingTimestamp = null;
       }
     }
@@ -444,7 +438,6 @@
     }
     clearLocation();
     resetSamples();
-    state.passengerUntil = 0;
     setText(elements.locationStatus, error.code === 3
       ? lt("位置情報の取得に時間がかかっています。自動で再試行します。", "Location is taking longer than expected. Retrying automatically.")
       : lt("現在の位置情報を取得できません。自動で再試行します。", "Unable to get your current location. Retrying automatically."));
@@ -500,7 +493,6 @@
       return;
     }
     state.enabled = true;
-    state.passengerUntil = 0;
     resetSamples();
     updateButtons();
     updateSafetyStatus();
@@ -511,7 +503,7 @@
     beginWatch();
   }
 
-  /** 画面を離れたら取得を一時停止し、同乗者確認を無効にする。 */
+  /** 画面を離れたら測位を一時停止する。同乗者の選択は保持する。 */
   function suspend() {
     if (!state.enabled) {
       return;
@@ -520,7 +512,6 @@
     stopTimer();
     clearLocation();
     resetSamples();
-    state.passengerUntil = 0;
     setText(elements.locationStatus, lt("画面が非表示のため、位置情報の取得を一時停止しています。", "Location tracking is paused while the page is hidden."));
     updateSafetyStatus();
   }
@@ -579,7 +570,7 @@
       openSafetyDialog();
       return false;
     }
-    if (state.needsConfirmation && state.passengerUntil <= Date.now()) {
+    if (state.needsConfirmation && !state.passengerConfirmed) {
       openSafetyDialog();
       return false;
     }
@@ -663,13 +654,14 @@
     if (state.driverLocked) {
       return;
     }
-    state.passengerUntil = Date.now() + CONFIG.passengerDuration;
+    state.passengerConfirmed = true;
+    state.suppressClickUntil = 0;
     closeSafetyDialog();
     updateSafetyStatus();
   });
   elements.driver?.addEventListener("click", () => {
     state.driverLocked = true;
-    state.passengerUntil = 0;
+    state.passengerConfirmed = false;
     elements.question.hidden = true;
     elements.lockPanel.hidden = false;
     if (elements.close) {
@@ -685,7 +677,6 @@
     }
     state.driverLocked = false;
     state.needsConfirmation = false;
-    state.passengerUntil = 0;
     resetSamples();
     closeSafetyDialog();
     updateSafetyStatus();
@@ -755,11 +746,18 @@
   document.addEventListener("DOMContentLoaded", rememberControlValues, { once: true });
   document.addEventListener("focusin", (event) => {
     if (event.target instanceof Element && event.target.matches("input, select, textarea")
-      && !state.driverLocked && (!state.needsConfirmation || state.passengerUntil > Date.now())) {
+      && !state.driverLocked && (!state.needsConfirmation || state.passengerConfirmed)) {
       rememberControlValues();
     }
   });
-  window.parkingSafety = Object.freeze({ start, stop, guardOperation });
+  /** アプリのリセット時だけ利用者の選択を解除し、次の移動で再確認する。 */
+  function resetConfirmation() {
+    state.passengerConfirmed = false;
+    state.lastMovementNotificationAt = 0;
+    state.suppressClickUntil = 0;
+    updateSafetyStatus();
+  }
+  window.parkingSafety = Object.freeze({ start, stop, guardOperation, resetConfirmation });
   rememberControlValues();
   updateButtons();
   updateSafetyStatus();

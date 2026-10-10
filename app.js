@@ -242,6 +242,16 @@ const STATIC_JA_EN = Object.freeze({
   "オンにすると、日本語案内文（店舗名・区画番号を含む）を外部のVOICEVOX音声合成サービス（tts.quest）へ送信します。生成音声をチャイムと同じWeb Audioで再生します。通信が必要で、時間がかかる・利用できない場合は端末の読み上げに戻ります。運転中は設定しないでください。": "When enabled, Japanese guidance text (including store names and space numbers) is sent to the third-party VOICEVOX synthesis service (tts.quest). The resulting audio plays over Web Audio, like the test tone. Internet access is required; if slow or unavailable, device speech is used. Configure only while parked.",
   "VOICEVOX:春日部つむぎ（外部サービス tts.quest に接続）": "VOICEVOX:Kasukabe Tsumugi (third-party tts.quest service)",
 
+  "読み上げ音声": "Reading voice",
+  "自動（端末の音声）": "Automatic (device voice)",
+  "読み上げ速度": "Speech rate",
+  "0.8倍": "0.8×", "0.9倍": "0.9×", "1.0倍": "1.0×", "1.1倍": "1.1×",
+  "アプリ内の音声音量": "In-app voice volume",
+  "通話向け音声": "Communication-style audio",
+  "メディア再生（Safari向け・音楽が止まる場合あり）": "Media playback (for Safari; may pause music)",
+  "Safariではメディア再生、その他のブラウザーでは通話向け音声を初期設定にします。停車中に「音声を試す」で確認してください。": "Safari defaults to media playback; other browsers default to communication audio. Test while parked.",
+  "音声・速度・音量は言語ごとに保存します。小さく聞こえる場合は別の読み上げ音声も試してください。端末音声は100%が上限です。外部音声ファイルは小さい音を補正して再生します。": "Voice, rate and volume are saved per language. Try another reading voice if it sounds quiet. Device speech is limited to 100%; quiet external audio files are level-corrected.",
+  "音量の初期値は100%です。音が小さい場合は、安全な場所に停車して「音声を試す」を押し、再生中に端末やBluetooth接続先の音量を上げてください。": "Volume defaults to 100%. If quiet, stop safely, tap Test voice, and increase your device or Bluetooth output volume while it plays.",
   "Bluetooth・CarPlayの音声設定": "Bluetooth / CarPlay audio settings",
   "音楽と同時に再生": "Mix with music",
   "案内音声を優先（音楽が止まる場合あり）": "Prioritize guidance (may pause music)",
@@ -381,14 +391,20 @@ function restoreLanguage() {
     state.guidanceVoiceLanguage = supportedGuidanceLanguages.has(savedLanguage)
       ? savedLanguage
       : "en-US";
-    const savedOutputMode = localStorage.getItem("parkingGuideVoiceOutputModeV2");
+    const savedOutputMode = localStorage.getItem("parkingGuideVoiceOutputModeV3");
+    const previousOutputMode = localStorage.getItem("parkingGuideVoiceOutputModeV2");
     const legacyOutputMode = localStorage.getItem("parkingGuideVoiceOutputMode");
-    state.voiceOutputMode = restoreVoiceOutputMode(savedOutputMode, legacyOutputMode);
+    state.voiceOutputMode = restoreVoiceOutputMode(
+      savedOutputMode ?? (previousOutputMode === "mix" ? "mix" : null),
+      previousOutputMode ?? legacyOutputMode,
+    );
+    const profiles = JSON.parse(localStorage.getItem("parkingGuideVoiceProfiles") || "{}");
+    state.voiceProfiles = profiles && typeof profiles === "object" && !Array.isArray(profiles) ? profiles : {};
     state.cloudVoiceEnabled = localStorage.getItem("parkingGuideCloudVoiceEnabled") === "true";
     localStorage.removeItem("parkingGuideVoiceURI");
   } catch {
     state.guidanceVoiceLanguage = "en-US";
-    state.voiceOutputMode = "call-test";
+    state.voiceOutputMode = getDefaultVoiceOutputMode();
     state.cloudVoiceEnabled = false;
   }
   applyLanguage(saved);
@@ -408,7 +424,8 @@ const state = {
   language: "ja",
   voiceEnabled: true,
   guidanceVoiceLanguage: "en-US",
-  voiceOutputMode: "call-test",
+  voiceOutputMode: getDefaultVoiceOutputMode(),
+  voiceProfiles: {},
   cloudVoiceEnabled: false,
   lastSearchWasAuto: false,
   selectedFacility: null,
@@ -454,6 +471,10 @@ const voiceEnabledInput = document.querySelector("#voice-enabled");
 const voiceModeLabel = document.querySelector("#voice-mode-label");
 const englishVoiceRow = document.querySelector("#english-voice-row");
 const guidanceVoiceInputs = [...document.querySelectorAll('input[name="guidanceVoiceLanguage"]')];
+const voiceSelect = document.querySelector("#voice-select");
+const voiceRateSelect = document.querySelector("#voice-rate");
+const voiceVolumeInput = document.querySelector("#voice-volume");
+const voiceVolumeLabel = document.querySelector("#voice-volume-label");
 const voicePreviewButton = document.querySelector("#voice-preview-button");
 const voiceOutputModeSelect = document.querySelector("#voice-output-mode");
 const cloudVoiceInput = document.querySelector("#cloud-voice-enabled");
@@ -2042,9 +2063,15 @@ function getGuidanceSpeechVoice(voices = getSpeechVoices()) {
 
 /** 現在の表示言語と音声案内言語に対応する音声を返す。 */
 function getSelectedSpeechVoice(voices = getSpeechVoices()) {
-  return isEnglish()
-    ? getGuidanceSpeechVoice(voices)
-    : getJapaneseSpeechVoice(voices);
+  const locale = getGuidanceSpeechLocale();
+  const uri = getVoiceProfile().voiceURI;
+  const chosen = voices.find((voice) => voice.voiceURI === uri
+    && String(voice.lang).toLowerCase().split("-")[0] === locale.toLowerCase().split("-")[0]);
+  if (chosen) return chosen;
+  const matching = voices.filter((voice) => String(voice.lang).toLowerCase() === locale.toLowerCase());
+  /* iOSの高品質音声が一覧にある場合は、その音声を優先する。音量は名称から推定しない。 */
+  const enhanced = matching.find((voice) => /premium|enhanced|高品質|拡張/i.test(voice.name));
+  return enhanced ?? (isEnglish() ? getGuidanceSpeechVoice(voices) : getJapaneseSpeechVoice(voices));
 }
 
 /** 読み上げに使用するBCP 47言語タグを返す。 */
@@ -2055,12 +2082,52 @@ function getGuidanceSpeechLocale() {
 
 /** 音声案内言語に応じた読み上げ速度を返す。 */
 function getGuidanceSpeechRate() {
-  if (!isEnglish()) return 1.00;
-  if (state.guidanceVoiceLanguage === "en-US"
-      || state.guidanceVoiceLanguage === "en-GB") {
-    return 0.90;
+  const rate = Number(getVoiceProfile().rate);
+  return [0.8, 0.9, 1, 1.1].includes(rate) ? rate : (isEnglish() ? 0.9 : 1);
+}
+
+/** 端末音声の音量上限は1。端末や車載機の音量を変更する値ではない。 */
+function getGuidanceSpeechVolume() {
+  const volume = Number(getVoiceProfile().volume);
+  return Number.isFinite(volume) ? Math.min(1, Math.max(0.1, volume)) : 1;
+}
+
+function getVoiceProfile() {
+  const profile = state.voiceProfiles[getGuidanceSpeechLocale()];
+  return profile && typeof profile === "object" && !Array.isArray(profile) ? profile : {};
+}
+
+/** 言語ごとに音声・速度・アプリ内音量を保存する。 */
+function saveVoiceProfile() {
+  state.voiceProfiles[getGuidanceSpeechLocale()] = {
+    voiceURI: voiceSelect?.value || "",
+    rate: Number(voiceRateSelect?.value) || getGuidanceSpeechRate(),
+    volume: Number(voiceVolumeInput?.value || 100) / 100,
+  };
+  try { localStorage.setItem("parkingGuideVoiceProfiles", JSON.stringify(state.voiceProfiles)); } catch {}
+}
+
+/** ブラウザーが提供する実在音声のみ選べる。別言語の選択は混ぜない。 */
+function updateVoiceControls() {
+  const locale = getGuidanceSpeechLocale();
+  const profile = getVoiceProfile();
+  const voices = getSpeechVoices().filter((voice) => String(voice.lang).toLowerCase().split("-")[0]
+    === locale.toLowerCase().split("-")[0]);
+  if (voiceSelect) {
+    const choices = [{ value: "", label: ui("自動（端末の音声）", "Automatic (device voice)") },
+      ...voices.map((voice) => ({ value: voice.voiceURI, label: `${voice.name} (${voice.lang})` }))];
+    voiceSelect.replaceChildren(...choices.map((choice) => {
+      const option = document.createElement("option");
+      option.value = choice.value;
+      option.textContent = choice.label;
+      return option;
+    }));
+    voiceSelect.value = voices.some((voice) => voice.voiceURI === profile.voiceURI) ? profile.voiceURI : "";
+    voiceSelect.disabled = state.cloudVoiceEnabled && locale === "ja-JP";
   }
-  return 0.95;
+  if (voiceRateSelect) voiceRateSelect.value = String(getGuidanceSpeechRate());
+  if (voiceVolumeInput) voiceVolumeInput.value = String(Math.round(getGuidanceSpeechVolume() * 100));
+  if (voiceVolumeLabel) voiceVolumeLabel.textContent = `${Math.round(getGuidanceSpeechVolume() * 100)}%`;
 }
 
 /** 音声案内用の駐車区画種別ラベルを返す。 */
@@ -2133,6 +2200,7 @@ function updateVoiceModeUi() {
 
   if (voiceOutputModeSelect) voiceOutputModeSelect.value = state.voiceOutputMode;
   if (cloudVoiceInput) cloudVoiceInput.checked = state.cloudVoiceEnabled;
+  updateVoiceControls();
   updateVoiceOutputStatus();
   updateVoiceStatus();
 }
@@ -2193,19 +2261,28 @@ function updateVoiceStatus(message = "", stateName = "") {
   voiceStatus.classList.toggle("is-error", stateName === "error");
 }
 
-/** 保存済み設定を読み込み、以前の既定値「音楽と同時」を新標準へ移行する。 */
-function restoreVoiceOutputMode(savedV2, legacy) {
-  const options = new Set(["mix", "priority", "call-test", "system"]);
-  if (options.has(savedV2)) return savedV2;
-  /* 利用者が明示した案内優先・端末標準の設定は維持する。 */
-  if (["priority", "call-test", "system"].includes(legacy)) return legacy;
-  return "call-test";
+/** Safariでは録音を伴わない再生を既定にする。他アプリ内のブラウザーは区別する。 */
+function getDefaultVoiceOutputMode() {
+  const agent = typeof navigator !== "undefined" ? navigator.userAgent || "" : "";
+  const safari = /AppleWebKit/.test(agent) && /Safari/.test(agent)
+    && !/Chrome|Chromium|CriOS|FxiOS|EdgiOS|GSA|Android/.test(agent);
+  /* Safariの通話向け設定で聞こえない報告を受けた既定値。実機の出力保証はしない。 */
+  return safari ? "media" : "call-test";
+}
+
+function restoreVoiceOutputMode(savedV3, legacy) {
+  const options = new Set(["mix", "priority", "media", "call-test", "system"]);
+  if (options.has(savedV3)) return savedV3;
+  if (legacy === "call-test") return getDefaultVoiceOutputMode();
+  if (["priority", "media", "system"].includes(legacy)) return legacy;
+  return getDefaultVoiceOutputMode();
 }
 
 /** 案内音声の再生優先度。音量や出力先の直接変更には使用できない。 */
 const VOICE_AUDIO_SESSION_TYPES = Object.freeze({
   mix: "ambient",
   priority: "transient-solo",
+  media: "playback",
   "call-test": "play-and-record",
   system: "auto",
 });
@@ -2218,6 +2295,12 @@ function updateVoiceOutputStatus(message = "", isError = false) {
     hasSession = typeof navigator !== "undefined" && Boolean(navigator.audioSession);
   } catch {
     hasSession = false;
+  }
+  if (!message && hasSession && state.voiceOutputMode === "media") {
+    message = ui(
+      "メディア再生を使用します。Safariで通話向け音声が聞こえない場合の代替設定です。音楽が止まる場合があります。",
+      "Using media playback, an alternative when communication audio is inaudible in Safari. Music may pause.",
+    );
   }
   voiceOutputStatus.textContent = message || (hasSession
     ? (state.voiceOutputMode === "call-test"
@@ -2252,7 +2335,7 @@ function configureVoiceAudioSession() {
 function releasePriorityAudioSession() {
   try {
     if (typeof navigator !== "undefined"
-        && ["transient-solo", "play-and-record"].includes(navigator.audioSession?.type)) {
+        && ["transient-solo", "play-and-record", "playback"].includes(navigator.audioSession?.type)) {
       navigator.audioSession.type = "ambient";
     }
   } catch {
@@ -2331,9 +2414,9 @@ function stopSpeechAudioRoute() {
  * 通話向け設定のとき、短い接続確認音の準備と音声中の経路維持を行う。
  * 実際の発話は引き続き SpeechSynthesis が担当し、音量増幅はできない。
  */
-function prepareSpeechAudioRoute() {
+function prepareSpeechAudioRoute(forAudioFile = false) {
   stopSpeechAudioRoute();
-  if (state.voiceOutputMode !== "call-test") return false;
+  if (!forAudioFile && state.voiceOutputMode !== "call-test") return false;
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return false;
 
@@ -2464,6 +2547,16 @@ function isTrustedVoiceAudioUrl(value) {
   }
 }
 
+/** 音声ファイルの最大振幅を測り、最大3倍まで補正する。端末音量は変更しない。 */
+function getAudioFileGain(buffer) {
+  if (!buffer.getChannelData || !buffer.numberOfChannels) return 1;
+  let peak = 0;
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    for (const sample of buffer.getChannelData(channel)) peak = Math.max(peak, Math.abs(sample));
+  }
+  return peak > 0 ? Math.min(3, 0.9 / peak) : 1;
+}
+
 /** デコードした案内音声をテスト音と同じ AudioContext から再生する。 */
 async function playCloudVoiceAudio(message, requestId, isPreview = false) {
   const route = activeSpeechAudioRoute;
@@ -2519,11 +2612,18 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false) {
     if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return true;
     const buffer = await route.context.decodeAudioData(bytes);
     if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return true;
+    if (route.context.state && route.context.state !== "running") {
+      throw new Error("Audio playback requires a user gesture");
+    }
 
     const source = route.context.createBufferSource();
     route.voiceSource = source;
     source.buffer = buffer;
-    source.connect(route.context.destination);
+    source.playbackRate?.setValueAtTime(getGuidanceSpeechRate(), route.context.currentTime);
+    const level = route.context.createGain();
+    level.gain.setValueAtTime(getAudioFileGain(buffer) * getGuidanceSpeechVolume(), route.context.currentTime);
+    source.connect(level);
+    level.connect(route.context.destination);
     source.addEventListener("ended", () => {
       if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return;
       stopSpeechAudioRoute();
@@ -2567,7 +2667,8 @@ function speakText(message, { preview = false } = {}) {
     && Boolean(window.AudioContext || window.webkitAudioContext);
 
   if (tryAudioFile) {
-    prepareSpeechAudioRoute();
+    cancelSpeech();
+    prepareSpeechAudioRoute(true);
     const requestId = ++speechRequestId;
     window.speechSynthesis?.cancel?.();
     void playCloudVoiceAudio(message, requestId, preview).then((played) => {
@@ -2587,6 +2688,7 @@ function speakText(message, { preview = false } = {}) {
 
   if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return false;
   /* 通常のブラウザー音声は Web Audio へ接続できず別経路で出力される。 */
+  cancelSpeech();
   prepareSpeechAudioRoute();
   void speakTextWhenVoicesReady(message);
   return true;
@@ -2594,7 +2696,8 @@ function speakText(message, { preview = false } = {}) {
 
 /** 音声一覧の読み込みを待ってからGoogle音声を指定して読み上げる。 */
 async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId) {
-  const voices = await waitForSpeechVoices();
+  const initialVoices = getSpeechVoices();
+  const voices = initialVoices.length ? initialVoices : await waitForSpeechVoices();
   if (requestId !== speechRequestId) return;
   /* 直接呼ばれた場合も準備する。準備に失敗しても従来の読み上げを行う。 */
   if (!activeSpeechAudioRoute) prepareSpeechAudioRoute();
@@ -2614,7 +2717,7 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId) 
 
   if (voice) {
     utterance.voice = voice;
-    utterance.lang = voice.lang;
+    utterance.lang = locale;
   } else {
     utterance.lang = locale;
   }
@@ -2623,7 +2726,7 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId) 
   utterance.rate = getGuidanceSpeechRate();
   utterance.pitch = 1;
   /* Web Speech API の音量上限は 1。端末の再生音量は利用者が調整する。 */
-  utterance.volume = 1;
+  utterance.volume = getGuidanceSpeechVolume();
 
   utterance.addEventListener("start", () => {
     updateVoiceStatus(
@@ -2656,51 +2759,43 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId) 
 }
 
 /** 自動案内開始時の安全メッセージを読み上げる。 */
-function speakAutomaticGuidanceStartMessage() {
-  const locale = getGuidanceSpeechLocale();
+function getAutomaticGuidanceStartMessage(locale = getGuidanceSpeechLocale()) {
+  const facility = getFacilityDisplayName(state.selectedFacility) || ui("目的施設", "the destination");
   const messages = {
-    "ja-JP":
-      "探索を開始しました。目的施設へ接近後、自動的に駐車区画の案内を開始します。運転中にスマートフォンを手で持って操作したり、画面を注視したりする行為は道路交通法で禁止されています。走行中は画面を操作しないでください。",
-    "en-US":
-      "Search started. Guidance will begin automatically when you approach the destination facility. Using or looking at a smartphone while driving is prohibited by Japanese road traffic law. Do not operate the screen while driving.",
-    "en-GB":
-      "Search started. Guidance will begin automatically when you approach the destination facility. Using or looking at a mobile phone while driving is prohibited by Japanese road traffic law. Do not operate the screen while driving.",
-    "zh-CN":
-      "已开始搜索。接近目的设施后，将自动开始停车位导航。在日本，驾驶时手持操作智能手机或注视屏幕是法律禁止的。驾驶时请勿操作屏幕。",
-    "ko-KR":
-      "검색을 시작했습니다. 목적 시설에 가까워지면 주차 구역 안내를 자동으로 시작합니다. 일본에서는 운전 중 스마트폰을 손에 들고 조작하거나 화면을 주시하는 행위가 법으로 금지되어 있습니다. 주행 중에는 화면을 조작하지 마세요.",
-    "es-ES":
-      "Se ha iniciado la búsqueda. La guía de la plaza de aparcamiento comenzará automáticamente al acercarse al destino. En Japón está prohibido utilizar o mirar un teléfono móvil mientras se conduce. No manipule la pantalla durante la conducción.",
+    "ja-JP": `${facility}に近づくと、自動で駐車枠の探索を開始します。走行中に画面を注視する行為は、道路交通法で禁止されています。操作は安全な場所に停車してから行ってください。`,
+    "en-US": `The parking space search will start automatically when you approach ${facility}. Looking closely at the screen while driving is prohibited by Japanese road traffic law. Stop in a safe place before using the controls.`,
+    "en-GB": `The parking space search will start automatically when you approach ${facility}. Looking closely at the screen while driving is prohibited by Japanese road traffic law. Stop in a safe place before using the controls.`,
+    "zh-CN": `接近${facility}时，将自动开始搜索停车位。日本道路交通法禁止驾驶时注视屏幕。请在安全地点停车后再操作。`,
+    "ko-KR": `${facility}에 가까워지면 주차 공간 검색을 자동으로 시작합니다. 일본 도로교통법은 주행 중 화면을 주시하는 행위를 금지하고 있습니다. 조작은 안전한 곳에 정차한 후에 해 주세요.`,
+    "es-ES": `La búsqueda de una plaza de aparcamiento comenzará automáticamente al acercarse a ${facility}. Mirar detenidamente la pantalla durante la conducción está prohibido por la ley de tráfico japonesa. Deténgase en un lugar seguro antes de utilizar los controles.`,
   };
-
-  return speakText(messages[locale] ?? messages["en-US"]);
+  return messages[locale] ?? messages["en-US"];
 }
 
-/** 現在の案内先を読み上げる。 */
-function speakCurrentGuidance() {
-  if (!state.recommendedSpace) return false;
+function speakAutomaticGuidanceStartMessage() {
+  return speakText(getAutomaticGuidanceStartMessage());
+}
 
-  const locale = getGuidanceSpeechLocale();
+/** 再探索や手動探索では、実際には検知していない「接近」を読み上げない。 */
+function getCurrentGuidanceMessage(locale = getGuidanceSpeechLocale()) {
+  if (!state.recommendedSpace) return "";
   const number = getSpokenSpaceId(state.recommendedSpace);
-  const type = getSpokenSpaceTypeLabel(state.recommendedSpace.spaceType);
-  const destination = getSelectedDestinationName();
-
+  const facility = getFacilityDisplayName(state.selectedFacility);
+  const approaching = state.lastSearchWasAuto && facility;
   const messages = {
-    "ja-JP":
-      `駐車区画、${number}番です。${type}です。${destination ? `目的店舗は、${destination}です。` : ""}マップと現地の標識を確認してください。`,
-    "en-US":
-      `Parking space ${number}. ${type}.${destination ? ` Destination: ${destination}.` : ""} Please check the map and on-site signs.`,
-    "en-GB":
-      `Parking space ${number}. ${type}.${destination ? ` Destination: ${destination}.` : ""} Please check the map and on-site signs.`,
-    "zh-CN":
-      `停车位${number}号。${type}。${destination ? `目的地是${destination}。` : ""}请确认地图和现场标志。`,
-    "ko-KR":
-      `주차 구역 ${number}번입니다. ${type}입니다.${destination ? ` 목적지는 ${destination}입니다.` : ""} 지도와 현장 표지판을 확인해 주세요.`,
-    "es-ES":
-      `Plaza de aparcamiento número ${number}. ${type}.${destination ? ` Destino: ${destination}.` : ""} Compruebe el mapa y las señales del aparcamiento.`,
+    "ja-JP": `${approaching ? `${facility}に接近しました。` : facility ? `${facility}の駐車枠をご案内します。` : ""}ご案内する駐車枠は、${number}番です。周囲の安全と現地の表示を確認して、駐車してください。見つからない場合は、安全な場所に停車してから、再探索ボタンを押してください。`,
+    "en-US": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is number ${number}. Check your surroundings and on-site signs before parking. If you cannot find the space, stop in a safe place before pressing Search again.`,
+    "en-GB": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is number ${number}. Check your surroundings and on-site signs before parking. If you cannot find the space, stop in a safe place before pressing Search again.`,
+    "zh-CN": `${approaching ? `已接近${facility}。` : facility ? `为您提供${facility}的停车位指引。` : ""}推荐的停车位是${number}号。请确认周围安全及现场标识后停车。若找不到车位，请在安全地点停车后按再次搜索按钮。`,
+    "ko-KR": `${approaching ? `${facility}에 가까워졌습니다. ` : facility ? `${facility}의 주차 공간을 안내합니다. ` : ""}안내할 주차 공간은 ${number}번입니다. 주변의 안전과 현장 표지판을 확인한 후 주차해 주세요. 찾지 못한 경우 안전한 곳에 정차한 후 다시 검색 버튼을 눌러 주세요.`,
+    "es-ES": `${approaching ? `Se está acercando a ${facility}. ` : facility ? `Guía de aparcamiento para ${facility}. ` : ""}La plaza recomendada es la número ${number}. Compruebe la seguridad de su entorno y las señales antes de aparcar. Si no encuentra la plaza, deténgase en un lugar seguro antes de pulsar Buscar de nuevo.`,
   };
+  return messages[locale] ?? messages["en-US"];
+}
 
-  return speakText(messages[locale] ?? messages["en-US"]);
+/** 自動探索、手動探索、再案内で同じ案内文を使う。 */
+function speakCurrentGuidance() {
+  return speakText(getCurrentGuidanceMessage());
 }
 
 /** 現在設定の音声案内言語で短い試聴を行う。 */
@@ -2837,6 +2932,8 @@ function endGuidance() {
 
 /** 最初の画面へ戻り、検索結果を初期化する。 */
 function resetApplication() {
+  cancelSpeech();
+  window.parkingSafety?.resetConfirmation?.();
   state.searchRequestId += 1;
   state.selectedFacility = null;
   state.selectedDestination = null;
@@ -2900,6 +2997,17 @@ voiceGuideButton?.addEventListener("click", () => {
   speakCurrentGuidance();
 });
 voicePreviewButton?.addEventListener("click", previewSelectedVoice);
+[voiceSelect, voiceRateSelect, voiceVolumeInput].forEach((control) => {
+  control?.addEventListener("change", () => {
+    cancelSpeech();
+    saveVoiceProfile();
+    updateVoiceControls();
+    previewSelectedVoice();
+  });
+});
+voiceVolumeInput?.addEventListener("input", () => {
+  if (voiceVolumeLabel) voiceVolumeLabel.textContent = `${voiceVolumeInput.value}%`;
+});
 cloudVoiceInput?.addEventListener("change", () => {
   cancelSpeech();
   state.cloudVoiceEnabled = cloudVoiceInput.checked;
@@ -2922,10 +3030,10 @@ voiceOutputTestButton?.addEventListener("click", () => { void playVoiceOutputTes
 voiceOutputModeSelect?.addEventListener("change", () => {
   const selected = voiceOutputModeSelect.value;
   cancelSpeech();
-  state.voiceOutputMode = Object.hasOwn(VOICE_AUDIO_SESSION_TYPES, selected) ? selected : "call-test";
+  state.voiceOutputMode = Object.hasOwn(VOICE_AUDIO_SESSION_TYPES, selected) ? selected : getDefaultVoiceOutputMode();
   updateVoiceOutputStatus();
   try {
-    localStorage.setItem("parkingGuideVoiceOutputModeV2", state.voiceOutputMode);
+    localStorage.setItem("parkingGuideVoiceOutputModeV3", state.voiceOutputMode);
   } catch {
     /* 保存できない場合も現在の選択は有効とする。 */
   }
@@ -2944,6 +3052,7 @@ guidanceVoiceInputs.forEach((input) => {
       ["en-US", "en-GB", "zh-CN", "ko-KR", "es-ES"].includes(selectedLanguage)
         ? selectedLanguage
         : "en-US";
+    cancelSpeech();
     updateVoiceModeUi();
 
     /* 選択した言語に音声が付いていることをその場で確認できるよう自動試聴する。 */
