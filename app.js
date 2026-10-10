@@ -247,6 +247,8 @@ const STATIC_JA_EN = Object.freeze({
   "接続先のテスト音": "Test output sound",
   "標準では通話向け音声を使います。音が聞こえない場合は、安全な場所に停車して再生方式を切り替えてください。":
     "Communication-style audio is the default. If inaudible, stop safely and try another playback mode.",
+  "通話向け音声では、電子音で出力先を準備してから読み上げます。接続先のテスト音は電子音、音声を試すは読み上げ音声なので、音量は一致しません。":
+    "In communication mode, a brief tone prepares the output before speech. The output test plays a tone, while Test voice uses synthesized speech, so the volume may differ.",
   "BluetoothやCarPlayの音量・出力先はWebアプリから直接変更できません。車載機とiPhoneの設定も確認してください。":
     "Web apps cannot directly change Bluetooth or CarPlay volume and output routing. Check your car audio and iPhone settings.",
   "言語を選ぶと、その言語の音声を自動で試聴します。対応音声が端末にない場合は画面に表示します。":
@@ -2293,11 +2295,86 @@ async function playVoiceOutputTestSound() {
   }
 }
 
+/** 通話向け音声の間だけ、テスト音と同じ Web Audio 経路を準備する。 */
+let activeSpeechAudioRoute = null;
+
+/** 古い経路を停止し、音声が終わった後に無音の音源を残さない。 */
+function stopSpeechAudioRoute() {
+  const route = activeSpeechAudioRoute;
+  activeSpeechAudioRoute = null;
+  if (!route) return;
+  try { route.oscillator.stop(); } catch { /* 停止済みなら無視する。 */ }
+  try { void Promise.resolve(route.context.close()).catch(() => {}); }
+  catch { /* ブラウザー側の終了失敗は案内終了を妨げない。 */ }
+}
+
+/**
+ * 通話向け設定のとき、短い接続確認音の準備と音声中の経路維持を行う。
+ * 実際の発話は引き続き SpeechSynthesis が担当し、音量増幅はできない。
+ */
+function prepareSpeechAudioRoute() {
+  stopSpeechAudioRoute();
+  if (state.voiceOutputMode !== "call-test") return false;
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return false;
+
+  let context = null;
+  try {
+    configureVoiceAudioSession();
+    context = new AudioContextClass();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const now = context.currentTime;
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(660, now);
+    gain.gain.setValueAtTime(0.00001, now);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    const route = { context, oscillator, gain };
+    activeSpeechAudioRoute = route;
+    /* 操作時に準備する。自動案内で起動が拒否されても音声合成は継続。 */
+    const resumed = context.resume();
+    if (resumed?.catch) {
+      void resumed.catch(() => {
+        if (activeSpeechAudioRoute === route) stopSpeechAudioRoute();
+      });
+    }
+    return true;
+  } catch {
+    if (context) {
+      try { void Promise.resolve(context.close()).catch(() => {}); } catch {}
+    }
+    activeSpeechAudioRoute = null;
+    return false;
+  }
+}
+
+/** 音声の直前に、接続先テスト音と同じ周波数の短いチャイムを鳴らす。 */
+function cueSpeechAudioRoute() {
+  const route = activeSpeechAudioRoute;
+  if (!route) return;
+  try {
+    const now = route.context.currentTime;
+    const gain = route.gain.gain;
+    gain.cancelScheduledValues?.(now);
+    gain.setValueAtTime(0.00001, now);
+    gain.linearRampToValueAtTime(0.12, now + 0.035);
+    gain.setValueAtTime(0.12, now + 0.13);
+    gain.linearRampToValueAtTime(0.00001, now + 0.24);
+  } catch {
+    stopSpeechAudioRoute();
+  }
+}
+
 /** 画面へ戻った際、ブラウザーが一時停止した読み上げだけを再開する。 */
 function resumePausedSpeechOnReturn() {
   if (document.hidden || !state.voiceEnabled) return;
   if (window.speechSynthesis?.paused) {
     configureVoiceAudioSession();
+    if (activeSpeechAudioRoute) {
+      void activeSpeechAudioRoute.context.resume?.().catch?.(() => {});
+    }
     window.speechSynthesis.resume?.();
   }
 }
@@ -2308,6 +2385,7 @@ let speechRequestId = 0;
 function cancelSpeech() {
   speechRequestId += 1;
   window.speechSynthesis?.cancel?.();
+  stopSpeechAudioRoute();
   releasePriorityAudioSession();
 }
 
@@ -2318,6 +2396,8 @@ function speakText(message) {
     return false;
   }
 
+  /* 再生ボタンの操作中に Web Audio の出力経路を開き、iPhoneの制限に備える。 */
+  prepareSpeechAudioRoute();
   void speakTextWhenVoicesReady(message);
   return true;
 }
@@ -2327,7 +2407,8 @@ async function speakTextWhenVoicesReady(message) {
   const requestId = ++speechRequestId;
   const voices = await waitForSpeechVoices();
   if (requestId !== speechRequestId) return;
-  /* 接続先に応じて利用者が選んだ再生方式を適用する。 */
+  /* 直接呼ばれた場合も準備する。準備に失敗しても従来の読み上げを行う。 */
+  if (!activeSpeechAudioRoute) prepareSpeechAudioRoute();
   configureVoiceAudioSession();
   window.speechSynthesis.cancel();
 
@@ -2366,11 +2447,13 @@ async function speakTextWhenVoicesReady(message) {
   });
   utterance.addEventListener("end", () => {
     if (requestId !== speechRequestId) return;
+    stopSpeechAudioRoute();
     releasePriorityAudioSession();
     updateVoiceStatus();
   });
   utterance.addEventListener("error", () => {
     if (requestId !== speechRequestId) return;
+    stopSpeechAudioRoute();
     releasePriorityAudioSession();
     updateVoiceStatus(
       ui("音声の再生に失敗しました。", "Voice playback failed."),
@@ -2378,6 +2461,8 @@ async function speakTextWhenVoicesReady(message) {
     );
   });
 
+  /* Web Audio のチャイムと端末音声の聞こえ方を同じ案内内で比較できる。 */
+  cueSpeechAudioRoute();
   window.speechSynthesis.speak(utterance);
 }
 
