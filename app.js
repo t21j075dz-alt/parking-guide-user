@@ -235,6 +235,7 @@ const STATIC_JA_EN = Object.freeze({
   "日本語はGoogle 日本語を固定で使用します。English表示では英語・中国語・韓国語・スペイン語の音声案内を選べます。":
     "Japanese uses Google Japanese by default. In English view, voice guidance can be selected in English, Chinese, Korean, or Spanish.",
   "日本語：Google 日本語（固定）": "Japanese: Google Japanese (fixed)",
+  "日本語：VOICEVOX音声ファイル（実験）": "Japanese: VOICEVOX audio file (experimental)",
   "音声案内言語": "Voice guidance language",
   "音声を試す": "Test voice",
   "音声ファイル方式を試す（外部音声合成）": "Try audio-file voice (external synthesis)",
@@ -2124,7 +2125,9 @@ function updateVoiceModeUi() {
   if (voiceModeLabel) {
     voiceModeLabel.textContent = english
       ? ui("音声案内言語", "Voice guidance language")
-      : ui("日本語：Google 日本語（固定）", "Japanese: Google Japanese (fixed)");
+      : state.cloudVoiceEnabled
+        ? ui("日本語：VOICEVOX音声ファイル（実験）", "Japanese: VOICEVOX audio file (experimental)")
+        : ui("日本語：Google 日本語（固定）", "Japanese: Google Japanese (fixed)");
   }
 
   if (voiceOutputModeSelect) voiceOutputModeSelect.value = state.voiceOutputMode;
@@ -2161,6 +2164,11 @@ function updateVoiceStatus(message = "", stateName = "") {
 
   if (message) {
     voiceStatus.textContent = message;
+  } else if (state.cloudVoiceEnabled && getGuidanceSpeechLocale() === "ja-JP") {
+    voiceStatus.textContent = ui(
+      "使用音声: VOICEVOX:春日部つむぎ（外部音声ファイル方式、通信必須）",
+      "Voice: VOICEVOX Kasukabe Tsumugi (external audio file, requires internet)",
+    );
   } else {
     const voice = getSelectedSpeechVoice();
     const expectedGoogle = voice && /google/i.test(voice.name);
@@ -2836,6 +2844,7 @@ cloudVoiceInput?.addEventListener("change", () => {
   } catch {
     /* 保存できないときも現在の画面では選択した方式を使う。 */
   }
+  updateVoiceModeUi();
   if (state.cloudVoiceEnabled) {
     previewSelectedVoice();
   } else {
