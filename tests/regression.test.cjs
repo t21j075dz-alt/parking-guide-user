@@ -165,6 +165,11 @@ test('CarPlay用の再生方式は混合・案内優先・端末標準を切り�
   assert.equal(context.navigator.audioSession.type, 'transient-solo');
   run('releasePriorityAudioSession()');
   assert.equal(context.navigator.audioSession.type, 'ambient');
+  run("state.voiceOutputMode = 'call-test'");
+  assert.equal(run('configureVoiceAudioSession()'), true);
+  assert.equal(context.navigator.audioSession.type, 'play-and-record');
+  run('releasePriorityAudioSession()');
+  assert.equal(context.navigator.audioSession.type, 'ambient');
   run("state.voiceOutputMode = 'system'");
   assert.equal(run('configureVoiceAudioSession()'), true);
   assert.equal(context.navigator.audioSession.type, 'auto');
@@ -203,4 +208,17 @@ test('テスト音はWeb Audio未対応端末で失敗として説明する', as
   const { run, nodes } = app();
   assert.equal(await run('playVoiceOutputTestSound()'), false);
   assert.match(nodes.get('#voice-output-status').textContent, /テスト音/);
+});
+
+test('通信向け試験設定はマイク権限要求や通話開始を伴わない', () => {
+  const { run, context } = app();
+  let microphoneCalls = 0;
+  context.navigator = {
+    audioSession: { type: 'auto' },
+    mediaDevices: { getUserMedia: () => { microphoneCalls++; throw new Error('unexpected'); } },
+  };
+  run("state.voiceOutputMode = 'call-test'");
+  assert.equal(run('configureVoiceAudioSession()'), true);
+  assert.equal(context.navigator.audioSession.type, 'play-and-record');
+  assert.equal(microphoneCalls, 0);
 });
