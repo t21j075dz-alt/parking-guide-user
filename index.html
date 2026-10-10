@@ -16,7 +16,7 @@
     <script src="./facilities.js?v=20261009-all-facilities" defer></script>
     <script src="./sync-config.js" defer></script>
     <script src="./parking-layouts.js" defer></script>
-    <script src="./app.js?v=20261010-speech-audio-route" defer></script>
+    <script src="./app.js?v=20261010-voice-file-opt-in" defer></script>
   </head>
 
   <body>
@@ -224,6 +224,12 @@
                 <option value="system">端末の標準設定に任せる</option>
               </select>
               <button class="secondary-button" id="voice-output-test-button" type="button">接続先のテスト音</button>
+              <label class="voice-option" for="cloud-voice-enabled">
+                <input type="checkbox" id="cloud-voice-enabled">
+                <span>音声ファイル方式を試す（外部音声合成）</span>
+              </label>
+              <p class="voice-status">オンにすると、日本語案内文（店舗名・区画番号を含む）を外部のVOICEVOX音声合成サービス（tts.quest）へ送信します。生成音声をチャイムと同じWeb Audioで再生します。通信が必要で、時間がかかる・利用できない場合は端末の読み上げに戻ります。運転中は設定しないでください。</p>
+              <p class="voice-status">VOICEVOX:春日部つむぎ（外部サービス tts.quest に接続）</p>
               <p class="voice-status" id="voice-output-status" role="status" aria-live="polite"></p>
               <p class="voice-status">標準では通話向け音声を使います。音が聞こえない場合は、安全な場所に停車して再生方式を切り替えてください。</p>
               <p class="voice-status">通話向け音声では、電子音で出力先を準備してから読み上げます。接続先のテスト音は電子音、音声を試すは読み上げ音声なので、音量は一致しません。</p>
