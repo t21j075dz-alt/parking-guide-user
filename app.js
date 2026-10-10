@@ -232,9 +232,9 @@ const STATIC_JA_EN = Object.freeze({
   "岡山理科大学 工学部 情報工学科 卒業研究": "Okayama University of Science — Graduation Research",
   "試作システムのため、実際の駐車案内には使用できません。":
     "Prototype system. Do not rely on it for real-world parking guidance.",
-  "日本語はGoogle 日本語を固定で使用します。English表示では英語・中国語・韓国語・スペイン語の音声案内を選べます。":
-    "Japanese uses Google Japanese by default. In English view, voice guidance can be selected in English, Chinese, Korean, or Spanish.",
-  "日本語：Google 日本語（固定）": "Japanese: Google Japanese (fixed)",
+  "日本語は端末の利用可能な音声を使い、Google日本語がある場合は優先します。English表示では英語・中国語・韓国語・スペイン語を選べます。":
+    "Japanese uses an available device voice, preferring Google Japanese if installed. English view offers other languages.",
+  "日本語：端末音声（Googleがあれば優先）": "Japanese: device voice (Google if available)",
   "日本語：VOICEVOX音声ファイル（実験）": "Japanese: VOICEVOX audio file (experimental)",
   "音声案内言語": "Voice guidance language",
   "音声を試す": "Test voice",
@@ -457,6 +457,7 @@ const guidanceVoiceInputs = [...document.querySelectorAll('input[name="guidanceV
 const voicePreviewButton = document.querySelector("#voice-preview-button");
 const voiceOutputModeSelect = document.querySelector("#voice-output-mode");
 const cloudVoiceInput = document.querySelector("#cloud-voice-enabled");
+const cloudVoiceDiagnostic = document.querySelector("#cloud-voice-diagnostic");
 const voiceOutputTestButton = document.querySelector("#voice-output-test-button");
 const voiceOutputStatus = document.querySelector("#voice-output-status");
 const voiceStatus = document.querySelector("#voice-status");
@@ -2127,7 +2128,7 @@ function updateVoiceModeUi() {
       ? ui("音声案内言語", "Voice guidance language")
       : state.cloudVoiceEnabled
         ? ui("日本語：VOICEVOX音声ファイル（実験）", "Japanese: VOICEVOX audio file (experimental)")
-        : ui("日本語：Google 日本語（固定）", "Japanese: Google Japanese (fixed)");
+        : ui("日本語：端末音声（Googleがあれば優先）", "Japanese: device voice (Google if available)");
   }
 
   if (voiceOutputModeSelect) voiceOutputModeSelect.value = state.voiceOutputMode;
@@ -2400,6 +2401,44 @@ function resumePausedSpeechOnReturn() {
 let speechRequestId = 0;
 let pendingCloudVoiceController = null;
 
+/** Web Speech と外部TTSを区別して外部サービスの状態を常に表示する。 */
+function setCloudVoiceDiagnostic(message, isError = false) {
+  if (!cloudVoiceDiagnostic) return;
+  cloudVoiceDiagnostic.textContent = message;
+  cloudVoiceDiagnostic.classList.toggle("is-error", isError);
+  cloudVoiceDiagnostic.classList.toggle("is-active", !isError);
+}
+
+/** 外部サービスの技術的エラーを、個人情報を含めずに説明する。 */
+function describeCloudVoiceError(error) {
+  const code = String(error?.message ?? "");
+  if (error?.name === "AbortError") return ui(
+    "通信時間切れ（タイムアウト）", "Timed out",
+  );
+  if (error?.name === "TypeError") return ui(
+    "通信エラー（ネットワーク・CORS制限の可能性）",
+    "Network error (possibly CORS restrictions)",
+  );
+  if (code.includes("HTTP 429")) return ui(
+    "音声サービスが混雑しています（HTTP 429）", "Voice service is busy (HTTP 429)",
+  );
+  if (/HTTP 5[0-9]{2}/.test(code)) return ui(
+    "音声サービス側の障害（HTTP 5xx）", "Voice service error (HTTP 5xx)",
+  );
+  if (code.includes("Audio generation is taking too long")) return ui(
+    "音声の生成が制限時間に間に合いませんでした",
+    "Audio generation did not finish in time",
+  );
+  if (code.includes("Invalid audio response")) return ui(
+    "外部サービスからの応答形式が予期したものと異なります",
+    "Unexpected response format",
+  );
+  return ui(
+    "音声の生成・ダウンロード・再生に失敗しました",
+    "Voice synthesis, download, or playback failed",
+  );
+}
+
 /** 再生中だけでなく、音声一覧を待っている読み上げも取り消す。 */
 function cancelSpeech() {
   speechRequestId += 1;
@@ -2426,16 +2465,26 @@ function isTrustedVoiceAudioUrl(value) {
 }
 
 /** デコードした案内音声をテスト音と同じ AudioContext から再生する。 */
-async function playCloudVoiceAudio(message, requestId) {
+async function playCloudVoiceAudio(message, requestId, isPreview = false) {
   const route = activeSpeechAudioRoute;
   if (!route || !route.context.decodeAudioData
-      || !route.context.createBufferSource || typeof fetch !== "function") return false;
+      || !route.context.createBufferSource || typeof fetch !== "function") {
+    setCloudVoiceDiagnostic(ui(
+      "失敗：この環境はWeb Audioで音声ファイルを再生できません。",
+      "Failed: Web Audio file playback unavailable.",
+    ), true);
+    return false;
+  }
 
   const controller = new AbortController();
   pendingCloudVoiceController?.abort();
   pendingCloudVoiceController = controller;
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  const timeoutId = setTimeout(() => controller.abort(), isPreview ? 30000 : 15000);
   try {
+    setCloudVoiceDiagnostic(ui(
+      "接続中：VOICEVOXへリクエストしています。",
+      "Connecting: Requesting VOICEVOX audio.",
+    ));
     updateVoiceStatus(ui(
       "音声データを作成しています。通信状態によっては端末音声へ切り替わります。",
       "Generating audio. Device speech will be used if the connection fails.",
@@ -2443,20 +2492,24 @@ async function playCloudVoiceAudio(message, requestId) {
     const endpoint = "https://api.tts.quest/v3/voicevox/synthesis"
       + "?speaker=8&text=" + encodeURIComponent(message);
     const response = await fetch(endpoint, { signal: controller.signal });
-    if (!response.ok) throw new Error("VOICEVOX API request failed");
+    if (!response.ok) throw new Error("VOICEVOX API HTTP " + response.status);
     const output = await response.json();
     if (!output?.success || !isTrustedVoiceAudioUrl(output.mp3DownloadUrl)
         || !isTrustedVoiceAudioUrl(output.audioStatusUrl)) throw new Error("Invalid audio response");
 
+    setCloudVoiceDiagnostic(ui(
+      "接続成功：音声データが生成されるのを待っています。",
+      "Connected: Waiting for audio generation.",
+    ));
     let ready = false;
-    for (let i = 0; i < 8; i += 1) {
+    for (let i = 0; i < (isPreview ? 32 : 16); i += 1) {
       if (requestId !== speechRequestId) return true;
       const statusResponse = await fetch(output.audioStatusUrl, { signal: controller.signal });
       if (!statusResponse.ok) throw new Error("Audio status unavailable");
       const status = await statusResponse.json();
       if (status.isAudioError) throw new Error("Audio generation failed");
       if (status.isAudioReady) { ready = true; break; }
-      await new Promise((resolve) => setTimeout(resolve, 550));
+      await new Promise((resolve) => setTimeout(resolve, 750));
     }
     if (!ready) throw new Error("Audio generation is taking too long");
 
@@ -2479,13 +2532,24 @@ async function playCloudVoiceAudio(message, requestId) {
     }, { once: true });
     configureVoiceAudioSession();
     source.start();
+    setCloudVoiceDiagnostic(ui(
+      "成功：生成された日本語音声をWeb Audioで再生しています。",
+      "Success: Playing generated Japanese speech via Web Audio.",
+    ));
     updateVoiceStatus(ui(
       "VOICEVOXの音声ファイルを再生しています。",
       "Playing an audio file generated with VOICEVOX.",
     ), "active");
     return true;
-  } catch {
-    /* 外部サービスが使えないときは、現在の音声案内を中断せず端末音声へ戻す。 */
+  } catch (error) {
+    if (requestId === speechRequestId) {
+      setCloudVoiceDiagnostic(ui(
+        "失敗：VOICEVOX音声を利用できません（",
+        "Failed: VOICEVOX audio is unavailable (",
+      ) + describeCloudVoiceError(error) + ui(
+        "）。端末音声へ戻りました。", "). Fell back to device voice.",
+      ), true);
+    }
     return false;
   } finally {
     clearTimeout(timeoutId);
@@ -2494,7 +2558,7 @@ async function playCloudVoiceAudio(message, requestId) {
 }
 
 /** Web Speech APIで無料読み上げを行う。 */
-function speakText(message) {
+function speakText(message, { preview = false } = {}) {
   if (!message) return false;
 
   /* 日本語の音声ファイル方式は本人が選んだ場合にのみ外部へ文章を送信する。 */
@@ -2506,7 +2570,7 @@ function speakText(message) {
     prepareSpeechAudioRoute();
     const requestId = ++speechRequestId;
     window.speechSynthesis?.cancel?.();
-    void playCloudVoiceAudio(message, requestId).then((played) => {
+    void playCloudVoiceAudio(message, requestId, preview).then((played) => {
       if (played || requestId !== speechRequestId) return;
       stopSpeechAudioRoute();
       releasePriorityAudioSession();
@@ -2651,7 +2715,7 @@ function previewSelectedVoice() {
     "es-ES": "Prueba de guía por voz. Plaza de aparcamiento número cinco.",
   };
 
-  speakText(messages[locale] ?? messages["en-US"]);
+  speakText(messages[locale] ?? messages["en-US"], { preview: true });
 }
 
 /** Web Speech APIの利用可否を反映する。 */
@@ -2839,6 +2903,9 @@ voicePreviewButton?.addEventListener("click", previewSelectedVoice);
 cloudVoiceInput?.addEventListener("change", () => {
   cancelSpeech();
   state.cloudVoiceEnabled = cloudVoiceInput.checked;
+  setCloudVoiceDiagnostic(state.cloudVoiceEnabled
+    ? ui("音声ファイル方式を試行します。接続結果をここに表示します。", "Testing audio-file playback; results appear here.")
+    : ui("音声ファイル方式はオフです。", "Audio-file mode is off."));
   try {
     localStorage.setItem("parkingGuideCloudVoiceEnabled", String(state.cloudVoiceEnabled));
   } catch {
