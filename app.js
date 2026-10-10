@@ -238,7 +238,9 @@ const STATIC_JA_EN = Object.freeze({
   "音声案内言語": "Voice guidance language",
   "音声を試す": "Test voice",
   "言語を選ぶと、その言語の音声を自動で試聴します。対応音声が端末にない場合は画面に表示します。":
-    "Selecting a language automatically plays a voice sample. If the voice is unavailable on the device, the app shows that on screen."
+    "Selecting a language automatically plays a voice sample. If the voice is unavailable on the device, the app shows that on screen.",
+  "音声はアプリ側で最大音量に設定しています。音が小さい場合は、安全な場所に停車して「音声を試す」を押し、再生中に端末やBluetooth接続先の音量を上げてください。":
+    "Voice guidance is already set to the maximum app volume. If it sounds quiet, stop in a safe place, tap “Test voice,” and increase your device or Bluetooth output volume while the sample plays."
 });
 
 const STATIC_EN_JA = Object.freeze(
@@ -2195,6 +2197,7 @@ async function speakTextWhenVoicesReady(message) {
   /* 速度設定は getGuidanceSpeechRate に集約する。 */
   utterance.rate = getGuidanceSpeechRate();
   utterance.pitch = 1;
+  /* Web Speech API の音量上限は 1。端末の再生音量は利用者が調整する。 */
   utterance.volume = 1;
 
   utterance.addEventListener("start", () => {
