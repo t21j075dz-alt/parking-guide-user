@@ -21,6 +21,7 @@ function app() {
       speechSynthesis: { cancel() {}, speak() {} } },
     fetch: async () => ({ ok: true, json: async () => [] }),
   });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../speech-readings.js'), 'utf8'), context);
   const source = fs.readFileSync(process.env.PARKING_TEST_SOURCE || path.join(__dirname, '../app.js'), 'utf8');
   vm.runInContext(source.replace(/\r\n/g, '\n').split('/* =========================================================\n   操作イベント')[0], context);
   const run = (code) => vm.runInContext(code, context);
@@ -111,7 +112,7 @@ test('希望車種かつ空き区画だけを案内する', () => {
 test('入口未登録のレイアウトを距離比較したと説明しない', async () => {
   const { run, context, nodes } = app();
   context.fetch = async () => ({ ok: true, json: async () => [{ facility_id: 'a', layout_data: {
-    facilityId: 'a', objects: [{ uid: 'p', name: '001', objectType: 'parkingSpace', x: 0, y: 0, width: 6, height: 12 }],
+    facilityId: 'a', objects: [{ uid: 'p', name: '001', status: 'available', objectType: 'parkingSpace', x: 0, y: 0, width: 6, height: 12 }],
   } }] });
   run(`state.selectedFacility = { id: 'a', name: 'test' }; state.currentScreen = 'result';
     state.voiceEnabled = false; saveSearchConditions = () => {}; renderParkingMap = () => {};`);
@@ -285,7 +286,7 @@ test('自動案内と手動案内に標準の通話向け音声設定を適用�
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(history.length, 2);
   assert.equal(history[1].sessionType, 'play-and-record');
-  assert.match(history[1].utterance.text, /駐車枠/);
+  assert.match(history[1].utterance.text, /くかく/);
   history[1].utterance.handlers.end();
   assert.equal(context.navigator.audioSession.type, 'ambient');
 });
@@ -386,6 +387,7 @@ test('同意後は日本語案内をWeb Audioへ流し、通常の端末読み�
   const { run, context } = app();
   let synthesisCalls = 0;
   let voiceAudio = null;
+  let submittedText = null;
   let audioSessionType = '';
   context.navigator = { audioSession: { type: 'ambient' } };
   context.window.speechSynthesis.getVoices = () => [{ name: 'Google 日本語', lang: 'ja-JP' }];
@@ -407,6 +409,7 @@ test('同意後は日本語案内をWeb Audioへ流し、通常の端末読み�
   };
   context.fetch = async (url) => {
     if (url.startsWith('https://api.tts.quest/')) {
+      submittedText = new URL(url).searchParams.get('text');
       return { ok: true, json: async () => ({
         success: true,
         audioStatusUrl: 'https://audio2.tts.quest/v1/data/a12b3c/status.json',
@@ -422,6 +425,7 @@ test('同意後は日本語案内をWeb Audioへ流し、通常の端末読み�
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(synthesisCalls, 0);
   assert.ok(voiceAudio);
+  assert.equal(submittedText, 'ちゅうしゃくかく、ごばんです。');
   assert.equal(audioSessionType, 'play-and-record');
   voiceAudio.onEnd();
   assert.equal(context.navigator.audioSession.type, 'ambient');
@@ -500,18 +504,18 @@ test('各言語の音声・速度・音量を別々に適用し、音声一覧�
   assert.equal(run('getGuidanceSpeechVolume()'), 1);
 });
 
-test('案内文に施設名・区画番号・停車後の再探索を含め、手動探索で接近を断定しない', () => {
+test('日本語案内に読み仮名・番号・通過案内を含め、手動探索で接近を断定しない', () => {
   const { run } = app();
   run("state.selectedFacility = {name: 'テスト施設'}; state.recommendedSpace = {id: '005'}; state.lastSearchWasAuto = true");
-  assert.match(run('getAutomaticGuidanceStartMessage()'), /テスト施設に近づくと、自動で駐車枠の探索を開始/);
-  assert.match(run('getCurrentGuidanceMessage()'), /テスト施設に接近しました。ご案内する駐車枠は、5番/);
-  assert.match(run('getCurrentGuidanceMessage()'), /安全な場所に停車してから、再探索ボタン/);
+  assert.match(run('getAutomaticGuidanceStartMessage()'), /テスト施設にちかづくと、じどうであきくかく/);
+  assert.match(run('getCurrentGuidanceMessage()'), /テスト施設にせっきんしました。ごあんないするくかくは、ごばん/);
+  assert.match(run('getCurrentGuidanceMessage()'), /こうどうでまつことなく、あんぜんにつうか/);
   for (const locale of ['en-US', 'en-GB', 'zh-CN', 'ko-KR', 'es-ES']) {
     assert.ok(run(`getCurrentGuidanceMessage('${locale}')`).includes('5'));
     assert.ok(run(`getAutomaticGuidanceStartMessage('${locale}')`).includes('テスト施設'));
   }
   run('state.lastSearchWasAuto = false');
-  assert.doesNotMatch(run('getCurrentGuidanceMessage()'), /接近しました/);
+  assert.doesNotMatch(run('getCurrentGuidanceMessage()'), /せっきんしました/);
 });
 
 test('音声ファイルの小さい振幅を補正し、増幅上限とクリッピング余裕を守る', () => {
@@ -609,4 +613,117 @@ test('音声調整UIは選択言語の実在音声を表示し、選択を保存
   run("state.language = 'en'; updateVoiceControls()");
   assert.equal(nodes.get('#voice-select').value, 'ko');
   assert.equal(nodes.get('#voice-rate').value, '0.8');
+});
+
+test('全122施設に独立した日本語読み仮名があり、難読名を正しい読みで保持する', () => {
+  const context = vm.createContext({ window: {} });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../facilities.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../speech-readings.js'), 'utf8'), context);
+  assert.equal(vm.runInContext('Object.keys(window.PARKING_SPEECH_READINGS).length', context), 122);
+  assert.equal(vm.runInContext('FACILITY_CATALOG.every(f => /^[ぁ-ゖー、 ]+$/.test(window.PARKING_SPEECH_READINGS[f.id]))', context), true);
+  for (const [id, reading] of Object.entries({target_024:'まるなか よしだてん',target_034:'みすたーまっくす はちほんまつてん',target_073:'みちのえき そのぎのしょう',target_098:'まるきょう みなはるてん',target_107:'とらいある みやこのじょうとほくてん',target_111:'はんずまん うすきてん',target_118:'とらいある いずみこがねてん'})) {
+    assert.equal(context.window.PARKING_SPEECH_READINGS[id], reading);
+  }
+});
+
+test('区画番号は英字・全角・先頭ゼロ・桁数を処理し、管理用読み仮名を優先する', () => {
+  const { run } = app();
+  assert.equal(run("getSpokenSpaceId({id:'Ｂ－０５'})"), 'びー、ご');
+  assert.equal(run("getSpokenSpaceId({id:'A-12'})"), 'えー、じゅうに');
+  assert.equal(run("getSpokenSpaceId({id:'0306'})"), 'さんびゃくろく');
+  assert.equal(run("getSpokenSpaceId({id:'B-05',sourceObject:{spaceNumberReading:'びー、ご'}})"), 'びー、ご');
+  assert.equal(run("getSpokenSpaceId({id:'005'},'en-US')"), '5');
+  assert.equal(run("normalizeJapaneseSpeech('満車です。公道で順番待ちをせず通過。区画５番。')"), 'まんしゃです。こうどうでじゅんばんまちをせずつうか。くかくごばん。');
+});
+
+test('店舗状態の判定で満・混・空・不明を区別し、不明や利用不可を空き扱いしない', () => {
+  const { run } = app();
+  run(`function fixtureSpaces(available,occupied,unknown=0,closed=0) {
+    return [...Array.from({length:available},()=>({isOccupied:false,occupancyStatus:'available'})),
+      ...Array.from({length:occupied},()=>({isOccupied:true,occupancyStatus:'occupied'})),
+      ...Array.from({length:unknown},()=>({isOccupied:true,occupancyStatus:'unknown'})),
+      ...Array.from({length:closed},()=>({isOccupied:true,occupancyStatus:'unavailable'}))];
+  }`);
+  assert.equal(run('summarizeOccupancy(fixtureSpaces(0,10)).level'), 'full');
+  assert.equal(run('summarizeOccupancy(fixtureSpaces(3,1)).level'), 'busy');
+  assert.equal(run('summarizeOccupancy(fixtureSpaces(4,16)).level'), 'busy');
+  assert.equal(run('summarizeOccupancy(fixtureSpaces(4,15)).level'), 'open');
+  assert.equal(run('summarizeOccupancy(fixtureSpaces(4,15,1)).level'), 'unknown');
+  assert.equal(run('summarizeOccupancy(fixtureSpaces(0,0,0,10)).level'), 'unknown');
+  assert.equal(run('summarizeOccupancy(fixtureSpaces(4,0,0,20)).total'), 4);
+  assert.equal(run("createLayoutParkingSpaces({objects:[{objectType:'parkingSpace',x:0,y:0}]},{id:'a'})[0].isOccupied"), true);
+});
+
+async function searchFixture({ available = 0, occupied = 5, requested = 'standard', availableType = 'standard', voice = true, unknown = false } = {}) {
+  const instance = app();
+  const { run, context } = instance;
+  const objects = Array.from({length: available+occupied}, (_,i) => ({objectType:'parkingSpace',uid:`p${i}`,spaceNumber:String(i+1),x:i*10,y:10,width:6,height:12,spaceType:i<available?availableType:'standard',status: unknown?undefined:i<available?'available':'occupied'}));
+  context.fetch = async () => ({ok:true,json:async()=>[{facility_id:'a',layout_data:{facilityId:'a',objects}}]});
+  run(`state.selectedFacility = { id:'a', name:'テスト' }; state.currentScreen='result';
+    state.requestedSpaceType='${requested}'; state.voiceEnabled=${voice}; saveSearchConditions=()=>{};renderParkingMap=()=>{};
+    speechCalls=[];speakText=(message)=>{speechCalls.push(message);return true;};`);
+  const result = await run('runSpaceSearch()');
+  return {...instance, result};
+}
+
+test('満車では通常の結果を隠し、通過表示と音声・再検索・施設変更の画面を表示する', async () => {
+  const { run, nodes, result } = await searchFixture();
+  assert.equal(result.spaceId, null);
+  assert.equal(run('state.searchOutcome'), 'not-found');
+  assert.equal(nodes.get('#result-content').hidden, true);
+  assert.equal(nodes.get('#no-space-content').hidden, false);
+  assert.match(nodes.get('#search-status').textContent, /満車.*登録データ.*実際の空き情報ではありません/);
+  assert.match(nodes.get('#no-space-description').textContent, /満車/);
+  assert.equal(run('speechCalls.length'), 1);
+  assert.match(run('speechCalls[0]'), /まんしゃ.*こうどうでじゅんばんまちをせず.*つうか/);
+});
+
+test('希望車種の空きがない場合、他車種に空きがあれば満車と断定しない', async () => {
+  const { run, nodes } = await searchFixture({available:4,availableType:'accessible',requested:'standard'});
+  assert.equal(nodes.get('#no-space-content').hidden, false);
+  assert.match(nodes.get('#no-space-description').textContent, /普通車.*見つかりません/);
+  assert.doesNotMatch(nodes.get('#no-space-description').textContent, /満車/);
+  assert.doesNotMatch(run('getCurrentGuidanceMessage()'), /まんしゃ/);
+});
+
+test('混雑案内に残り区画数を含め、音声無効時は満車でも自動発話しない', async () => {
+  const busy = await searchFixture({available:2,occupied:10});
+  assert.equal(busy.run('state.searchOutcome'), 'found');
+  assert.equal(busy.nodes.get('#congestion-notice').hidden, false);
+  assert.match(busy.nodes.get('#congestion-notice').textContent, /残り2区画/);
+  assert.match(busy.run('speechCalls[0]'), /こんざつ.*のこりにくかく/);
+  const muted = await searchFixture({voice:false});
+  assert.equal(muted.run('speechCalls.length'), 0);
+  assert.match(muted.run('getCurrentGuidanceMessage()'), /つうか/);
+});
+
+test('状態不明・登録区画ゼロをデモの空き区画へ置き換えず、未確認と表示する', async () => {
+  const unknown = await searchFixture({available:2,unknown:true});
+  assert.equal(unknown.result.spaceId, null);
+  assert.match(unknown.nodes.get('#search-status').textContent, /未確認/);
+  const empty = await searchFixture({occupied:0});
+  assert.equal(empty.result.spaceId, null);
+  assert.equal(empty.run('state.resultSimulation'), false);
+  assert.match(empty.nodes.get('#search-status').textContent, /未確認/);
+  assert.doesNotMatch(empty.nodes.get('#search-status').textContent, /デモ/);
+});
+
+test('端末読み上げにも読み仮名変換を適用し、二重変換せず英語へは適用しない', async () => {
+  const {run,context} = app();
+  context.FACILITY_CATALOG = [{id:'target_024',name:'マルナカ 芳田店'}];
+  let spoken;
+  context.SpeechSynthesisUtterance = class {constructor(text){this.text=text;} addEventListener(){} };
+  context.window.SpeechSynthesisUtterance = context.SpeechSynthesisUtterance;
+  context.window.speechSynthesis.getVoices = () => [{name:'Japanese',lang:'ja-JP'}];
+  context.window.speechSynthesis.speak = utterance => {spoken=utterance.text;};
+  await run("speakTextWhenVoicesReady('マルナカ 芳田店の区画５番。')");
+  assert.equal(spoken,'まるなか よしだてんのくかくごばん。');
+  assert.equal(run("normalizeJapaneseSpeech(normalizeJapaneseSpeech('空き区画５番。'))"),'あきくかくごばん。');
+  assert.equal(run("getFacilitySpokenName('ja-JP')"),'');
+  run("state.selectedFacility={id:'target_111',name:'ハンズマン 宇宿店'}");
+  assert.equal(run("getFacilitySpokenName('ja-JP')"),'はんずまん うすきてん');
+  assert.equal(run("getFacilitySpokenName('en-US')"),'ハンズマン 宇宿店');
+  run("state.language='en';state.guidanceVoiceLanguage='en-US'");
+  await run("speakTextWhenVoicesReady('Parking space B-05')");
+  assert.equal(spoken,'Parking space B-05');
 });
