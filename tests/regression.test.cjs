@@ -288,3 +288,87 @@ test('自動案内と手動案内に標準の通話向け音声設定を適用�
   history[1].utterance.handlers.end();
   assert.equal(context.navigator.audioSession.type, 'ambient');
 });
+
+test('通話向け案内は電子音のWeb Audio経路を準備し、発話後に閉じる', async () => {
+  const { run, context } = app();
+  const audioEvents = [];
+  let spoken;
+  context.navigator = { audioSession: { type: 'ambient' } };
+  context.SpeechSynthesisUtterance = class {
+    constructor(text) { this.text = text; this.handlers = {}; }
+    addEventListener(name, fn) { this.handlers[name] = fn; }
+  };
+  context.window.SpeechSynthesisUtterance = context.SpeechSynthesisUtterance;
+  context.window.speechSynthesis.getVoices = () => [{ name: 'Google 日本語', lang: 'ja-JP' }];
+  context.window.speechSynthesis.speak = (u) => { spoken = u; };
+  context.window.AudioContext = class {
+    constructor() {
+      this.currentTime = 0;
+      this.destination = {};
+      audioEvents.push('created');
+    }
+    createOscillator() {
+      return {
+        frequency: { setValueAtTime() {} },
+        connect() {},
+        start() { audioEvents.push('started'); },
+        stop() { audioEvents.push('stopped'); },
+      };
+    }
+    createGain() {
+      return { gain: {
+        setValueAtTime() {},
+        linearRampToValueAtTime() { audioEvents.push('cue'); },
+        cancelScheduledValues() {},
+      }, connect() {} };
+    }
+    resume() { return Promise.resolve(); }
+    close() { audioEvents.push('closed'); return Promise.resolve(); }
+  };
+
+  assert.equal(run("speakText('通常の駐車区画案内')"), true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(spoken);
+  assert.equal(spoken.volume, 1);
+  assert.equal(context.navigator.audioSession.type, 'play-and-record');
+  assert.ok(audioEvents.includes('cue'));
+  spoken.handlers.end();
+  assert.ok(audioEvents.includes('stopped'));
+  assert.ok(audioEvents.includes('closed'));
+  assert.equal(context.navigator.audioSession.type, 'ambient');
+});
+
+test('案内の途中取消でWeb Audio経路を解放する', async () => {
+  const { run, context } = app();
+  let closes = 0;
+  context.navigator = { audioSession: { type: 'ambient' } };
+  context.window.AudioContext = class {
+    constructor() { this.currentTime = 0; this.destination = {}; }
+    createOscillator() {
+      return { frequency: { setValueAtTime() {} }, connect() {}, start() {}, stop() {} };
+    }
+    createGain() { return { gain: { setValueAtTime() {} }, connect() {} }; }
+    resume() { return Promise.resolve(); }
+    close() { closes++; return Promise.resolve(); }
+  };
+  run('prepareSpeechAudioRoute()');
+  run('cancelSpeech()');
+  assert.equal(closes, 1);
+  assert.equal(context.navigator.audioSession.type, 'ambient');
+});
+
+test('Web Audio非対応でも読み上げだけは維持する', async () => {
+  const { run, context } = app();
+  let spoken;
+  context.navigator = { audioSession: { type: 'ambient' } };
+  context.SpeechSynthesisUtterance = class {
+    constructor(text) { this.text = text; this.handlers = {}; }
+    addEventListener(name, fn) { this.handlers[name] = fn; }
+  };
+  context.window.SpeechSynthesisUtterance = context.SpeechSynthesisUtterance;
+  context.window.speechSynthesis.getVoices = () => [{ name: 'Google 日本語', lang: 'ja-JP' }];
+  context.window.speechSynthesis.speak = (utterance) => { spoken = utterance; };
+  assert.equal(run("speakText('案内')"), true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(spoken.text, '案内');
+});
