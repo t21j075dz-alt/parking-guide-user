@@ -425,3 +425,30 @@ test('同意後は日本語案内をWeb Audioへ流し、通常の端末読み�
   voiceAudio.onEnd();
   assert.equal(context.navigator.audioSession.type, 'ambient');
 });
+
+test('外部VOICEVOX接続エラーが画面に出て、端末の音声へ戻る', async () => {
+  const { run, context, nodes } = app();
+  let fallbackCalls = 0;
+  context.navigator = { audioSession: { type: 'ambient' } };
+  class Speech { constructor(text) { this.text = text; this.events = {}; }
+    addEventListener(k, fn) { this.events[k] = fn; } }
+  context.SpeechSynthesisUtterance = Speech;
+  context.window.SpeechSynthesisUtterance = Speech;
+  context.window.speechSynthesis.getVoices = () => [{ name: 'Google 日本語', lang: 'ja-JP' }];
+  context.window.speechSynthesis.speak = () => { fallbackCalls++; };
+  context.window.AudioContext = class {
+    constructor() { this.currentTime = 0; this.destination = {}; }
+    createOscillator() { return { frequency: { setValueAtTime() {} }, connect() {}, start() {}, stop() {} }; }
+    createGain() { return { gain: { setValueAtTime() {} }, connect() {} }; }
+    createBufferSource() { return { connect() {}, start() {}, addEventListener() {} }; }
+    decodeAudioData() { return Promise.resolve({}); }
+    resume() { return Promise.resolve(); }
+    close() { return Promise.resolve(); }
+  };
+  context.fetch = async () => ({ ok: false, status: 429 });
+  run('state.cloudVoiceEnabled = true');
+  assert.equal(run("speakText('診断音声', {preview: true})"), true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(nodes.get('#cloud-voice-diagnostic').textContent, /429/);
+  assert.equal(fallbackCalls, 1);
+});
