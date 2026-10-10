@@ -222,3 +222,37 @@ test('通信向け試験設定はマイク権限要求や通話開始を伴わ�
   assert.equal(context.navigator.audioSession.type, 'play-and-record');
   assert.equal(microphoneCalls, 0);
 });
+
+test('通話向け音声を新規利用と旧標準設定の既定値にする', () => {
+  const { run } = app();
+  assert.equal(run('state.voiceOutputMode'), 'call-test');
+  assert.equal(run('restoreVoiceOutputMode(null, null)'), 'call-test');
+  assert.equal(run("restoreVoiceOutputMode(null, 'mix')"), 'call-test');
+  assert.equal(run("restoreVoiceOutputMode(null, 'call-test')"), 'call-test');
+});
+
+test('新しい設定で音楽混合を選んだ場合はその選択を維持する', () => {
+  const { run } = app();
+  assert.equal(run("restoreVoiceOutputMode('mix', 'call-test')"), 'mix');
+  assert.equal(run("restoreVoiceOutputMode('priority', 'mix')"), 'priority');
+  assert.equal(run("restoreVoiceOutputMode('system', 'mix')"), 'system');
+  assert.equal(run("restoreVoiceOutputMode('invalid', 'mix')"), 'call-test');
+});
+
+test('通常の読み上げも選択操作なしで通話向けの再生方式を使用する', async () => {
+  const { run, context } = app();
+  context.navigator = { audioSession: { type: 'auto' } };
+  let lastSpoken;
+  context.SpeechSynthesisUtterance = class {
+    constructor(message) { this.text = message; this.handlers = {}; }
+    addEventListener(name, fn) { this.handlers[name] = fn; }
+  };
+  context.window.speechSynthesis.getVoices = () => [{ name: 'Google 日本語', lang: 'ja-JP' }];
+  context.window.speechSynthesis.speak = (utterance) => { lastSpoken = utterance; };
+  await run("speakTextWhenVoicesReady('実際の案内')");
+  assert.equal(context.navigator.audioSession.type, 'play-and-record');
+  assert.equal(lastSpoken.text, '実際の案内');
+  assert.equal(lastSpoken.volume, 1);
+  lastSpoken.handlers.end();
+  assert.equal(context.navigator.audioSession.type, 'ambient');
+});
