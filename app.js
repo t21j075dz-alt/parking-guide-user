@@ -240,6 +240,9 @@ const STATIC_JA_EN = Object.freeze({
   "Bluetooth・CarPlayの音声設定": "Bluetooth / CarPlay audio settings",
   "音楽と同時に再生": "Mix with music",
   "案内音声を優先（音楽が止まる場合あり）": "Prioritize guidance (may pause music)",
+  "通話向けの音声経路を試す（実験・音量保証なし）": "Try communication-style audio (experimental; volume not guaranteed)",
+  "通話向けの設定は本物の電話ではありません。マイクは起動せず、音が小さくなったり受話口から出たりする場合もあります。停車中にお試しください。":
+    "This does not place a call or access the microphone. Audio may become quieter or play through the earpiece. Test only while parked.",
   "端末の標準設定に任せる": "Use device default",
   "接続先のテスト音": "Test output sound",
   "停車中に音声を試してください。音楽と重ねて聞こえない場合は「案内音声を優先」をお試しください。":
@@ -372,7 +375,7 @@ function restoreLanguage() {
       ? savedLanguage
       : "en-US";
     const savedOutputMode = localStorage.getItem("parkingGuideVoiceOutputMode");
-    state.voiceOutputMode = ["mix", "priority", "system"].includes(savedOutputMode)
+    state.voiceOutputMode = ["mix", "priority", "call-test", "system"].includes(savedOutputMode)
       ? savedOutputMode : "mix";
     localStorage.removeItem("parkingGuideVoiceURI");
   } catch {
@@ -2174,6 +2177,7 @@ function updateVoiceStatus(message = "", stateName = "") {
 const VOICE_AUDIO_SESSION_TYPES = Object.freeze({
   mix: "ambient",
   priority: "transient-solo",
+  "call-test": "play-and-record",
   system: "auto",
 });
 
@@ -2187,10 +2191,15 @@ function updateVoiceOutputStatus(message = "", isError = false) {
     hasSession = false;
   }
   voiceOutputStatus.textContent = message || (hasSession
-    ? ui(
-      "再生方式を選んで「音声を試す」で確認してください。実際の音量は接続先によって異なります。",
-      "Select a mode and use Test voice. Actual loudness depends on the connected device.",
-    )
+    ? (state.voiceOutputMode === "call-test"
+      ? ui(
+        "通話向けの試験設定です。実際の通話にはならず、マイクも使用しません。音が小さくなった場合は元の方式へ戻してください。",
+        "Experimental communication-style audio: this does not make a call or use the microphone. Switch back if it becomes quieter.",
+      )
+      : ui(
+        "再生方式を選んで「音声を試す」で確認してください。実際の音量は接続先によって異なります。",
+        "Select a mode and use Test voice. Actual loudness depends on the connected device.",
+      ))
     : ui(
       "このブラウザーでは再生優先度の切り替えに対応していません。端末・車載機の音量と出力先をご確認ください。",
       "This browser does not support audio priority switching. Check the device and car audio output and volume.",
@@ -2214,7 +2223,7 @@ function configureVoiceAudioSession() {
 function releasePriorityAudioSession() {
   try {
     if (typeof navigator !== "undefined"
-        && navigator.audioSession?.type === "transient-solo") {
+        && ["transient-solo", "play-and-record"].includes(navigator.audioSession?.type)) {
       navigator.audioSession.type = "ambient";
     }
   } catch {
