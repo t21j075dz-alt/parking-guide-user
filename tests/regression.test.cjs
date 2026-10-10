@@ -15,7 +15,7 @@ function app() {
     if (!nodes.has(selector)) nodes.set(selector, element());
     return nodes.get(selector);
   }, querySelectorAll() { return []; } };
-  const context = vm.createContext({ document, console, setTimeout, clearTimeout, AbortSignal, FACILITY_CATALOG: [],
+  const context = vm.createContext({ document, console, setTimeout, clearTimeout, AbortSignal, AbortController, URL, FACILITY_CATALOG: [],
     window: { PARKING_LAYOUTS: {}, PARKING_REMOTE_CONFIG: { enabled: true, supabaseUrl: 'https://example.test', publishableKey: 'sb_publishable_test' },
       addEventListener() {}, setTimeout, scrollTo() {}, history: { pushState() {} },
       speechSynthesis: { cancel() {}, speak() {} } },
