@@ -1,0 +1,156 @@
+"use strict";
+/* 表示名とは別に保持する日本語音声辞書。名称変更時は同じIDの読みも更新する。
+ * 難読地名の確認先と更新方法はREADME「日本語の読み上げ」に記載。
+ * 管理区画には spaceNumberReading / nameReading を任意で追加できる。 */
+window.PARKING_SPEECH_READINGS = Object.freeze({
+  "target_001": "どらっぐすとあこすもす みなみしょうわてん",
+  "target_002": "がすと とっとりみなみてん",
+  "target_003": "みちのえき にしいなばきらり",
+  "target_004": "とらいある よなごおおだにてん",
+  "target_005": "とらいある ことうらてん",
+  "target_006": "とらいある さかいみなとてん",
+  "target_007": "らむー とっとりてん",
+  "target_008": "らむー くらよしてん",
+  "target_009": "ほーむぷらざなふこ ひがしとっとりてん",
+  "target_010": "かいんず えふしー とっとりてん",
+  "target_011": "どらっぐすとあこすもす おおだてん",
+  "target_012": "がすと しまねおおだてん",
+  "target_013": "みちのえき ゆのかわ",
+  "target_014": "とらいある うんなんてん",
+  "target_015": "とらいある はまだてん",
+  "target_016": "とらいある ますだてん",
+  "target_017": "とらいある おおだてん",
+  "target_018": "らむー やすぎてん",
+  "target_019": "ほーむぷらざなふこ まつえてん",
+  "target_020": "ほーむぷらざなふこ きたいずもてん",
+  "target_021": "まるなか なかいちょうてん",
+  "target_022": "らむーたうん おかやまちゅうおう",
+  "target_023": "とらいある おかやまとよはまてん",
+  "target_024": "まるなか よしだてん",
+  "target_025": "まるなか そうじゃてん",
+  "target_026": "まるなか おおもとてん",
+  "target_027": "まるなか おまちてん",
+  "target_028": "どらっぐすとあこすもす つだかてん",
+  "target_029": "がすと おかやましもなかのてん",
+  "target_030": "みちのえき くめのさと",
+  "target_031": "どらっぐすとあこすもす ふくやましんがいてん",
+  "target_032": "がすと ひがしひろしまさいじょういんたーてん",
+  "target_033": "みちのえき たけはら",
+  "target_034": "みすたーまっくす はちほんまつてん",
+  "target_035": "ほーむぷらざなふこ ひがしひろしまてん",
+  "target_036": "ほーむぷらざなふこ みよしてん",
+  "target_037": "ほーむぷらざなふこ おのみちてん",
+  "target_038": "ほーむぷらざなふこ くろせてん",
+  "target_039": "ほーむぷらざなふこ しょうばらてん",
+  "target_040": "ほーむぷらざなふこ よしだてん",
+  "target_041": "どらっぐすとあこすもす しんやまぐちえきてん",
+  "target_042": "がすと やまぐちおごおりてん",
+  "target_043": "みちのえき あいお",
+  "target_044": "とらいある しんしものせきてん",
+  "target_045": "みすたーまっくす やまぐちてん",
+  "target_046": "みすたーまっくす すえたけてん",
+  "target_047": "ほーむぷらざなふこ やまぐちてん",
+  "target_048": "ほーむぷらざなふこ しゅうなんてん",
+  "target_049": "ほーむぷらざなふこ ほうふてん",
+  "target_050": "ほーむぷらざなふこ みなみいわくにてん",
+  "target_051": "まるきょう はなみてん",
+  "target_052": "とらいある こがはなみてん",
+  "target_053": "はんずまん おおのじょうてん",
+  "target_054": "はんずまん くさみてん",
+  "target_055": "かいんず ふくおかしんぐうてん",
+  "target_056": "どらっぐすとあもり むなかたてん",
+  "target_057": "じょいふる ふくおかふくつてん",
+  "target_058": "こめりぱわー いいづかてん",
+  "target_059": "みちのえき かわら",
+  "target_060": "まるきょう むなかたてん",
+  "target_061": "どらっぐすとあもり かんざきもとほりてん",
+  "target_062": "がすと さがひょうごてん",
+  "target_063": "みちのえき やまと そよかぜかん",
+  "target_064": "とらいある すまーと いまりてん",
+  "target_065": "とらいある たけおとみおかてん",
+  "target_066": "まるきょう かんざきてん",
+  "target_067": "まるきょう たけおてん",
+  "target_068": "みすたーまっくす きたしげやすてん",
+  "target_069": "ほーむぷらざなふこ たけおてん",
+  "target_070": "ほーむぷらざなふこ からつてん",
+  "target_071": "どらっぐすとあこすもす おおがたてん",
+  "target_072": "がすと ながさきおおうらかいがんてん",
+  "target_073": "みちのえき そのぎのしょう",
+  "target_074": "とらいある させぼやまとてん",
+  "target_075": "とらいある しまばらてん",
+  "target_076": "とらいある おおむらてん",
+  "target_077": "とらいある いさはやてん",
+  "target_078": "とらいある とぎつてん",
+  "target_079": "まるきょう おおみやてん",
+  "target_080": "ほーむぷらざなふこ とぎつてん",
+  "target_081": "どらっぐすとあこすもす おおづばいぱすてん",
+  "target_082": "がすと くまもととしまてん",
+  "target_083": "みちのえき おおづ",
+  "target_084": "めがせんたーとらいある あらおてん",
+  "target_085": "とらいある うとてん",
+  "target_086": "とらいある やつしろてん",
+  "target_087": "かいんず くまもとうとてん",
+  "target_088": "まるきょう うえきてん",
+  "target_089": "まるきょう こうしてん",
+  "target_090": "まるきょう たまなてん",
+  "target_091": "どらっぐすとあこすもす おおいたしんかわてん",
+  "target_092": "がすと おおいたもりまちてん",
+  "target_093": "みちのえき どうわのさとくす",
+  "target_094": "とらいある しきどてん",
+  "target_095": "とらいある ひたてん",
+  "target_096": "とらいある べっぷてん",
+  "target_097": "とらいある なかつてん",
+  "target_098": "まるきょう みなはるてん",
+  "target_099": "まるきょう なかつてん",
+  "target_100": "みすたーまっくす うさてん",
+  "target_101": "どらっぐすとあもり つねひさてん",
+  "target_102": "じょいふる みやざきおおつかてん",
+  "target_103": "はんずまん やなぎまるてん",
+  "target_104": "みちのえき たかおかびたみんかん",
+  "target_105": "とらいある かのうてん",
+  "target_106": "とらいある みやざきつねひさてん",
+  "target_107": "とらいある みやこのじょうとほくてん",
+  "target_108": "とらいある こばやしてん",
+  "target_109": "めがせんたーとらいある ひゅうがてん",
+  "target_110": "とらいある にちなんてん",
+  "target_111": "はんずまん うすきてん",
+  "target_112": "どらっぐすとあこすもす かごしまうすきてん",
+  "target_113": "じょいふる かごしまさかのうえてん",
+  "target_114": "みちのえき たるみず",
+  "target_115": "とらいある いぶすきてん",
+  "target_116": "とらいある かのやてん",
+  "target_117": "ほーむぷらざなふこ たにやまてん",
+  "target_118": "とらいある いずみこがねてん",
+  "target_119": "とらいある かじきてん",
+  "target_120": "ほーむぷらざなふこ かごしまとうかいてん",
+  "home-test-001": "じたくてすとよう",
+  "ous-main-gate-experiment": "じっけんようちゅうしゃじょう、おかやまりかだいがくせいもん"
+});
+const JAPANESE_DIGITS = ["ぜろ", "いち", "に", "さん", "よん", "ご", "ろく", "なな", "はち", "きゅう"];
+function japaneseNumber(value) {
+  const digits = String(value).normalize("NFKC");
+  const n = Number(digits);
+  if (!/^\d+$/.test(digits)) return digits;
+  if (!Number.isSafeInteger(n) || n > 9999) return [...digits].map(d => JAPANESE_DIGITS[Number(d)]).join("、");
+  if (n === 0) return JAPANESE_DIGITS[0];
+  const thousands = Math.floor(n / 1000), hundreds = Math.floor(n % 1000 / 100), tens = Math.floor(n % 100 / 10), ones = n % 10;
+  return (thousands ? ({1:"せん",3:"さんぜん",8:"はっせん"}[thousands] || JAPANESE_DIGITS[thousands]+"せん") : "")
+    + (hundreds ? ({1:"ひゃく",3:"さんびゃく",6:"ろっぴゃく",8:"はっぴゃく"}[hundreds] || JAPANESE_DIGITS[hundreds]+"ひゃく") : "")
+    + (tens ? (tens === 1 ? "" : JAPANESE_DIGITS[tens])+"じゅう" : "") + (ones ? JAPANESE_DIGITS[ones] : "");
+}
+function japaneseSpaceReading(value) {
+  const letters = ["えー","びー","しー","でぃー","いー","えふ","じー","えいち","あい","じぇー","けー","える","えむ","えぬ","おー","ぴー","きゅー","あーる","えす","てぃー","ゆー","ぶい","だぶりゅー","えっくす","わい","ぜっと"];
+  return String(value).normalize("NFKC").replace(/[A-Za-z]/g, c => letters[c.toUpperCase().charCodeAt(0)-65]+"、")
+    .replace(/\d+/g, japaneseNumber).replace(/[-‐–—]/g,"、").replace(/、+/g,"、").replace(/、$/g,"");
+}
+function normalizeJapaneseSpeech(message) {
+  const replacements = {"空き区画":"あきくかく","空き情報":"あきじょうほう","駐車区画":"ちゅうしゃくかく","駐車枠":"ちゅうしゃわく","駐車場":"ちゅうしゃじょう","区画":"くかく","混雑":"こんざつ","満車":"まんしゃ","公道":"こうどう","順番待ち":"じゅんばんまち","通過":"つうか","停車":"ていしゃ","周囲":"しゅうい","現地":"げんち","普通車":"ふつうしゃ","入口":"いりぐち","再探索":"さいたんさく"};
+  let text = String(message);
+  const catalog = typeof FACILITY_CATALOG === "undefined" ? [] : FACILITY_CATALOG;
+  for (const f of [...catalog].sort((a,b) => b.name.length-a.name.length)) {
+    const reading = window.PARKING_SPEECH_READINGS[f.id];
+    if (reading) for (const name of [f.displayName,f.name].filter(Boolean)) text = text.split(name).join(reading);
+  }
+  for (const [word,reading] of Object.entries(replacements)) text = text.split(word).join(reading);
+  return text.replace(/([0-9０-９]+)番/g, (_,n) => japaneseNumber(n)+"ばん");
+}

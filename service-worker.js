@@ -3,19 +3,20 @@
  * 管理データ・位置情報・外部音声はキャッシュしない。
  * 配信ファイルを変更するときはVERSIONとSHELL_FILESを一緒に更新する。
  */
-const VERSION = "20261010-pwa-1";
+const VERSION = "20261010-readings-2";
 // 同じgithub.io上の管理アプリや別のパスのキャッシュを削除しない。
 const CACHE_PREFIX = `parking-guide-user:${self.registration.scope}:`;
 const CACHE_NAME = `${CACHE_PREFIX}${VERSION}`;
 const SHELL_FILES = [
   "./",
   "./index.html",
-  "./styles.css?v=20261010-pwa",
+  "./styles.css?v=20261010-refined",
   "./location-safety.js",
   "./facilities.js?v=20261009-all-facilities",
   "./sync-config.js",
   "./parking-layouts.js",
-  "./app.js?v=20261010-voice-diagnosis",
+  "./speech-readings.js?v=20261010-readings",
+  "./app.js?v=20261010-readings",
   "./pwa.js?v=20261010-pwa",
   "./manifest.webmanifest",
   "./icons/icon-192.png",

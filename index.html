@@ -17,13 +17,14 @@
     >
     <title>駐車場空き区画案内｜卒業研究</title>
     <!-- 利用者画面の共通スタイル。管理画面とは別リポジトリで管理する。 -->
-    <link rel="stylesheet" href="./styles.css?v=20261010-pwa">
+    <link rel="stylesheet" href="./styles.css?v=20261010-refined">
     <!-- 安全確認 → 施設データ → 同期設定 → レイアウト → 画面制御の順で読み込む。 -->
     <script src="./location-safety.js" defer></script>
     <script src="./facilities.js?v=20261009-all-facilities" defer></script>
     <script src="./sync-config.js" defer></script>
     <script src="./parking-layouts.js" defer></script>
-    <script src="./app.js?v=20261010-voice-diagnosis" defer></script>
+    <script src="./speech-readings.js?v=20261010-readings" defer></script>
+    <script src="./app.js?v=20261010-readings" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
   </head>
 
@@ -71,7 +72,7 @@
       </nav>
 
       <p class="research-note">
-        卒業研究用の試作です。実店舗の空き情報は取得していません。駐車区画の検索結果は、管理データ未登録の施設ではシミュレーションを表示します。
+        研究用デモ · 実際の空き情報ではありません
       </p>
 
       <!-- 端末への追加・通信状態・更新を表示する。操作は既存の運転中制御を通す。 -->
@@ -97,7 +98,7 @@
           <p id="location-status" class="location-status" role="status" aria-live="polite">まだ取得していません</p>
           <p id="location-details" class="location-details"></p>
           <p id="motion-status" class="motion-status" role="status" aria-live="polite">
-            現在地の取得中に移動状態を確認します。
+            移動状態：未確認
           </p>
         </div>
         <div class="location-actions">
@@ -116,7 +117,7 @@
         <div class="screen-heading">
           <p class="step-label">1 / 4</p>
           <h1 id="facility-title" tabindex="-1">利用する施設を選択</h1>
-          <p>中国地方・九州地方の研究対象施設と、岡山理科大学の実験用駐車場を掲載しています。</p>
+          <p>目的の店舗を選んでください。</p>
         </div>
 
         <form id="facility-filter-form" class="facility-filters" aria-labelledby="filter-title">
@@ -145,6 +146,7 @@
         </form>
 
         <p id="facility-empty" class="empty-state" hidden>条件に一致する施設がありません。</p>
+        <p class="availability-key">満：空きなし · 混：残りわずか · 空：空きあり · —：未確認</p>
         <div id="facility-list" class="facility-list" aria-label="選択できる施設"></div>
       </section>
 
@@ -164,7 +166,7 @@
               <button class="secondary-button" id="clear-private-test-location-button" type="button">登録地点を削除</button>
             </div>
           </section>
-          <p id="random-guidance-note" class="random-guidance-note" hidden>マルナカ 中井町店では現在、条件に合う空き区画から研究用にランダムで1区画を案内します。</p>
+          <p id="random-guidance-note" class="random-guidance-note" hidden>研究用：空き区画からランダムに案内します。</p>
         </div>
 
         <form id="condition-form">
@@ -221,7 +223,7 @@
 
           <section class="proximity-panel" aria-labelledby="proximity-title">
             <h2 id="proximity-title">施設へ近づいたら自動表示</h2>
-            <p>この条件を保存すると、位置情報を使って選択施設への接近を確認します。約250m以内に入ると空き区画を自動検索して表示します。</p>
+            <p>約250m以内で、空き区画を自動検索します。</p>
             <p id="proximity-status" class="proximity-status" role="status" aria-live="polite">まだ自動案内を開始していません。</p>
           </section>
 
@@ -230,22 +232,24 @@
               <input id="voice-enabled" type="checkbox" checked>
               <span>
                 <strong id="voice-settings-title">音声案内を使用</strong>
-                <small>日本語は端末の利用可能な音声を使い、Google日本語がある場合は優先します。English表示では英語・中国語・韓国語・スペイン語を選べます。</small>
+                <small>区画番号や混雑状況を音声で案内します。</small>
               </span>
             </label>
 
             <div class="voice-choice-row">
-              <span id="voice-mode-label">日本語：端末音声（Googleがあれば優先）</span>
+              <span id="voice-mode-label">日本語 / 端末音声</span>
               <button class="secondary-button" id="voice-preview-button" type="button">音声を試す</button>
             </div>
 
+            <details class="advanced-settings" id="voice-advanced">
+              <summary>音声・接続の詳細設定</summary>
             <div class="voice-output-settings">
               <label for="voice-output-mode">Bluetooth・CarPlayの音声設定</label>
               <select id="voice-output-mode">
-                <option value="media">メディア再生（Safari向け・音楽が止まる場合あり）</option>
+                <option value="media">メディア再生（Safari向け）</option>
                 <option value="call-test" selected>通話向け音声</option>
                 <option value="mix">音楽と同時に再生</option>
-                <option value="priority">案内音声を優先（音楽が止まる場合あり）</option>
+                <option value="priority">案内音声を優先</option>
                 <option value="system">端末の標準設定に任せる</option>
               </select>
               <button class="secondary-button" id="voice-output-test-button" type="button">接続先のテスト音</button>
@@ -253,14 +257,14 @@
                 <input type="checkbox" id="cloud-voice-enabled">
                 <span>音声ファイル方式を試す（外部音声合成）</span>
               </label>
-              <p class="voice-status">オンにすると、日本語案内文（店舗名・区画番号を含む）を外部のVOICEVOX音声合成サービス（tts.quest）へ送信します。生成音声をチャイムと同じWeb Audioで再生します。通信が必要で、時間がかかる・利用できない場合は端末の読み上げに戻ります。運転中は設定しないでください。</p>
+              <p class="voice-status">オンにすると、店舗名・区画番号を含む日本語案内文を外部サービス tts.quest に送信します。通信できない場合は端末音声に戻ります。設定は停車中に行ってください。</p>
               <p class="voice-status">VOICEVOX:春日部つむぎ（外部サービス tts.quest に接続）</p>
-              <p id="cloud-voice-diagnostic" class="voice-status" role="status" aria-live="polite">接続診断：音声ファイル方式をオンにし「音声を試す」を押すと、ここに接続結果が表示されます。</p>
+              <p id="cloud-voice-diagnostic" class="voice-status" role="status" aria-live="polite">接続診断：テスト後に表示します。</p>
               <p class="voice-status" id="voice-output-status" role="status" aria-live="polite"></p>
-              <p class="voice-status">Safariではメディア再生、その他のブラウザーでは通話向け音声を初期設定にします。停車中に「音声を試す」で確認してください。</p>
-              <p class="voice-status">通話向け音声では、電子音で出力先を準備してから読み上げます。接続先のテスト音は電子音、音声を試すは読み上げ音声なので、音量は一致しません。</p>
-              <p class="voice-status">BluetoothやCarPlayの音量・出力先はWebアプリから直接変更できません。車載機とiPhoneの設定も確認してください。</p>
-              <p class="voice-status">通話向けの設定は本物の電話ではありません。マイクは起動せず、音が小さくなったり受話口から出たりする場合もあります。停車中にお試しください。</p>
+              <details class="technical-help"><summary>音が聞こえないとき</summary>
+                <p>停車中に「音声を試す」で確認し、再生中に端末・車載機の音量を調整してください。WebアプリからBluetooth・CarPlayの出力先は変更できません。</p>
+                <p>再生方式は端末によって効果が異なります。通話向け音声はマイクを使用しません。電子音と読み上げの音量は一致しない場合があります。</p>
+              </details>
             </div>
 
             <fieldset class="english-voice-options" id="english-voice-row" hidden>
@@ -298,12 +302,10 @@
               <label for="voice-volume">アプリ内の音声音量 <output id="voice-volume-label" for="voice-volume">100%</output></label>
               <input id="voice-volume" type="range" min="10" max="100" step="10" value="100">
             </div>
-            <p class="voice-status">音声・速度・音量は言語ごとに保存します。小さく聞こえる場合は別の読み上げ音声も試してください。端末音声は100%が上限です。外部音声ファイルは小さい音を補正して再生します。</p>
-            <p id="voice-status" class="voice-status" role="status" aria-live="polite">
-              言語を選ぶと、その言語の音声を自動で試聴します。対応音声が端末にない場合は画面に表示します。
-            </p>
-            <p class="voice-status">音量の初期値は100%です。音が小さい場合は、安全な場所に停車して「音声を試す」を押し、再生中に端末やBluetooth接続先の音量を上げてください。</p>
-            <p class="voice-status">再生方式の切り替えは対応ブラウザーでのみ有効です。画面ロック中や他のアプリを使用中は、位置情報の更新や新しい音声案内が止まる場合があります。</p>
+            <p class="voice-status">音声・速度・音量は言語ごとに保存します。</p>
+            <p class="voice-status">画面ロック中や他のアプリの使用中は、自動案内が止まる場合があります。</p>
+            </details>
+            <p id="voice-status" class="voice-status" role="status" aria-live="polite"></p>
           </section>
 
           <div class="condition-actions">
@@ -358,8 +360,7 @@
         </section>
 
         <div class="safety-note waiting-safety" role="note">
-          <strong>安全上の注意</strong>
-          <p>走行中は画面を操作せず、自動案内が開始されるまでそのままお待ちください。</p>
+          <p>運転中の操作は控え、音声案内をご利用ください。</p>
         </div>
       </section>
 
@@ -372,6 +373,19 @@
         </div>
 
         <div id="search-status" class="search-status" role="status" aria-live="polite"></div>
+        <p id="congestion-notice" class="congestion-notice" role="status" hidden></p>
+        <section id="no-space-content" class="no-space-card" hidden aria-labelledby="no-space-title">
+          <span class="no-space-symbol" aria-hidden="true">—</span>
+          <h2 id="no-space-title">空き区画が見つかりませんでした</h2>
+          <p id="no-space-description"></p>
+          <p class="pass-through">公道で順番待ちをせず、周囲の安全を確認してそのまま通過してください。</p>
+          <p>別の駐車場をご利用ください。</p>
+          <div class="button-group">
+            <button class="primary-button" id="no-space-voice" type="button">音声で案内</button>
+            <button class="secondary-button" id="no-space-other" type="button">別の施設を選ぶ</button>
+            <button class="secondary-button" id="no-space-retry" type="button">空き状況を更新</button>
+          </div>
+        </section>
         <div id="result-content" hidden>
           <section class="result-summary" aria-labelledby="space-number">
             <div>
@@ -434,7 +448,10 @@
     <!-- 卒業研究の試作であり実運用向けではないことを表示する。 -->
     <footer class="site-footer">
       <p>岡山理科大学 工学部 情報工学科 卒業研究</p>
-      <p>試作システムのため、実際の駐車案内には使用できません。</p>
+      <details class="app-about"><summary>このアプリについて</summary>
+        <p>卒業研究用の試作です。実店舗の空き情報は取得していません。登録済み施設は管理レイアウトの保存時点のデータ、未登録施設はデモを表示します。実際の駐車可否は現地の表示に従ってください。</p>
+        <p>「混」は空き3区画以下、または利用可能な区画の20％以下の場合に表示します。状態不明の区画がある場合は「—」です。</p>
+      </details>
     </footer>
   </body>
 </html>

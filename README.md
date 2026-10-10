@@ -6,8 +6,8 @@
 
 1. 施設選択
 2. 条件選択
-3. 推奨駐車区画
-4. 詳細案内
+3. 接近を待つ
+4. 区画案内（空きなしの場合は通過案内）
 
 管理用の編集機能はこのリポジトリには含めません。
 
@@ -48,7 +48,8 @@ https://t21j075dz-alt.github.io/parking-guide-user/
 | `index.html` | 4画面、施設絞り込み、位置情報表示、安全確認ダイアログ |
 | `styles.css` | スマートフォン表示、ライト／ダーク、駐車場マップ |
 | `app.js` | 施設選択、レイアウト取得、区画検索、画面遷移 |
-| `facilities.js` | 研究対象120店舗 |
+| `facilities.js` | 研究対象120店舗と自宅テスト施設 |
+| `speech-readings.js` | 全122施設の読み仮名、日本語の区画番号・音声用変換 |
 | `location-safety.js` | 継続測位、移動判定、運転中操作の確認 |
 | `parking-layouts.js` | クラウド未使用時のレイアウトフォールバック |
 | `sync-config.js` | 管理アプリと共通のSupabase公開設定 |
@@ -260,3 +261,38 @@ API元: https://api.tts.quest/v3/voicevox/synthesis
 - Audio Session: https://www.w3.org/TR/audio-session/ （再生方式の性質、ブラウザーが最終的に音声を制御すること）
 - Web Speech API: https://webaudio.github.io/web-speech-api/#dom-speechsynthesisutterance-volume （端末音声のvolumeは0〜1）
 - 警察庁: https://www.npa.go.jp/bureau/traffic/keitai/info.html （走行中の画面注視禁止と安全な場所での使用）
+
+## 日本語の読み上げ（2026-10-10）
+
+画面には読みやすい通常の名称を表示し、音声には `speech-readings.js` の施設ID別のひらがなデータを使います。研究対象120店舗、大学の実験用駐車場、自宅テスト用の計122施設を登録しました。固定案内文も音声用のひらがなを用意しています。端末音声・外部音声合成の両方に同じ読み変換を適用します。外部サービスへの送信は利用者が音声ファイル方式をオンにした場合だけです。
+
+区画番号は英字・全角・先頭ゼロを処理します。例：`B-05` →「びー、ご」、`A-12` →「えー、じゅうに」。管理レイアウトの区画オブジェクトには任意で `spaceNumberReading` または `nameReading` を追加でき、個別の読みを優先します。施設にも `nameReading` を任意で追加できます。施設名を変更した場合は同じIDの読み仮名も更新してください。端末の音声によってイントネーションは異なるため、実機で「音声を試す」を確認します。
+
+難読名の確認に用いた一次資料（地名の読みを店舗名へ適用）：
+
+- [フジ採用情報：芳田店（ヨシダテン）](https://job.fuji-recruit.com/fujijob2/all/v99_13/Nvj_5_10_DUD%2CID/MLkyujin_l.htm)
+- [国土交通省：彼杵の荘（そのぎのしょう）](https://www.qsr.mlit.go.jp/n-michi/michi_no_eki/kobetu/sonogi/sonogi.html)
+- [日本郵便：皆春（ミナハル）](https://www.post.japanpost.jp/cgi-zip/zipcode.php?zip=8700131)
+- [日本郵便：八本松（ハチホンマツ）](https://www.post.japanpost.jp/cgi-zip/zipcode.php?city=1342120&id=132054&merge=&pref=34)
+- [日本郵便：宇宿（ウスキ）](https://www.post.japanpost.jp/cgi-zip/zipcode.php?city=1462160&id=158085&pref=46)
+- [日本郵便：都城都北簡易郵便局](https://map.japanpost.jp/p/search/prt/300173761000/)
+- [日本郵便：大谷町（オオダニチョウ）](https://www.post.japanpost.jp/cgi-zip/zipcode.php?city=1312020&id=123205&pref=31)
+- [日本郵便：神埼町本堀（モトホリ）](https://www.post.japanpost.jp/cgi-zip/zipcode.php?city=1422090&id=148726&pref=42)
+- [鳥取県：西いなば気楽里（きらり）](https://www.pref.tottori.lg.jp/secure/1167859/0610kendo_houkoku.pdf)
+
+## 店舗の満・混・空と空きなし案内
+
+施設一覧と検索結果は同じレイアウト状態から判定します。保存データとデモを区別して表示し、実際のリアルタイム空き情報ではないことを画面上部に表示します。
+
+| 表示 | 研究用の判定 |
+| --- | --- |
+| 満 | 利用可能な区画があり、その全区画が使用中 |
+| 混 | 空きが1～3区画、または利用可能区画の20％以下 |
+| 空 | 上記より空きが多い |
+| — | 登録区画ゼロ、未確認・不明な状態の区画がある |
+
+`unavailable` は利用可能な総数から除外します。状態未登録や未知の値は空き扱いせず、案内対象にも含めません。未登録施設では既存の12区画デモを使用しますが、登録済みの空レイアウトをデモに置き換えません。
+
+空きが少ない場合は残り区画数を表示・読み上げます。希望車種に一致する空きがない場合も通過案内を表示し、他車種に空きがある場合は満車と断定しません。空きなし画面には「公道で順番待ちをせず、周囲の安全を確認してそのまま通過してください」と表示し、音声案内、施設変更、再検索を用意します。音声オフの場合は自動発話せず、音声ボタンで任意に再生できます。
+
+音声の詳細設定・接続説明は折りたたみ、主画面では施設名・状態・操作を優先します。外部音声の送信説明はオンにするチェックボックスの直下に残しています。

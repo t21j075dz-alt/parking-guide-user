@@ -2053,3 +2053,46 @@ html[data-theme="dark"] .parking-map.parking-map--layout {
 .voice-adjustments select { width: 100%; min-width: 0; font: inherit; padding: 10px; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius); }
 .voice-adjustments input[type="range"] { width: 100%; min-height: 32px; }
 .voice-adjustments output { margin-left: 8px; font-variant-numeric: tabular-nums; }
+
+/* 情報の優先度を明確にし、詳細説明は必要なときに開く。 */
+:root { --radius: .85rem; }
+.research-note { color: var(--color-muted); background: transparent; border: 0; padding: .3rem 0; font-size: var(--font-size-label); }
+.pwa-panel { margin-block: .5rem 1rem; border-radius: var(--radius); font-size: var(--font-size-small); }
+.location-panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1rem; }
+.screen-heading { margin-block: 1.8rem 1.2rem; }
+.screen-heading > p:last-child { color: var(--color-muted); }
+.facility-list { border: 0; display: grid; gap: .65rem; }
+.facility-row { border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; background: var(--color-surface); }
+.facility-button { padding: 1rem 1.1rem; min-height: 6rem; }
+.facility-button:hover { background: var(--color-surface-subtle); }
+.facility-meta, .facility-distance, .facility-status { font-size: var(--font-size-label); color: var(--color-muted); }
+.facility-distance:empty { display: none; }
+.facility-availability { display: grid; justify-items: center; gap: .3rem; min-width: 4rem; }
+.facility-availability small { font-size: .7rem; color: var(--color-muted); font-weight: 400; }
+.availability-badge { display: grid; place-items: center; min-width: 2.75rem; min-height: 2.75rem; padding: .35rem; border: 1px solid currentColor; border-radius: .75rem; font-size: 1.1rem; font-weight: 700; }
+.availability-open { color: var(--color-available); background: var(--color-available-soft); }
+.availability-busy { color: var(--color-warning); background: var(--color-warning-soft); }
+.availability-full { color: var(--color-danger); background: var(--color-surface-subtle); }
+.availability-unknown { color: var(--color-muted); background: var(--color-surface-subtle); }
+.availability-key { font-size: var(--font-size-label); color: var(--color-muted); margin-block: 1rem .7rem; }
+.choice-list { border: 0; display: grid; gap: .5rem; }
+.choice-row { border: 1px solid var(--color-border); border-radius: var(--radius); padding: .85rem 1rem; }
+.choice-row:has(input:checked) { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); }
+.advanced-settings { margin-block: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); padding: .85rem 1rem; }
+.advanced-settings > summary { cursor: pointer; font-weight: 600; min-height: 1.7rem; }
+.advanced-settings[open] > summary { margin-bottom: 1rem; }
+.technical-help { color: var(--color-muted); font-size: var(--font-size-small); }
+.voice-status:empty { display: none; }
+.congestion-notice { background: var(--color-warning-soft); color: var(--color-warning); border-radius: var(--radius); padding: 1rem; font-weight: 600; }
+.no-space-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1.5rem; }
+.no-space-symbol { display: grid; place-items: center; width: 3rem; height: 3rem; background: var(--color-surface-subtle); color: var(--color-danger); border-radius: 50%; font-size: 1.6rem; }
+.no-space-card h2 { font-size: var(--font-size-heading); margin-block: 1rem; }
+.pass-through { color: var(--color-text); font-weight: 600; line-height: 1.8; }
+.app-about summary { cursor: pointer; margin-block: .8rem; }
+.no-space-card[hidden], .congestion-notice[hidden] { display: none; }
+@media (max-width: 600px) {
+  .facility-button { gap: .7rem; padding: .9rem; }
+  .facility-name { font-size: 1rem; line-height: 1.6; }
+  .no-space-card { padding: 1.2rem; }
+  .no-space-card .button-group { display: grid; grid-template-columns: 1fr; }
+}
