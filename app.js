@@ -240,7 +240,7 @@ const STATIC_JA_EN = Object.freeze({
   "言語を選ぶと、その言語の音声を自動で試聴します。対応音声が端末にない場合は画面に表示します。":
     "Selecting a language automatically plays a voice sample. If the voice is unavailable on the device, the app shows that on screen.",
   "音声はアプリ側で最大音量に設定しています。音が小さい場合は、安全な場所に停車して「音声を試す」を押し、再生中に端末やBluetooth接続先の音量を上げてください。":
-    "Voice guidance is already set to the maximum app volume. If it sounds quiet, stop in a safe place, tap “Test voice,” and increase your device or Bluetooth output volume while the sample plays."
+    "Voice guidance is already set to the maximum app volume. If it sounds quiet, stop in a safe place, tap “Test voice,” and increase your device or Bluetooth output volume while the sample plays."\n  "音楽と重ねて流す設定を使います（対応端末のみ）。画面ロック中や他のアプリを使用中は、位置情報の更新や新しい音声案内が止まる場合があります。iPhoneの消音モードでは音が出ない場合があります。": "The app requests audio mixing with music on supported devices. While the screen is locked or another app is active, location updates and new voice prompts may stop. On iPhone, Silent mode may mute the guidance.",
 });
 
 const STATIC_EN_JA = Object.freeze(
@@ -2150,6 +2150,28 @@ function updateVoiceStatus(message = "", stateName = "") {
   voiceStatus.classList.toggle("is-error", stateName === "error");
 }
 
+/** 音声案内を音楽と重ねられる環境では、端末に混合再生を要求する。 */
+function configureVoiceAudioSession() {
+  try {
+    /* AudioSession API は未対応ブラウザーがあるため、存在するときだけ使用する。 */
+    if (typeof navigator === "undefined" || !navigator.audioSession) return false;
+    navigator.audioSession.type = "ambient";
+    return navigator.audioSession.type === "ambient";
+  } catch {
+    /* 音声の再生自体は、従来の Web Speech API で継続する。 */
+    return false;
+  }
+}
+
+/** 画面へ戻った際、ブラウザーが一時停止した読み上げだけを再開する。 */
+function resumePausedSpeechOnReturn() {
+  if (document.hidden || !state.voiceEnabled) return;
+  if (window.speechSynthesis?.paused) {
+    configureVoiceAudioSession();
+    window.speechSynthesis.resume?.();
+  }
+}
+
 let speechRequestId = 0;
 
 /** 再生中だけでなく、音声一覧を待っている読み上げも取り消す。 */
@@ -2174,6 +2196,8 @@ async function speakTextWhenVoicesReady(message) {
   const requestId = ++speechRequestId;
   const voices = await waitForSpeechVoices();
   if (requestId !== speechRequestId) return;
+  /* Safari 等では ambient 指定により他アプリの音楽と混合できる場合がある。 */
+  configureVoiceAudioSession();
   window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(message);
@@ -2645,6 +2669,8 @@ restoreTheme();
 restoreTextSize();
 restoreLanguage();
 updateVoiceAvailability();
+/* 画面へ戻ったときだけ、中断状態にある音声を再開する。 */
+document.addEventListener?.("visibilitychange", resumePausedSpeechOnReturn);
 if ("speechSynthesis" in window) {
   window.speechSynthesis.addEventListener?.("voiceschanged", () => {
     updateVoiceModeUi();
