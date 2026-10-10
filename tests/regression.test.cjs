@@ -153,3 +153,54 @@ test('画面を戻したときだけ中断した読み上げを再開する', ()
   run('resumePausedSpeechOnReturn()');
   assert.equal(resumed, 1);
 });
+
+test('CarPlay用の再生方式は混合・案内優先・端末標準を切り替えられる', () => {
+  const { run, context } = app();
+  context.navigator = { audioSession: { type: 'auto' } };
+  run("state.voiceOutputMode = 'mix'");
+  assert.equal(run('configureVoiceAudioSession()'), true);
+  assert.equal(context.navigator.audioSession.type, 'ambient');
+  run("state.voiceOutputMode = 'priority'");
+  assert.equal(run('configureVoiceAudioSession()'), true);
+  assert.equal(context.navigator.audioSession.type, 'transient-solo');
+  run('releasePriorityAudioSession()');
+  assert.equal(context.navigator.audioSession.type, 'ambient');
+  run("state.voiceOutputMode = 'system'");
+  assert.equal(run('configureVoiceAudioSession()'), true);
+  assert.equal(context.navigator.audioSession.type, 'auto');
+});
+
+test('Audio Session APIに非対応でも読み上げを止めない', () => {
+  const { run, context } = app();
+  assert.equal(run('configureVoiceAudioSession()'), false);
+  context.navigator = { audioSession: {
+    get type() { return 'auto'; },
+    set type(_) { throw new Error('unsupported'); },
+  } };
+  assert.equal(run('configureVoiceAudioSession()'), false);
+});
+
+test('案内優先の読み上げ完了後に音楽と混ぜる再生設定へ戻す', async () => {
+  const { run, context } = app();
+  context.navigator = { audioSession: { type: 'auto' } };
+  let spoken;
+  context.SpeechSynthesisUtterance = class {
+    constructor(text) { this.text = text; this.handlers = {}; }
+    addEventListener(name, callback) { this.handlers[name] = callback; }
+  };
+  context.window.speechSynthesis.getVoices = () => [{ name: 'Google 日本語', lang: 'ja-JP' }];
+  context.window.speechSynthesis.speak = (utterance) => { spoken = utterance; };
+  run("state.voiceOutputMode = 'priority'");
+  await run("speakTextWhenVoicesReady('接続テスト')");
+  assert.equal(context.navigator.audioSession.type, 'transient-solo');
+  assert.equal(spoken.volume, 1);
+  assert.equal(spoken.text, '接続テスト');
+  spoken.handlers.end();
+  assert.equal(context.navigator.audioSession.type, 'ambient');
+});
+
+test('テスト音はWeb Audio未対応端末で失敗として説明する', async () => {
+  const { run, nodes } = app();
+  assert.equal(await run('playVoiceOutputTestSound()'), false);
+  assert.match(nodes.get('#voice-output-status').textContent, /テスト音/);
+});
