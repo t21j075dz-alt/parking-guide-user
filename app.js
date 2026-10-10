@@ -240,13 +240,13 @@ const STATIC_JA_EN = Object.freeze({
   "Bluetooth・CarPlayの音声設定": "Bluetooth / CarPlay audio settings",
   "音楽と同時に再生": "Mix with music",
   "案内音声を優先（音楽が止まる場合あり）": "Prioritize guidance (may pause music)",
-  "通話向けの音声経路を試す（実験・音量保証なし）": "Try communication-style audio (experimental; volume not guaranteed)",
+  "通話向け音声（標準）": "Communication-style guidance (default)",
   "通話向けの設定は本物の電話ではありません。マイクは起動せず、音が小さくなったり受話口から出たりする場合もあります。停車中にお試しください。":
     "This does not place a call or access the microphone. Audio may become quieter or play through the earpiece. Test only while parked.",
   "端末の標準設定に任せる": "Use device default",
   "接続先のテスト音": "Test output sound",
-  "停車中に音声を試してください。音楽と重ねて聞こえない場合は「案内音声を優先」をお試しください。":
-    "Test audio while parked. If mixing is inaudible, try prioritizing guidance.",
+  "標準では通話向け音声を使います。音が聞こえない場合は、安全な場所に停車して再生方式を切り替えてください。":
+    "Communication-style audio is the default. If inaudible, stop safely and try another playback mode.",
   "BluetoothやCarPlayの音量・出力先はWebアプリから直接変更できません。車載機とiPhoneの設定も確認してください。":
     "Web apps cannot directly change Bluetooth or CarPlay volume and output routing. Check your car audio and iPhone settings.",
   "言語を選ぶと、その言語の音声を自動で試聴します。対応音声が端末にない場合は画面に表示します。":
@@ -374,13 +374,13 @@ function restoreLanguage() {
     state.guidanceVoiceLanguage = supportedGuidanceLanguages.has(savedLanguage)
       ? savedLanguage
       : "en-US";
-    const savedOutputMode = localStorage.getItem("parkingGuideVoiceOutputMode");
-    state.voiceOutputMode = ["mix", "priority", "call-test", "system"].includes(savedOutputMode)
-      ? savedOutputMode : "mix";
+    const savedOutputMode = localStorage.getItem("parkingGuideVoiceOutputModeV2");
+    const legacyOutputMode = localStorage.getItem("parkingGuideVoiceOutputMode");
+    state.voiceOutputMode = restoreVoiceOutputMode(savedOutputMode, legacyOutputMode);
     localStorage.removeItem("parkingGuideVoiceURI");
   } catch {
     state.guidanceVoiceLanguage = "en-US";
-    state.voiceOutputMode = "mix";
+    state.voiceOutputMode = "call-test";
   }
   applyLanguage(saved);
 }
@@ -399,7 +399,7 @@ const state = {
   language: "ja",
   voiceEnabled: true,
   guidanceVoiceLanguage: "en-US",
-  voiceOutputMode: "mix",
+  voiceOutputMode: "call-test",
   lastSearchWasAuto: false,
   selectedFacility: null,
   selectedDestination: null,
@@ -2173,6 +2173,15 @@ function updateVoiceStatus(message = "", stateName = "") {
   voiceStatus.classList.toggle("is-error", stateName === "error");
 }
 
+/** 保存済み設定を読み込み、以前の既定値「音楽と同時」を新標準へ移行する。 */
+function restoreVoiceOutputMode(savedV2, legacy) {
+  const options = new Set(["mix", "priority", "call-test", "system"]);
+  if (options.has(savedV2)) return savedV2;
+  /* 利用者が明示した案内優先・端末標準の設定は維持する。 */
+  if (["priority", "call-test", "system"].includes(legacy)) return legacy;
+  return "call-test";
+}
+
 /** 案内音声の再生優先度。音量や出力先の直接変更には使用できない。 */
 const VOICE_AUDIO_SESSION_TYPES = Object.freeze({
   mix: "ambient",
@@ -2193,8 +2202,8 @@ function updateVoiceOutputStatus(message = "", isError = false) {
   voiceOutputStatus.textContent = message || (hasSession
     ? (state.voiceOutputMode === "call-test"
       ? ui(
-        "通話向けの試験設定です。実際の通話にはならず、マイクも使用しません。音が小さくなった場合は元の方式へ戻してください。",
-        "Experimental communication-style audio: this does not make a call or use the microphone. Switch back if it becomes quieter.",
+        "通話向け音声を自動案内・手動案内に使用します。実際の電話ではなく、マイクも使用しません。聞こえない場合は別の方式を選んでください。",
+        "Communication-style audio is used for automatic and manual guidance. No phone call or microphone is used. Choose another mode if inaudible.",
       )
       : ui(
         "再生方式を選んで「音声を試す」で確認してください。実際の音量は接続先によって異なります。",
@@ -2621,10 +2630,10 @@ voiceOutputTestButton?.addEventListener("click", () => { void playVoiceOutputTes
 voiceOutputModeSelect?.addEventListener("change", () => {
   const selected = voiceOutputModeSelect.value;
   cancelSpeech();
-  state.voiceOutputMode = Object.hasOwn(VOICE_AUDIO_SESSION_TYPES, selected) ? selected : "mix";
+  state.voiceOutputMode = Object.hasOwn(VOICE_AUDIO_SESSION_TYPES, selected) ? selected : "call-test";
   updateVoiceOutputStatus();
   try {
-    localStorage.setItem("parkingGuideVoiceOutputMode", state.voiceOutputMode);
+    localStorage.setItem("parkingGuideVoiceOutputModeV2", state.voiceOutputMode);
   } catch {
     /* 保存できない場合も現在の選択は有効とする。 */
   }
