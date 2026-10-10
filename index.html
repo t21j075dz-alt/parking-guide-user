@@ -16,7 +16,7 @@
     <script src="./facilities.js?v=20261009-all-facilities" defer></script>
     <script src="./sync-config.js" defer></script>
     <script src="./parking-layouts.js" defer></script>
-    <script src="./app.js?v=20261010-call-guidance-default" defer></script>
+    <script src="./app.js?v=20261010-speech-audio-route" defer></script>
   </head>
 
   <body>
@@ -226,6 +226,7 @@
               <button class="secondary-button" id="voice-output-test-button" type="button">接続先のテスト音</button>
               <p class="voice-status" id="voice-output-status" role="status" aria-live="polite"></p>
               <p class="voice-status">標準では通話向け音声を使います。音が聞こえない場合は、安全な場所に停車して再生方式を切り替えてください。</p>
+              <p class="voice-status">通話向け音声では、電子音で出力先を準備してから読み上げます。接続先のテスト音は電子音、音声を試すは読み上げ音声なので、音量は一致しません。</p>
               <p class="voice-status">BluetoothやCarPlayの音量・出力先はWebアプリから直接変更できません。車載機とiPhoneの設定も確認してください。</p>
               <p class="voice-status">通話向けの設定は本物の電話ではありません。マイクは起動せず、音が小さくなったり受話口から出たりする場合もあります。停車中にお試しください。</p>
             </div>
