@@ -256,3 +256,35 @@ test('通常の読み上げも選択操作なしで通話向けの再生方式�
   lastSpoken.handlers.end();
   assert.equal(context.navigator.audioSession.type, 'ambient');
 });
+
+test('自動案内と手動案内に標準の通話向け音声設定を適用する', async () => {
+  const { run, context } = app();
+  const history = [];
+  context.navigator = { audioSession: { type: 'auto' } };
+  class FakeUtterance {
+    constructor(text) { this.text = text; this.handlers = {}; }
+    addEventListener(name, fn) { this.handlers[name] = fn; }
+  }
+  context.SpeechSynthesisUtterance = FakeUtterance;
+  context.window.SpeechSynthesisUtterance = FakeUtterance;
+  context.window.speechSynthesis.getVoices = () => [{ name: 'Google 日本語', lang: 'ja-JP' }];
+  context.window.speechSynthesis.speak = (utterance) => {
+    history.push({ utterance, sessionType: context.navigator.audioSession.type });
+  };
+
+  assert.equal(run('speakAutomaticGuidanceStartMessage()'), true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(history.length, 1);
+  assert.equal(history[0].sessionType, 'play-and-record');
+  assert.equal(history[0].utterance.volume, 1);
+  history[0].utterance.handlers.end();
+
+  run("state.recommendedSpace = { id: '5', spaceType: 'standard' }");
+  assert.equal(run('speakCurrentGuidance()'), true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(history.length, 2);
+  assert.equal(history[1].sessionType, 'play-and-record');
+  assert.match(history[1].utterance.text, /駐車区画/);
+  history[1].utterance.handlers.end();
+  assert.equal(context.navigator.audioSession.type, 'ambient');
+});
