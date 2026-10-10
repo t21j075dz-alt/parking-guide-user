@@ -17,14 +17,14 @@
     >
     <title>駐車場空き区画案内｜卒業研究</title>
     <!-- 利用者画面の共通スタイル。管理画面とは別リポジトリで管理する。 -->
-    <link rel="stylesheet" href="./styles.css?v=20261010-refined">
+    <link rel="stylesheet" href="./styles.css?v=20261010-refined-2">
     <!-- 安全確認 → 施設データ → 同期設定 → レイアウト → 画面制御の順で読み込む。 -->
     <script src="./location-safety.js" defer></script>
     <script src="./facilities.js?v=20261009-all-facilities" defer></script>
     <script src="./sync-config.js" defer></script>
     <script src="./parking-layouts.js" defer></script>
     <script src="./speech-readings.js?v=20261010-readings" defer></script>
-    <script src="./app.js?v=20261010-readings" defer></script>
+    <script src="./app.js?v=20261010-readings-2" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
   </head>
 
@@ -183,40 +183,40 @@
 
           <fieldset class="condition-fieldset">
             <legend>利用する駐車区画</legend>
-            <div class="choice-list">
+            <div class="choice-list space-type-choices">
               <label class="choice-row">
                 <input type="radio" name="spaceType" value="standard" checked>
-                <span><strong>普通車</strong><small>普通車用の空き区画から案内</small></span>
+                <span><strong>普通車</strong></span>
               </label>
               <label class="choice-row">
                 <input type="radio" name="spaceType" value="compact">
-                <span><strong>軽自動車</strong><small>「軽」の区画から案内</small></span>
+                <span><strong>軽自動車</strong></span>
               </label>
               <label class="choice-row">
                 <input type="radio" name="spaceType" value="accessible">
-                <span><strong>車いす使用者用</strong><small>「♿」の区画から案内</small></span>
+                <span><strong>車いす使用者用</strong></span>
               </label>
               <label class="choice-row">
                 <input type="radio" name="spaceType" value="ev">
-                <span><strong>EV充電を利用</strong><small>EV用の区画から案内</small></span>
+                <span><strong>EV充電を利用</strong></span>
               </label>
             </div>
           </fieldset>
 
           <fieldset class="condition-fieldset">
             <legend>優先する条件</legend>
-            <div class="choice-list">
+            <div class="choice-list priority-choices">
               <label class="choice-row">
                 <input type="radio" name="priority" value="balanced" checked>
                 <span><strong>おまかせ</strong><small>入口までの距離と停めやすさをもとに選択</small></span>
               </label>
               <label class="choice-row">
                 <input type="radio" name="priority" value="near">
-                <span><strong>入口に近い</strong><small>案内対象の建物入口に近い区画を優先</small></span>
+                <span><strong>入口に近い</strong></span>
               </label>
               <label class="choice-row">
                 <input type="radio" name="priority" value="wide">
-                <span><strong>幅にゆとりがある</strong><small>幅の広い区画を優先</small></span>
+                <span><strong>幅にゆとりがある</strong></span>
               </label>
             </div>
           </fieldset>

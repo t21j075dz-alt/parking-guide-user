@@ -2057,7 +2057,7 @@ html[data-theme="dark"] .parking-map.parking-map--layout {
 /* 情報の優先度を明確にし、詳細説明は必要なときに開く。 */
 :root { --radius: .85rem; }
 .research-note { color: var(--color-muted); background: transparent; border: 0; padding: .3rem 0; font-size: var(--font-size-label); }
-.pwa-panel { margin-block: .5rem 1rem; border-radius: var(--radius); font-size: var(--font-size-small); }
+.pwa-panel { max-width: 48rem; margin-inline: auto; margin-block: .5rem 1rem; border-radius: var(--radius); font-size: var(--font-size-small); }
 .location-panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1rem; }
 .screen-heading { margin-block: 1.8rem 1.2rem; }
 .screen-heading > p:last-child { color: var(--color-muted); }
@@ -2068,7 +2068,7 @@ html[data-theme="dark"] .parking-map.parking-map--layout {
 .facility-meta, .facility-distance, .facility-status { font-size: var(--font-size-label); color: var(--color-muted); }
 .facility-distance:empty { display: none; }
 .facility-availability { display: grid; justify-items: center; gap: .3rem; min-width: 4rem; }
-.facility-availability small { font-size: .7rem; color: var(--color-muted); font-weight: 400; }
+.facility-availability small { font-size: var(--font-size-label); color: var(--color-muted); font-weight: 400; }
 .availability-badge { display: grid; place-items: center; min-width: 2.75rem; min-height: 2.75rem; padding: .35rem; border: 1px solid currentColor; border-radius: .75rem; font-size: 1.1rem; font-weight: 700; }
 .availability-open { color: var(--color-available); background: var(--color-available-soft); }
 .availability-busy { color: var(--color-warning); background: var(--color-warning-soft); }
@@ -2095,4 +2095,11 @@ html[data-theme="dark"] .parking-map.parking-map--layout {
   .facility-name { font-size: 1rem; line-height: 1.6; }
   .no-space-card { padding: 1.2rem; }
   .no-space-card .button-group { display: grid; grid-template-columns: 1fr; }
+}
+
+.space-type-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.space-type-choices .choice-row { min-height: 3.6rem; align-items: center; }
+.priority-choices .choice-row { min-height: 3.6rem; align-items: center; }
+@media (max-width: 360px) {
+  .space-type-choices { grid-template-columns: 1fr; }
 }

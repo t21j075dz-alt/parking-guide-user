@@ -828,7 +828,7 @@ function updateFacilityDistance(button, facility) {
 
   button.setAttribute(
     "aria-label",
-    `${getFacilityDisplayName(facility)}、${getCategoryLabel(facility.category)}、${distanceElement.textContent}、${getOccupancyLabel(getFacilityOccupancy(facility))}`,
+    [getFacilityDisplayName(facility), getCategoryLabel(facility.category), distanceElement.textContent, getOccupancyLabel(getFacilityOccupancy(facility))].filter(Boolean).join("、"),
   );
 }
 
@@ -1856,7 +1856,7 @@ function getOccupancyLabel(occupancy) {
 function updateSearchResultNotice() {
   if (!state.searchOutcome) return;
   const occupancy = summarizeOccupancy(state.currentSpaces, state.resultSimulation);
-  searchStatus.textContent = getOccupancyLabel(occupancy) + ui("（実際の空き情報ではありません）", " (not live availability)");
+  searchStatus.textContent = (state.searchOutcome === "not-found" ? ui("駐車場全体：", "Entire parking lot: ") : "") + getOccupancyLabel(occupancy) + ui("（実際の空き情報ではありません）", " (not live availability)");
   congestionNotice.hidden = occupancy.level !== "busy" || state.searchOutcome !== "found";
   congestionNotice.textContent = ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: only ${occupancy.available} spaces remain.`);
   noSpaceContent.hidden = state.searchOutcome !== "not-found";
@@ -2883,7 +2883,7 @@ function updateVoiceAvailability() {
   const supported =
     "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
 
-  [voiceGuideButton, voicePreviewButton].forEach((button) => {
+  [voiceGuideButton, voicePreviewButton, document.querySelector("#no-space-voice")].forEach((button) => {
     if (!button) return;
     button.disabled = !supported;
   });
