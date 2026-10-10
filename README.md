@@ -11,6 +11,36 @@
 
 管理用の編集機能はこのリポジトリには含めません。
 
+## スマートフォンのホーム画面から使う（PWA）
+
+App StoreやGoogle Playへの登録は不要です。次のHTTPSページを通信できる状態で一度開きます。
+
+https://t21j075dz-alt.github.io/parking-guide-user/
+
+- **iPhone・iPad**：Safariの共有メニュー →「ホーム画面に追加」→「追加」。表示される場合は「Webアプリとして開く」をオンにします。
+- **Android**：Chromeのメニュー →「アプリをインストール」または「ホーム画面に追加」。対応ブラウザーで追加操作が利用できる場合は、ページ内にも「アプリを追加」ボタンを表示します。
+- 追加した「駐車場案内」のアイコンから起動すると、対応端末ではブラウザーの通常のツールバーを出さずに表示します。
+- オフライン保存の完了は、ページの「ホーム画面に追加して使う」を開くと確認できます。端末やブラウザーが保存データを消した場合は、再度オンラインで開く必要があります。
+- 通信できないときはオフライン表示を出し、基本画面・同梱データ・研究用シミュレーションを利用できます。最新の管理データ取得と外部音声の生成には通信が必要です。取得済みの管理データは現在開いている画面のメモリー内だけで保持し、PWAのキャッシュには保存しません。
+- 更新がある場合は画面に通知します。停車中に「更新して再読み込み」を押すと、その画面を更新します。すべてのアプリ画面を閉じてから開き直しても更新されます。更新ボタンの再読み込みでは、その時点の案内が終了するので、施設・条件を選び直してください。
+- Safariで保存した設定や自宅テスト地点が、ホーム画面版でも共有されるとは限りません。追加後のアプリ内で設定と位置情報の許可を確認してください。
+- PWA化だけでは利用者を研究室に限定できません。現在のGitHub Pagesとリポジトリは公開されています。研究室だけにアクセスを限定するには、別途認証付きの配信環境が必要です。
+- PWA化しても、画面ロック・バックグラウンド中の位置情報更新やCarPlay連携は保証しません。
+
+### PWAのファイルと更新方法
+
+`manifest.webmanifest` がアプリ名・起動URL・アイコンを定義し、`pwa.js` が追加案内・通信状態・更新操作を担当します。`service-worker.js` は、このアプリのパスにある指定済みの静的ファイルだけをまとめて保存します。Supabase、Google Maps、外部音声、未登録URL、POST通信はキャッシュしません。
+
+配信するHTML・CSS・JavaScript・アイコン・同梱データを変更したら、**`service-worker.js` の `VERSION` を必ず変更**してください。HTMLのファイル名やクエリーを変更する場合は `SHELL_FILES` も合わせます。サービスワーカー本体は `updateViaCache: "none"` で更新確認します。
+
+確認コマンド：`node --test tests/*.test.cjs`
+
+仕様の参考：
+
+- [Apple：iPhoneのSafariでウェブサイトをアプリにする](https://support.apple.com/ja-jp/guide/iphone/iphea86e5236/ios)
+- [MDN：Making PWAs installable](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable)
+- [MDN：Using Service Workers](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers)
+
 ## ファイル構成
 
 | ファイル | 役割 |
