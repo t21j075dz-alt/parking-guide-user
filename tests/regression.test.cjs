@@ -372,3 +372,56 @@ test('Web Audio非対応でも読み上げだけは維持する', async () => {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(spoken.text, '案内');
 });
+
+test('音声ファイル方式は初期状態では無効で、同意前に外部APIへアクセスしない', () => {
+  const { run } = app();
+  assert.equal(run('state.cloudVoiceEnabled'), false);
+  assert.equal(run("isTrustedVoiceAudioUrl('https://evil.test/sample.mp3')"), false);
+  assert.equal(run("isTrustedVoiceAudioUrl('https://audio2.tts.quest/v1/data/a12b3c/audio.mp3')"), true);
+  assert.equal(run("isTrustedVoiceAudioUrl('https://audio2.tts.quest.evil.test/v1/data/a12b3c/audio.mp3')"), false);
+});
+
+test('同意後は日本語案内をWeb Audioへ流し、通常の端末読み上げを使わない', async () => {
+  const { run, context } = app();
+  let synthesisCalls = 0;
+  let voiceAudio = null;
+  let audioSessionType = '';
+  context.navigator = { audioSession: { type: 'ambient' } };
+  context.window.speechSynthesis.getVoices = () => [{ name: 'Google 日本語', lang: 'ja-JP' }];
+  context.window.speechSynthesis.speak = () => { synthesisCalls += 1; };
+  context.window.AudioContext = class {
+    constructor() { this.destination = {}; this.currentTime = 0; }
+    createOscillator() {
+      return { frequency: { setValueAtTime() {} }, connect() {}, start() {}, stop() {} };
+    }
+    createGain() { return { gain: { setValueAtTime() {} }, connect() {} }; }
+    createBufferSource() {
+      return { connect() {}, addEventListener(name, fn) { this.onEnd = fn; },
+        start() { audioSessionType = context.navigator.audioSession.type; voiceAudio = this; },
+        stop() {} };
+    }
+    decodeAudioData() { return Promise.resolve({ duration: 1 }); }
+    resume() { return Promise.resolve(); }
+    close() { return Promise.resolve(); }
+  };
+  context.fetch = async (url) => {
+    if (url.startsWith('https://api.tts.quest/')) {
+      return { ok: true, json: async () => ({
+        success: true,
+        audioStatusUrl: 'https://audio2.tts.quest/v1/data/a12b3c/status.json',
+        mp3DownloadUrl: 'https://audio2.tts.quest/v1/data/a12b3c/audio.mp3',
+      }) };
+    }
+    if (url.endsWith('status.json')) return { ok: true, json: async () => ({ isAudioReady: true }) };
+    if (url.endsWith('audio.mp3')) return { ok: true, arrayBuffer: async () => new ArrayBuffer(4) };
+    throw new Error('unexpected URL ' + url);
+  };
+  run('state.cloudVoiceEnabled = true');
+  assert.equal(run("speakText('駐車区画、5番です。')"), true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(synthesisCalls, 0);
+  assert.ok(voiceAudio);
+  assert.equal(audioSessionType, 'play-and-record');
+  voiceAudio.onEnd();
+  assert.equal(context.navigator.audioSession.type, 'ambient');
+});
