@@ -209,6 +209,40 @@ h2 {
   gap: 0.45rem;
 }
 
+/* ホーム画面への追加案内。通常の文字サイズ・テーマ・安全制御を引き継ぐ。 */
+.pwa-panel {
+  margin-block: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.pwa-panel summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.pwa-panel details p {
+  margin-block: 0.65rem 0;
+}
+
+.pwa-panel button {
+  margin-top: 0.65rem;
+}
+
+.pwa-status {
+  margin-block: 0.65rem 0;
+  font-size: var(--font-size-small);
+}
+
+#pwa-offline-status {
+  padding: 0.65rem;
+  border: 1px solid var(--color-warning);
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+
 .display-button,
 .primary-button,
 .secondary-button,

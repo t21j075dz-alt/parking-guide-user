@@ -4,19 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#ffffff">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="駐車場案内">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
     <meta
       name="description"
       content="研究対象施設から空き駐車区画を案内する卒業研究用Webアプリ"
     >
     <title>駐車場空き区画案内｜卒業研究</title>
     <!-- 利用者画面の共通スタイル。管理画面とは別リポジトリで管理する。 -->
-    <link rel="stylesheet" href="./styles.css?v=20261010-car-audio-controls">
+    <link rel="stylesheet" href="./styles.css?v=20261010-pwa">
     <!-- 安全確認 → 施設データ → 同期設定 → レイアウト → 画面制御の順で読み込む。 -->
     <script src="./location-safety.js" defer></script>
     <script src="./facilities.js?v=20261009-all-facilities" defer></script>
     <script src="./sync-config.js" defer></script>
     <script src="./parking-layouts.js" defer></script>
     <script src="./app.js?v=20261010-voice-diagnosis" defer></script>
+    <script src="./pwa.js?v=20261010-pwa" defer></script>
   </head>
 
   <body>
@@ -65,6 +73,22 @@
       <p class="research-note">
         卒業研究用の試作です。実店舗の空き情報は取得していません。駐車区画の検索結果は、管理データ未登録の施設ではシミュレーションを表示します。
       </p>
+
+      <!-- 端末への追加・通信状態・更新を表示する。操作は既存の運転中制御を通す。 -->
+      <section class="pwa-panel" aria-labelledby="pwa-title">
+        <details id="pwa-install-help">
+          <summary id="pwa-title">ホーム画面に追加して使う</summary>
+          <p id="pwa-install-instructions">iPhone・iPad：Safariでこのページを開き、共有メニューから「ホーム画面に追加」を選びます。「Webアプリとして開く」が表示された場合はオンにして追加してください。</p>
+          <p id="pwa-android-instructions">Android：Chromeのメニューから「アプリをインストール」または「ホーム画面に追加」を選びます。</p>
+          <button id="pwa-install-button" class="secondary-button" type="button" hidden>アプリを追加</button>
+          <p id="pwa-install-status" class="pwa-status" role="status" aria-live="polite"></p>
+        </details>
+        <p id="pwa-offline-status" class="pwa-status" role="status" aria-live="polite" hidden></p>
+        <div id="pwa-update-panel" class="pwa-update" hidden>
+          <p id="pwa-update-status" class="pwa-status" role="status">新しいバージョンがあります。停車中に更新してください。</p>
+          <button id="pwa-update-button" class="secondary-button" type="button">更新して再読み込み</button>
+        </div>
+      </section>
 
       <!-- 現在地取得と移動状態表示。位置情報の安全制御本体は location-safety.js。 -->
       <section class="location-panel" aria-labelledby="location-title">

@@ -1,0 +1,17 @@
+{
+  "id": "./",
+  "name": "駐車場空き区画案内｜卒業研究",
+  "short_name": "駐車場案内",
+  "description": "施設と駐車区画を選択する卒業研究用の試作アプリ。実店舗の空き情報は取得していません。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f5f3",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
