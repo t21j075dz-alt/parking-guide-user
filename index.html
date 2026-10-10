@@ -16,7 +16,7 @@
     <script src="./facilities.js?v=20261009-all-facilities" defer></script>
     <script src="./sync-config.js" defer></script>
     <script src="./parking-layouts.js" defer></script>
-    <script src="./app.js?v=20261010-voice-file-opt-in" defer></script>
+    <script src="./app.js?v=20261010-voice-diagnosis" defer></script>
   </head>
 
   <body>
@@ -206,12 +206,12 @@
               <input id="voice-enabled" type="checkbox" checked>
               <span>
                 <strong id="voice-settings-title">音声案内を使用</strong>
-                <small>日本語はGoogle 日本語を固定で使用します。English表示では英語・中国語・韓国語・スペイン語の音声案内を選べます。</small>
+                <small>日本語は端末の利用可能な音声を使い、Google日本語がある場合は優先します。English表示では英語・中国語・韓国語・スペイン語を選べます。</small>
               </span>
             </label>
 
             <div class="voice-choice-row">
-              <span id="voice-mode-label">日本語：Google 日本語（固定）</span>
+              <span id="voice-mode-label">日本語：端末音声（Googleがあれば優先）</span>
               <button class="secondary-button" id="voice-preview-button" type="button">音声を試す</button>
             </div>
 
@@ -230,6 +230,7 @@
               </label>
               <p class="voice-status">オンにすると、日本語案内文（店舗名・区画番号を含む）を外部のVOICEVOX音声合成サービス（tts.quest）へ送信します。生成音声をチャイムと同じWeb Audioで再生します。通信が必要で、時間がかかる・利用できない場合は端末の読み上げに戻ります。運転中は設定しないでください。</p>
               <p class="voice-status">VOICEVOX:春日部つむぎ（外部サービス tts.quest に接続）</p>
+              <p id="cloud-voice-diagnostic" class="voice-status" role="status" aria-live="polite">接続診断：音声ファイル方式をオンにし「音声を試す」を押すと、ここに接続結果が表示されます。</p>
               <p class="voice-status" id="voice-output-status" role="status" aria-live="polite"></p>
               <p class="voice-status">標準では通話向け音声を使います。音が聞こえない場合は、安全な場所に停車して再生方式を切り替えてください。</p>
               <p class="voice-status">通話向け音声では、電子音で出力先を準備してから読み上げます。接続先のテスト音は電子音、音声を試すは読み上げ音声なので、音量は一致しません。</p>
