@@ -237,6 +237,10 @@ const STATIC_JA_EN = Object.freeze({
   "日本語：Google 日本語（固定）": "Japanese: Google Japanese (fixed)",
   "音声案内言語": "Voice guidance language",
   "音声を試す": "Test voice",
+  "音声ファイル方式を試す（外部音声合成）": "Try audio-file voice (external synthesis)",
+  "オンにすると、日本語案内文（店舗名・区画番号を含む）を外部のVOICEVOX音声合成サービス（tts.quest）へ送信します。生成音声をチャイムと同じWeb Audioで再生します。通信が必要で、時間がかかる・利用できない場合は端末の読み上げに戻ります。運転中は設定しないでください。": "When enabled, Japanese guidance text (including store names and space numbers) is sent to the third-party VOICEVOX synthesis service (tts.quest). The resulting audio plays over Web Audio, like the test tone. Internet access is required; if slow or unavailable, device speech is used. Configure only while parked.",
+  "VOICEVOX:春日部つむぎ（外部サービス tts.quest に接続）": "VOICEVOX:Kasukabe Tsumugi (third-party tts.quest service)",
+
   "Bluetooth・CarPlayの音声設定": "Bluetooth / CarPlay audio settings",
   "音楽と同時に再生": "Mix with music",
   "案内音声を優先（音楽が止まる場合あり）": "Prioritize guidance (may pause music)",
@@ -379,10 +383,12 @@ function restoreLanguage() {
     const savedOutputMode = localStorage.getItem("parkingGuideVoiceOutputModeV2");
     const legacyOutputMode = localStorage.getItem("parkingGuideVoiceOutputMode");
     state.voiceOutputMode = restoreVoiceOutputMode(savedOutputMode, legacyOutputMode);
+    state.cloudVoiceEnabled = localStorage.getItem("parkingGuideCloudVoiceEnabled") === "true";
     localStorage.removeItem("parkingGuideVoiceURI");
   } catch {
     state.guidanceVoiceLanguage = "en-US";
     state.voiceOutputMode = "call-test";
+    state.cloudVoiceEnabled = false;
   }
   applyLanguage(saved);
 }
@@ -402,6 +408,7 @@ const state = {
   voiceEnabled: true,
   guidanceVoiceLanguage: "en-US",
   voiceOutputMode: "call-test",
+  cloudVoiceEnabled: false,
   lastSearchWasAuto: false,
   selectedFacility: null,
   selectedDestination: null,
@@ -448,6 +455,7 @@ const englishVoiceRow = document.querySelector("#english-voice-row");
 const guidanceVoiceInputs = [...document.querySelectorAll('input[name="guidanceVoiceLanguage"]')];
 const voicePreviewButton = document.querySelector("#voice-preview-button");
 const voiceOutputModeSelect = document.querySelector("#voice-output-mode");
+const cloudVoiceInput = document.querySelector("#cloud-voice-enabled");
 const voiceOutputTestButton = document.querySelector("#voice-output-test-button");
 const voiceOutputStatus = document.querySelector("#voice-output-status");
 const voiceStatus = document.querySelector("#voice-status");
@@ -2120,6 +2128,7 @@ function updateVoiceModeUi() {
   }
 
   if (voiceOutputModeSelect) voiceOutputModeSelect.value = state.voiceOutputMode;
+  if (cloudVoiceInput) cloudVoiceInput.checked = state.cloudVoiceEnabled;
   updateVoiceOutputStatus();
   updateVoiceStatus();
 }
@@ -2303,6 +2312,7 @@ function stopSpeechAudioRoute() {
   const route = activeSpeechAudioRoute;
   activeSpeechAudioRoute = null;
   if (!route) return;
+  try { route.voiceSource?.stop(); } catch { /* すでに終了した音声を無視する。 */ }
   try { route.oscillator.stop(); } catch { /* 停止済みなら無視する。 */ }
   try { void Promise.resolve(route.context.close()).catch(() => {}); }
   catch { /* ブラウザー側の終了失敗は案内終了を妨げない。 */ }
@@ -2380,31 +2390,138 @@ function resumePausedSpeechOnReturn() {
 }
 
 let speechRequestId = 0;
+let pendingCloudVoiceController = null;
 
 /** 再生中だけでなく、音声一覧を待っている読み上げも取り消す。 */
 function cancelSpeech() {
   speechRequestId += 1;
+  pendingCloudVoiceController?.abort();
+  pendingCloudVoiceController = null;
   window.speechSynthesis?.cancel?.();
   stopSpeechAudioRoute();
   releasePriorityAudioSession();
 }
 
-/** Web Speech APIで無料読み上げを行う。 */
-function speakText(message) {
-  if (!message || !("speechSynthesis" in window)
-      || !("SpeechSynthesisUtterance" in window)) {
+/**
+ * 日本語の案内文を利用者の明示的な同意がある場合だけ音声ファイルへ変換する。
+ * tts.quest のURLは必ず同社ドメインか確認し、外部から返された任意のURLへ接続しない。
+ */
+function isTrustedVoiceAudioUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:"
+      && /^audio[0-9]+\.tts\.quest$/.test(url.hostname)
+      && /^\/v1\/data\/[a-zA-Z0-9]+\/(?:audio\.(?:wav|mp3)|status\.json)$/.test(url.pathname);
+  } catch {
     return false;
   }
+}
 
-  /* 再生ボタンの操作中に Web Audio の出力経路を開き、iPhoneの制限に備える。 */
+/** デコードした案内音声をテスト音と同じ AudioContext から再生する。 */
+async function playCloudVoiceAudio(message, requestId) {
+  const route = activeSpeechAudioRoute;
+  if (!route || !route.context.decodeAudioData
+      || !route.context.createBufferSource || typeof fetch !== "function") return false;
+
+  const controller = new AbortController();
+  pendingCloudVoiceController?.abort();
+  pendingCloudVoiceController = controller;
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  try {
+    updateVoiceStatus(ui(
+      "音声データを作成しています。通信状態によっては端末音声へ切り替わります。",
+      "Generating audio. Device speech will be used if the connection fails.",
+    ), "active");
+    const endpoint = "https://api.tts.quest/v3/voicevox/synthesis"
+      + "?speaker=8&text=" + encodeURIComponent(message);
+    const response = await fetch(endpoint, { signal: controller.signal });
+    if (!response.ok) throw new Error("VOICEVOX API request failed");
+    const output = await response.json();
+    if (!output?.success || !isTrustedVoiceAudioUrl(output.mp3DownloadUrl)
+        || !isTrustedVoiceAudioUrl(output.audioStatusUrl)) throw new Error("Invalid audio response");
+
+    let ready = false;
+    for (let i = 0; i < 8; i += 1) {
+      if (requestId !== speechRequestId) return true;
+      const statusResponse = await fetch(output.audioStatusUrl, { signal: controller.signal });
+      if (!statusResponse.ok) throw new Error("Audio status unavailable");
+      const status = await statusResponse.json();
+      if (status.isAudioError) throw new Error("Audio generation failed");
+      if (status.isAudioReady) { ready = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 550));
+    }
+    if (!ready) throw new Error("Audio generation is taking too long");
+
+    const fileResponse = await fetch(output.mp3DownloadUrl, { signal: controller.signal });
+    if (!fileResponse.ok) throw new Error("Audio download failed");
+    const bytes = await fileResponse.arrayBuffer();
+    if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return true;
+    const buffer = await route.context.decodeAudioData(bytes);
+    if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return true;
+
+    const source = route.context.createBufferSource();
+    route.voiceSource = source;
+    source.buffer = buffer;
+    source.connect(route.context.destination);
+    source.addEventListener("ended", () => {
+      if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return;
+      stopSpeechAudioRoute();
+      releasePriorityAudioSession();
+      updateVoiceStatus();
+    }, { once: true });
+    configureVoiceAudioSession();
+    source.start();
+    updateVoiceStatus(ui(
+      "VOICEVOXの音声ファイルを再生しています。",
+      "Playing an audio file generated with VOICEVOX.",
+    ), "active");
+    return true;
+  } catch {
+    /* 外部サービスが使えないときは、現在の音声案内を中断せず端末音声へ戻す。 */
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+    if (pendingCloudVoiceController === controller) pendingCloudVoiceController = null;
+  }
+}
+
+/** Web Speech APIで無料読み上げを行う。 */
+function speakText(message) {
+  if (!message) return false;
+
+  /* 日本語の音声ファイル方式は本人が選んだ場合にのみ外部へ文章を送信する。 */
+  const tryAudioFile = state.cloudVoiceEnabled
+    && getGuidanceSpeechLocale() === "ja-JP"
+    && Boolean(window.AudioContext || window.webkitAudioContext);
+
+  if (tryAudioFile) {
+    prepareSpeechAudioRoute();
+    const requestId = ++speechRequestId;
+    window.speechSynthesis?.cancel?.();
+    void playCloudVoiceAudio(message, requestId).then((played) => {
+      if (played || requestId !== speechRequestId) return;
+      stopSpeechAudioRoute();
+      releasePriorityAudioSession();
+      updateVoiceStatus(ui(
+        "外部音声合成を利用できなかったため、端末の読み上げへ切り替えます。",
+        "External synthesis is unavailable. Falling back to device speech.",
+      ), "error");
+      if ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window) {
+        void speakTextWhenVoicesReady(message, requestId);
+      }
+    });
+    return true;
+  }
+
+  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return false;
+  /* 通常のブラウザー音声は Web Audio へ接続できず別経路で出力される。 */
   prepareSpeechAudioRoute();
   void speakTextWhenVoicesReady(message);
   return true;
 }
 
 /** 音声一覧の読み込みを待ってからGoogle音声を指定して読み上げる。 */
-async function speakTextWhenVoicesReady(message) {
-  const requestId = ++speechRequestId;
+async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId) {
   const voices = await waitForSpeechVoices();
   if (requestId !== speechRequestId) return;
   /* 直接呼ばれた場合も準備する。準備に失敗しても従来の読み上げを行う。 */
@@ -2711,6 +2828,20 @@ voiceGuideButton?.addEventListener("click", () => {
   speakCurrentGuidance();
 });
 voicePreviewButton?.addEventListener("click", previewSelectedVoice);
+cloudVoiceInput?.addEventListener("change", () => {
+  cancelSpeech();
+  state.cloudVoiceEnabled = cloudVoiceInput.checked;
+  try {
+    localStorage.setItem("parkingGuideCloudVoiceEnabled", String(state.cloudVoiceEnabled));
+  } catch {
+    /* 保存できないときも現在の画面では選択した方式を使う。 */
+  }
+  if (state.cloudVoiceEnabled) {
+    previewSelectedVoice();
+  } else {
+    updateVoiceStatus();
+  }
+});
 voiceOutputTestButton?.addEventListener("click", () => { void playVoiceOutputTestSound(); });
 voiceOutputModeSelect?.addEventListener("change", () => {
   const selected = voiceOutputModeSelect.value;
