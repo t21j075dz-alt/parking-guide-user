@@ -2758,7 +2758,7 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false) {
 }
 
 /** Web Speech APIで無料読み上げを行う。 */
-function speakText(message, { preview = false } = {}) {
+function speakText(message, { preview = false, userGesture = false } = {}) {
   if (!message) return false;
   if (getGuidanceSpeechLocale() === "ja-JP" && typeof normalizeJapaneseSpeech === "function") message = normalizeJapaneseSpeech(message);
 
@@ -2791,7 +2791,7 @@ function speakText(message, { preview = false } = {}) {
   /* 通常のブラウザー音声は Web Audio へ接続できず別経路で出力される。 */
   cancelSpeech();
   prepareSpeechAudioRoute();
-  void speakTextWhenVoicesReady(message);
+  void speakTextWhenVoicesReady(message, undefined, userGesture);
   return true;
 }
 
@@ -2800,9 +2800,10 @@ function localeForSpeechMessage(message) {
 }
 
 /** 音声一覧の読み込みを待ってからGoogle音声を指定して読み上げる。 */
-async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId) {
+async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, userGesture = false) {
   const initialVoices = getSpeechVoices();
-  const voices = initialVoices.length ? initialVoices : await waitForSpeechVoices();
+  // iPhoneでは最初の音声をタップ操作内で要求する。音声一覧が未取得でもOS標準音声で開始する。
+  const voices = initialVoices.length || userGesture ? initialVoices : await waitForSpeechVoices();
   if (requestId !== speechRequestId) return;
   /* 直接呼ばれた場合も準備する。準備に失敗しても従来の読み上げを行う。 */
   if (!activeSpeechAudioRoute) prepareSpeechAudioRoute();
@@ -2877,8 +2878,8 @@ function getAutomaticGuidanceStartMessage(locale = getGuidanceSpeechLocale()) {
   return messages[locale] ?? messages["en-US"];
 }
 
-function speakAutomaticGuidanceStartMessage() {
-  return speakText(getAutomaticGuidanceStartMessage());
+function speakAutomaticGuidanceStartMessage({ userGesture = false } = {}) {
+  return speakText(getAutomaticGuidanceStartMessage(), { userGesture });
 }
 
 /** 再探索や手動探索では、実際には検知していない「接近」を読み上げない。 */
@@ -3267,23 +3268,23 @@ conditionForm.addEventListener("submit", async (event) => {
   }
 
   const facility = state.selectedFacility;
-  const requestId = ++state.searchRequestId;
-  await ensureFacilityCoordinate(facility);
-  if (requestId !== state.searchRequestId || state.selectedFacility !== facility) return;
-
   state.autoProximityArmed = true;
   state.autoTriggeredFacilityId = null;
   state.searchOutcome = null;
   state.recommendedSpace = null;
 
-  /* submitはユーザー操作なので、このタイミングで位置情報許可を求められる。 */
+  /* Safariではユーザー操作から離れて音声を開始すると無音になる場合がある。
+   * 待機画面と最初の案内音声を先に開始し、外部の住所・位置検索は後から進める。 */
   window.parkingSafety?.start?.();
   updateWaitingScreen();
   updateProximityStatus();
   showScreen("waiting");
+  const requestId = state.searchRequestId;
   if (state.voiceEnabled) {
-    speakAutomaticGuidanceStartMessage();
+    speakAutomaticGuidanceStartMessage({ userGesture: true });
   }
+  await ensureFacilityCoordinate(facility);
+  if (requestId !== state.searchRequestId || state.selectedFacility !== facility) return;
   void checkAutomaticProximitySearch();
 });
 
