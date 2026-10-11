@@ -131,6 +131,8 @@ const STATIC_JA_EN = Object.freeze({
   "公道で順番待ちをせず、周囲の安全を確認してそのまま通過してください。": "Do not queue on the public road. Check your surroundings and safely continue past the entrance.",
   "別の駐車場をご利用ください。": "Please use another parking lot.",
   "別の施設を選ぶ": "Choose another facility",
+  "満：満車 · 混：混雑 · 空：空車 · —：未確認": "Full: no free spaces · Busy: few spaces remain · Open: spaces available · —: unknown",
+  "デモの空き状況は起動時にランダム表示します。「空き状況を更新」で再抽選できます。": "Demo availability is randomized at launch. Refresh availability to draw again.",
   "このアプリについて": "About this app",
   "卒業研究用の試作です。実店舗の空き情報は取得していません。登録済み施設は管理レイアウトの保存時点のデータ、未登録施設はデモを表示します。実際の駐車可否は現地の表示に従ってください。": "Graduation research prototype. Live availability is not collected. Registered facilities use saved layout data; other facilities show a demo. Follow on-site signs when parking.",
   "「混」は空き3区画以下、または利用可能な区画の20％以下の場合に表示します。状態不明の区画がある場合は「—」です。": "Busy means at most 3 spaces or 20% of usable spaces remain. Unknown data is shown as —.",
@@ -460,6 +462,8 @@ const state = {
   selectedDestination: null,
   resolvedFacilityCoordinates: new Map(),
   resolvingFacilityCoordinates: new Map(),
+  // 店舗ごとのデモ状態を保持し、再描画やGPS更新だけでは抽選し直さない。
+  demoParkingSpaces: new Map(),
   selectedPriority: "balanced",
   requestedSpaceType: "standard",
   autoProximityArmed: false,
@@ -1091,11 +1095,17 @@ function createLayoutParkingSpaces(layout, facility) {
 }
 
 /** レイアウト未登録時に動作確認用の12区画を作る。 */
-function createDemoParkingSpaces(searchSequence = state.searchSequence) {
-  const baseOccupied = [2, 5, 8, 11];
-  const shiftedOccupied = baseOccupied.map(
-    (number) => ((number + searchSequence - 1) % 12) + 1,
-  );
+function createDemoParkingSpaces() {
+  // 空車・混雑・満車を各1/3で抽選する。実店舗の状況を表す値ではない。
+  const level = ["open", "busy", "full"][Math.floor(Math.random() * 3)];
+  const availableCount = level === "full" ? 0 : level === "busy"
+    ? 1 + Math.floor(Math.random() * 3) : 4 + Math.floor(Math.random() * 9);
+  const shuffled = Array.from({ length: 12 }, (_, index) => index + 1);
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const other = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[other]] = [shuffled[other], shuffled[index]];
+  }
+  const availableNumbers = new Set(shuffled.slice(0, availableCount));
   const typeByNumber = new Map([
     [1, "accessible"],
     [3, "compact"],
@@ -1113,7 +1123,8 @@ function createDemoParkingSpaces(searchSequence = state.searchSequence) {
       id: `B-${String(number).padStart(2, "0")}`,
       uid: `demo_b_${String(number).padStart(2, "0")}`,
       number,
-      isOccupied: shiftedOccupied.includes(number),
+      isOccupied: !availableNumbers.has(number),
+      occupancyStatus: availableNumbers.has(number) ? "available" : "occupied",
       isWide: spaceType === "accessible",
       spaceType,
       entranceDistanceMeters: distanceMeters,
@@ -1121,6 +1132,15 @@ function createDemoParkingSpaces(searchSequence = state.searchSequence) {
       sourceObject: null,
     };
   });
+}
+
+function getDemoParkingSpaces(facility) {
+  const id = facility?.id ?? DEMO_FACILITY.id;
+  if (!state.demoParkingSpaces.has(id)) {
+    state.demoParkingSpaces.set(id, createDemoParkingSpaces());
+  }
+  // 案内候補の処理から、一覧側の保持データを変更させない。
+  return state.demoParkingSpaces.get(id).map((space) => ({ ...space }));
 }
 
 /** 希望条件に合う空き区画を1件選ぶ。 */
@@ -1854,7 +1874,7 @@ function prepareSpaces(facility) {
 
   return {
     layout: null,
-    spaces: createDemoParkingSpaces(),
+    spaces: getDemoParkingSpaces(facility),
     entrance: null,
     isSimulation: true,
   };
@@ -1888,7 +1908,9 @@ function updateSearchResultNotice() {
   congestionNotice.textContent = ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: only ${occupancy.available} spaces remain.`);
   noSpaceContent.hidden = state.searchOutcome !== "not-found";
   noSpaceDescription.textContent = occupancy.level === "full"
-    ? ui("登録データでは満車です。", "The saved data shows a full parking lot.")
+    ? (state.resultSimulation
+        ? ui("デモでは満車です。空き状況を更新すると再抽選します。", "The demo parking lot is full. Refresh availability to draw again.")
+        : ui("登録データでは満車です。", "The saved data shows a full parking lot."))
     : ui(`${getSpaceTypeLabel(state.requestedSpaceType)}の空き区画が見つかりませんでした。`, `No available ${getSpaceTypeLabel(state.requestedSpaceType)} space was found.`);
 }
 function getFacilitySpokenName(locale) {
@@ -1910,7 +1932,7 @@ function getNoSpaceGuidanceMessage(locale = getGuidanceSpeechLocale()) {
 
 /** 空き区画検索を実行する。 */
 async function runSpaceSearch(priorityOverride = null, options = {}) {
-  const { autoTriggered = false, skipSafetyGuard = false } = options;
+  const { autoTriggered = false, skipSafetyGuard = false, refreshSimulation = false } = options;
   // 通信を待つ前に依頼元を固定し、戻る操作・施設変更・再検索で無効化する。
   const requestId = ++state.searchRequestId;
   const facility = state.selectedFacility;
@@ -1954,10 +1976,10 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
         return;
       }
 
-      const prepared = prepareSpaces(facility);
-      if (prepared.isSimulation) {
-        prepared.spaces = createDemoParkingSpaces(state.searchSequence);
+      if (refreshSimulation && !getFacilityLayout(facility)) {
+        state.demoParkingSpaces.delete(facility.id);
       }
+      const prepared = prepareSpaces(facility);
 
       state.resultSimulation = prepared.isSimulation;
       state.currentLayout = prepared.layout;
@@ -3279,14 +3301,14 @@ searchNowButton?.addEventListener("click", () => {
 
 retryButton.addEventListener("click", () => {
   state.searchSequence += 1;
-  void runSpaceSearch();
+  void runSpaceSearch(null, { refreshSimulation: true });
 });
 
 endGuidanceButton?.addEventListener("click", endGuidance);
 document.querySelector("#no-space-voice")?.addEventListener("click", speakCurrentGuidance);
 document.querySelector("#no-space-retry")?.addEventListener("click", () => {
   state.searchSequence += 1;
-  void runSpaceSearch();
+  void runSpaceSearch(null, { refreshSimulation: true });
 });
 document.querySelector("#no-space-other")?.addEventListener("click", endGuidance);
 

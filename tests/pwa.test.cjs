@@ -60,7 +60,8 @@ test('オフライン時もトップ画面・クエリー付きの起動・指�
   const w = worker({ saved: 'offline shell' });
   assert.equal(await w.request(scope, 'navigate'), 'offline shell');
   assert.equal(await w.request(scope+'index.html?from=home', 'navigate'), 'offline shell');
-  assert.equal(await w.request(scope+'app.js?v=20261011-map-display'), 'offline shell');
+  const appUrl=fs.readFileSync(path.join(root,'index.html'),'utf8').match(/src="\.\/(app\.js\?v=[^"]+)"/)[1];
+  assert.equal(await w.request(scope+appUrl), 'offline shell');
   assert.equal(w.fetched.length, 0);
 });
 

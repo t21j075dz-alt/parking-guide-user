@@ -5,13 +5,13 @@ const vm = require('node:vm');
 const path = require('node:path');
 const {element,walk}=require('./fake-dom.cjs');
 
-function app() {
+function app(catalog = []) {
   const nodes = new Map();
   const document = { documentElement: { lang: 'ja' }, querySelector(selector) {
     if (!nodes.has(selector)) nodes.set(selector, element());
     return nodes.get(selector);
   }, querySelectorAll() { return []; }, createElement: element,createElementNS:(_,tag)=>element(tag) };
-  const context = vm.createContext({ document, console, setTimeout, clearTimeout, AbortSignal, AbortController, URL, FACILITY_CATALOG: [],
+  const context = vm.createContext({ document, console, setTimeout, clearTimeout, AbortSignal, AbortController, URL, FACILITY_CATALOG: catalog,
     window: { PARKING_LAYOUTS: {}, PARKING_REMOTE_CONFIG: { enabled: true, supabaseUrl: 'https://example.test', publishableKey: 'sb_publishable_test' },
       addEventListener() {}, setTimeout, scrollTo() {}, history: { pushState() {} },
       speechSynthesis: { cancel() {}, speak() {} } },
@@ -612,11 +612,11 @@ test('音声調整UIは選択言語の実在音声を表示し、選択を保存
   assert.equal(nodes.get('#voice-rate').value, '0.8');
 });
 
-test('全122施設に独立した日本語読み仮名があり、難読名を正しい読みで保持する', () => {
+test('全212施設に独立した日本語読み仮名があり、難読名を正しい読みで保持する', () => {
   const context = vm.createContext({ window: {} });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../facilities.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../speech-readings.js'), 'utf8'), context);
-  assert.equal(vm.runInContext('Object.keys(window.PARKING_SPEECH_READINGS).length', context), 122);
+  assert.equal(vm.runInContext('Object.keys(window.PARKING_SPEECH_READINGS).length', context), 212);
   assert.equal(vm.runInContext('FACILITY_CATALOG.every(f => /^[ぁ-ゖー、 ]+$/.test(window.PARKING_SPEECH_READINGS[f.id]))', context), true);
   for (const [id, reading] of Object.entries({target_024:'まるなか よしだてん',target_034:'みすたーまっくす はちほんまつてん',target_073:'みちのえき そのぎのしょう',target_098:'まるきょう みなはるてん',target_107:'とらいある みやこのじょうとほくてん',target_111:'はんずまん うすきてん',target_118:'とらいある いずみこがねてん'})) {
     assert.equal(context.window.PARKING_SPEECH_READINGS[id], reading);
@@ -727,3 +727,86 @@ test('端末読み上げにも読み仮名変換を適用し、二重変換せ�
 
 test('実際のユーザーレンダラーは全21種類・全駐車線形式と標識を表示し、案内番号を二重表示しない',()=>{const {run,nodes}=app();run(`const fixtureObjects=mapDisplay.types.map((objectType,i)=>({uid:'o'+i,objectType,name:'名称',spaceNumber:'001',spaceGroup:'A',spaceGroupKind:'area',spaceType:'ev',markingStyle:'photoStall',routeNumber:'123',signType:'stop',publicAccess:true,status:'available',x:30*(i%6),y:30*Math.floor(i/6),width:25,height:25}));const parkingFixture=fixtureObjects.find(o=>o.objectType==='parkingSpace');const fixtureLayout={facilityId:'a',objects:fixtureObjects};const recommendedFixture={uid:parkingFixture.uid,id:'A区画 1',sourceObject:parkingFixture};state.guideEntrance=fixtureObjects.find(o=>o.objectType==='buildingEntrance');calculateGuidanceViewport=()=>({x:0,y:0,width:360,height:400,scale:1});renderRegisteredLayout(fixtureLayout,recommendedFixture);`);const map=nodes.get('#parking-map');const objects=map.children.filter(n=>n.dataset.objectType);assert.equal(objects.length,21);const parking=objects.find(n=>n.dataset.objectType==='parkingSpace');assert.equal(walk(parking).filter(n=>n.className==='space-number-mark').length,0);assert.equal(walk(map).filter(n=>n.tagName==='strong'&&n.textContent==='A区画 1').length,1);assert.ok(objects.find(n=>n.dataset.objectType==='building').children.some(n=>n.className==='map-object-label'));assert.equal(objects.find(n=>n.dataset.objectType==='roadSign').children.length,1);run(`fixtureLayout.objects=mapDisplay.markingStyles.map((markingStyle,i)=>({...parkingFixture,uid:'p'+i,markingStyle,spaceNumber:String(i+1)}));state.guideEntrance=null;renderRegisteredLayout(fixtureLayout,null);`);assert.equal(map.children.length,12);for(let i=0;i<12;i++)assert.equal(walk(map.children[i]).filter(n=>n.tagName==='path').length,i===11?0:1);});
 test('検索結果・音声・マップの区画番号に同じ列名とゼロを除いた番号を使う',()=>{const {run}=app();run(`const groupedItem={uid:'p',objectType:'parkingSpace',name:'普通車 001',spaceNumber:'001',spaceGroup:'A',spaceGroupKind:'row',status:'available',x:10,y:10,width:25,height:50};const groupedSpace=createLayoutParkingSpaces({objects:[groupedItem]},{id:'a'})[0];`);assert.equal(run('groupedSpace.id'),'A列 1');assert.match(run('getSpokenSpaceId(groupedSpace)'),/えー.*れつ.*いち/);assert.equal(run("getSpokenSpaceId(groupedSpace,'en-US')"),'A列 1');});
+
+function loadFacilityCatalog() {
+  const context=vm.createContext({});
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../facilities.js'),'utf8'),context);
+  return JSON.parse(vm.runInContext('JSON.stringify(FACILITY_CATALOG)',context));
+}
+
+test('ランダムデモは空車・混雑・満車を生成し、区画数・案内対象が状態に一致する',()=>{
+  const {run}=app();
+  for(const [value,level,count] of [[0,'open',4],[.5,'busy',2],[.99,'full',0]]){
+    run(`Math.random=()=>${value}; testSpaces=createDemoParkingSpaces();`);
+    assert.equal(run('summarizeOccupancy(testSpaces,true).level'),level);
+    assert.equal(run('testSpaces.filter(s=>!s.isOccupied).length'),count);
+    assert.equal(run('testSpaces.length'),12);
+    assert.equal(run('new Set(testSpaces.map(s=>s.uid)).size'),12);
+    assert.equal(run("testSpaces.every(s=>s.occupancyStatus===(s.isOccupied?'occupied':'available'))"),true);
+    const recommendation=run("selectRecommendedSpace(testSpaces,'balanced','standard')");
+    if(recommendation)assert.equal(recommendation.isOccupied,false);
+    if(level==='full')assert.equal(recommendation,null);
+  }
+});
+
+test('一覧・検索は同じ抽選を保持し、再抽選は選択施設だけを更新する',async()=>{
+  const {run,context,nodes}=app();
+  context.window.PARKING_REMOTE_CONFIG.enabled=false;
+  context.window.setTimeout=fn=>fn();
+  run(`state.selectedFacility={id:'a',name:'テスト'};state.currentScreen='result';state.voiceEnabled=false;
+    saveSearchConditions=()=>{};renderParkingMap=()=>{};Math.random=()=>0;
+    otherFacility={id:'b'};before=JSON.stringify(prepareSpaces(otherFacility).spaces);`);
+  assert.equal(run('getFacilityOccupancy(state.selectedFacility).level'),'open');
+  run('Math.random=()=>.99');
+  await run('runSpaceSearch()');
+  assert.equal(run('summarizeOccupancy(state.currentSpaces).level'),'open');
+  assert.equal(run('getFacilityOccupancy(state.selectedFacility).level'),'open');
+  run('prepareSpaces(state.selectedFacility).spaces.forEach(s=>s.isOccupied=true)');
+  assert.equal(run('getFacilityOccupancy(state.selectedFacility).level'),'open');
+  await run('runSpaceSearch(null,{refreshSimulation:true})');
+  assert.equal(run('state.searchOutcome'),'not-found');
+  assert.equal(run('getFacilityOccupancy(state.selectedFacility).level'),'full');
+  assert.match(nodes.get('#no-space-description').textContent,/デモ.*満車.*再抽選/);
+  assert.equal(run('JSON.stringify(prepareSpaces(otherFacility).spaces)'),run('before'));
+  const fresh=app();fresh.run("Math.random=()=>.5");
+  assert.equal(fresh.run("getFacilityOccupancy({id:'a'}).level"),'busy');
+});
+
+test('再抽選しても登録済みの駐車レイアウトをランダム状態で上書きしない',async()=>{
+  const {run,context}=app();
+  context.window.PARKING_REMOTE_CONFIG.enabled=false;
+  context.window.setTimeout=fn=>fn();
+  context.window.PARKING_LAYOUTS.a={facilityId:'a',objects:[{objectType:'parkingSpace',uid:'p',spaceNumber:'1',x:10,y:10,width:25,height:50,spaceType:'standard',status:'available'}]};
+  run(`state.selectedFacility={id:'a',name:'登録済み'};state.currentScreen='result';state.voiceEnabled=false;
+    saveSearchConditions=()=>{};renderParkingMap=()=>{};Math.random=()=>.99;`);
+  await run('runSpaceSearch(null,{refreshSimulation:true})');
+  assert.equal(run('state.resultSimulation'),false);
+  assert.equal(run('state.currentSpaces[0].isOccupied'),false);
+  assert.equal(run('state.demoParkingSpaces.has("a")'),false);
+  assert.equal(context.window.PARKING_LAYOUTS.a.objects[0].status,'available');
+});
+
+test('福岡県100店舗すべてで250m接近を判定し、精度制限と1回だけの自動案内を守る',async()=>{
+  const fukuoka=loadFacilityCatalog().filter(f=>f.prefecture==='福岡県');
+  const {run,context}=app(fukuoka);
+  run('autoCalls=[];runSpaceSearch=async(_,options)=>autoCalls.push({id:state.selectedFacility.id,options});');
+  for(const f of fukuoka){
+    context.facility=f;
+    run(`state.selectedFacility=facility;state.autoProximityArmed=true;state.autoTriggeredFacilityId=null;
+      state.userLocation={latitude:facility.latitude+.01,longitude:facility.longitude,accuracy:20};`);
+    const before=run('autoCalls.length');
+    await run('checkAutomaticProximitySearch()');
+    assert.equal(run('autoCalls.length'),before,`${f.id}: distant`);
+    run('state.userLocation.latitude=facility.latitude+.001;state.userLocation.accuracy=81');
+    await run('checkAutomaticProximitySearch()');
+    assert.equal(run('autoCalls.length'),before,`${f.id}: inaccurate`);
+    run('state.userLocation.accuracy=80');
+    await run('checkAutomaticProximitySearch()');
+    assert.equal(run('autoCalls.length'),before+1,`${f.id}: approach`);
+    assert.equal(run('autoCalls.at(-1).id'),f.id);
+    assert.equal(run('autoCalls.at(-1).options.autoTriggered'),true);
+    await run('checkAutomaticProximitySearch()');
+    assert.equal(run('autoCalls.length'),before+1,`${f.id}: duplicate`);
+  }
+  assert.equal(run('autoCalls.length'),100);
+});
