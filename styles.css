@@ -2110,3 +2110,135 @@ html[data-theme="dark"] .parking-map.parking-map--layout {
 .guidance-map-label strong { font-size:var(--guidance-number-size,28px); }
 .guidance-map-marker { border:3px solid var(--color-recommended); border-radius:50%; }
 .guidance-map-marker--entrance { border-color:var(--color-primary); }
+
+/* =========================================================
+   起動画面（スプラッシュスクリーン）
+   施設選択画面の上に一時表示する。色に頼らずアプリ名も併記する。
+   ========================================================= */
+.launch-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: max(2rem, env(safe-area-inset-top))
+    max(1.25rem, env(safe-area-inset-right))
+    max(2rem, env(safe-area-inset-bottom))
+    max(1.25rem, env(safe-area-inset-left));
+  background: #f7fafc;
+  color: #173a52;
+  text-align: center;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.28s ease, visibility 0.28s ease;
+}
+
+.launch-screen.is-leaving {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.launch-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 28rem;
+}
+
+.launch-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 6.25rem;
+  height: 6.25rem;
+  margin-bottom: 1.6rem;
+  border-radius: 1.5rem;
+  background: #145c8e;
+  box-shadow: 0 0.65rem 1.6rem rgb(20 92 142 / 15%);
+  color: #fff;
+  animation: launch-appear 0.5s ease-out both;
+}
+
+.launch-mark-letter {
+  margin-top: -0.45rem;
+  font-size: 3.7rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.launch-mark-lines {
+  position: absolute;
+  bottom: 0.9rem;
+  left: 50%;
+  display: flex;
+  gap: 0.4rem;
+  transform: translateX(-50%);
+}
+
+.launch-mark-lines span {
+  display: block;
+  width: 0.25rem;
+  height: 0.8rem;
+  border-radius: 0.08rem;
+  background: #fff;
+}
+
+.launch-title {
+  margin: 0;
+  font-size: clamp(1.25rem, 5.5vw, 1.75rem);
+  font-weight: 800;
+  line-height: 1.45;
+  letter-spacing: 0.025em;
+}
+
+.launch-subtitle {
+  margin: 0.45rem 0 0;
+  color: #51758f;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.launch-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  margin: 4rem 0 0;
+  color: #52687a;
+  font-size: 0.9rem;
+}
+
+.launch-spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 0.15rem solid #c7dce9;
+  border-top-color: #145c8e;
+  border-radius: 50%;
+  animation: launch-spin 0.8s linear infinite;
+}
+
+.launch-note {
+  margin: 0.6rem 0 0;
+  color: #738696;
+  font-size: 0.7rem;
+}
+
+@keyframes launch-appear {
+  from { opacity: 0; transform: translateY(0.45rem) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes launch-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launch-screen { transition: none; }
+  .launch-mark, .launch-spinner { animation: none; }
+}
