@@ -810,3 +810,26 @@ test('福岡県100店舗すべてで250m接近を判定し、精度制限と1回
   }
   assert.equal(run('autoCalls.length'),100);
 });
+
+test('音声一覧が遅いiPhoneでも案内開始操作と同時に端末音声を呼び出す', async () => {
+  const { run, context } = app();
+  const spoken = [];
+  context.SpeechSynthesisUtterance = class {
+    constructor(text) { this.text = text; }
+    addEventListener() {}
+  };
+  context.window.SpeechSynthesisUtterance = context.SpeechSynthesisUtterance;
+  context.window.speechSynthesis.getVoices = () => [];
+  context.window.speechSynthesis.speak = (u) => spoken.push(u.text);
+  context.wait = () => new Promise(() => {});
+  run('waitForSpeechVoices = wait; state.selectedFacility = {id: "a", name: "実験用駐車場"};');
+  assert.equal(run('speakAutomaticGuidanceStartMessage({ userGesture: true })'), true);
+  assert.equal(spoken.length, 1, '音声一覧の待機を挟まずに発話を要求する');
+  assert.match(spoken[0], /じどうであきくかく/);
+});
+test('待機画面への遷移後は同じ検索IDで位置確認完了を待てる', () => {
+  const { run } = app();
+  run('state.currentScreen = "condition"; state.selectedFacility = {id:"a"}; showScreen("waiting"); reqId = state.searchRequestId;');
+  assert.equal(run('reqId'), 1);
+  assert.equal(run('reqId === state.searchRequestId'), true);
+});
