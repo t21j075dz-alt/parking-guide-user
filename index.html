@@ -17,7 +17,7 @@
     >
     <title>駐車場空き区画案内｜卒業研究</title>
     <!-- 利用者画面の共通スタイル。管理画面とは別リポジトリで管理する。 -->
-    <link rel="stylesheet" href="./styles.css?v=20261011-map-display">
+    <link rel="stylesheet" href="./styles.css?v=20261011-launch-splash">
     <!-- 安全確認 → 施設データ → 同期設定 → レイアウト → 画面制御の順で読み込む。 -->
     <link rel="stylesheet" href="./map-display.css?v=20261011-map-display">
     <script src="./map-display.js?v=20261011-map-display" defer></script>
@@ -31,6 +31,55 @@
   </head>
 
   <body>
+
+    <!-- 起動直後にアプリ名を示し、準備が整ったら通常の施設選択画面に戻す。 -->
+    <div class="launch-screen" id="launch-screen" role="status" aria-live="polite">
+      <div class="launch-content">
+        <div class="launch-mark" aria-hidden="true">
+          <span class="launch-mark-letter">P</span>
+          <span class="launch-mark-lines"><span></span><span></span><span></span></span>
+        </div>
+        <p class="launch-title">駐車場空き区画案内</p>
+        <p class="launch-subtitle">PARKING GUIDE</p>
+        <p class="launch-loading">
+          <span class="launch-spinner" aria-hidden="true"></span>
+          <span>起動しています…</span>
+        </p>
+        <p class="launch-note">卒業研究プロトタイプ</p>
+      </div>
+    </div>
+    <script>
+      // DOMの準備後に最短約1秒で閉じる。通信が遅くても画面をふさぎ続けない。
+      (() => {
+        const splash = document.getElementById("launch-screen");
+        if (!splash) return;
+
+        const startedAt = Date.now();
+        let dismissed = false;
+
+        function closeSplash() {
+          if (dismissed) return;
+          dismissed = true;
+          splash.classList.add("is-leaving");
+          splash.setAttribute("aria-hidden", "true");
+          window.setTimeout(() => splash.remove(), 320);
+        }
+
+        function closeWhenReady() {
+          const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+          window.setTimeout(closeSplash, remaining);
+        }
+
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", closeWhenReady, { once: true });
+        } else {
+          closeWhenReady();
+        }
+        // 外部スクリプトの読み込みに時間がかかった場合の上限。
+        window.setTimeout(closeSplash, 3500);
+      })();
+    </script>
+
     <a class="skip-link" href="#main-content">本文へ移動</a>
 
     <!-- アプリ名と表示設定。運転中でも誤操作しにくいよう操作数を抑える。 -->
