@@ -3,22 +3,22 @@
  * 管理データ・位置情報・外部音声はキャッシュしない。
  * 配信ファイルを変更するときはVERSIONとSHELL_FILESを一緒に更新する。
  */
-const VERSION = "20261013-editor-1";
+const VERSION = "20261014-space-types-1";
 // 同じgithub.io上の管理アプリや別のパスのキャッシュを削除しない。
 const CACHE_PREFIX = `parking-guide-user:${self.registration.scope}:`;
 const CACHE_NAME = `${CACHE_PREFIX}${VERSION}`;
 const SHELL_FILES = [
   "./",
   "./index.html",
-  "./styles.css?v=20261011-launch-splash",
-  "./map-display.css?v=20261013-editor",
-  "./map-display.js?v=20261013-editor",
+  "./styles.css?v=20261014-space-types",
+  "./map-display.css?v=20261014-space-types",
+  "./map-display.js?v=20261014-space-types",
   "./location-safety.js",
   "./facilities.js?v=20261011-fukuoka-100",
   "./sync-config.js",
   "./parking-layouts.js",
   "./speech-readings.js?v=20261011-fukuoka-100",
-  "./app.js?v=20261013-editor",
+  "./app.js?v=20261014-space-types",
   "./pwa.js?v=20261010-pwa",
   "./manifest.webmanifest",
   "./icons/icon-192.png",

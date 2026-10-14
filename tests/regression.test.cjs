@@ -834,3 +834,11 @@ test('待機画面への遷移後は同じ検索IDで位置確認完了を待て
   assert.equal(run('reqId === state.searchRequestId'), true);
 });
 test('利用者マップの拡大範囲は保存座標の縮尺を変えても同じ見え方を維持する',()=>{const {run}=app();run(`const refObjects=[{uid:'p',objectType:'parkingSpace',x:100,y:100,width:25,height:50},{uid:'e',objectType:'buildingEntrance',x:150,y:60,width:8,height:8}];const refLayout={canvas:{width:1800,height:1200},objects:refObjects};mapViewMode='focus';const refView=calculateGuidanceViewport(refLayout,{sourceObject:refObjects[0]},new Set(mapDisplay.types),refObjects[1]);`);for(const factor of [.1,10]){const ratio=run(`(()=>{const factor=${factor};const scaled=refObjects.map(o=>({...o,x:o.x*factor,y:o.y*factor,width:o.width*factor,height:o.height*factor}));const view=calculateGuidanceViewport({canvas:{width:1800*factor,height:1200*factor},objects:scaled},{sourceObject:scaled[0]},new Set(mapDisplay.types),scaled[1]);return view.scale*factor/refView.scale;})()`);assert.ok(Math.abs(ratio-1)<1e-9);}});
+
+test('全40種類の検索は選んだ種類だけを案内し、専用・消防・カスタムを普通車へ混ぜない',()=>{
+ const {run,context}=app();const keys=run('Object.keys(mapDisplay.spacePresets)');
+ for(const type of keys){context.requestType=type;const result=run(`selectRecommendedSpace([{id:'chosen',spaceType:requestType,isOccupied:false,distanceScore:5},{id:'wrong',spaceType:'standard',isOccupied:false,distanceScore:1}],'near',requestType)`);if(run('mapDisplay.isGuidableType(requestType)'))assert.equal(result.id,type==='standard'?'wrong':'chosen',type);else assert.equal(result,null,type);}
+ assert.equal(run(`selectRecommendedSpace([{id:'bus',spaceType:'bus',isOccupied:false}],'balanced','large')`),null);
+ assert.equal(run(`selectRecommendedSpace([{id:'fire',spaceType:'fireAccess',isOccupied:false}],'balanced','standard')`),null);
+ assert.equal(run(`getSpaceTypeLabel('bus')`),'バス専用');run(`state.language='en'`);assert.equal(run(`getSpaceTypeLabel('bus')`),'Bus only');
+});

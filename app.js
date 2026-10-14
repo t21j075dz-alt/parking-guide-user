@@ -112,6 +112,9 @@ const PRIORITY_LABELS_EN = Object.freeze({
  * 静的HTMLは日本語文言を英訳辞書で置換する。
  */
 const STATIC_JA_EN = Object.freeze({
+  "その他の車種・専用区画": "Other vehicles / dedicated spaces",
+  "車種・専用用途を選択": "Choose vehicle or dedicated use",
+  "専用・予約区画は現地の利用条件をご確認ください。": "Check eligibility and reservations for dedicated spaces.",
   "研究用デモ · 実際の空き情報ではありません": "Research demo · Not live availability",
   "移動状態：未確認": "Motion: not checked",
   "目的の店舗を選んでください。": "Choose your destination.",
@@ -317,7 +320,7 @@ function ui(ja, en) {
 }
 
 function getSpaceTypeLabel(type) {
-  return (isEnglish() ? SPACE_TYPE_LABELS_EN : SPACE_TYPE_LABELS)[type] ?? type;
+  return (isEnglish() ? SPACE_TYPE_LABELS_EN : SPACE_TYPE_LABELS)[type] ?? mapDisplay.spaceTypeLabel(type,isEnglish());
 }
 
 function getPriorityLabel(priority) {
@@ -354,6 +357,7 @@ function translateStaticPage() {
 function applyLanguage(language) {
   state.language = language === "en" ? "en" : "ja";
   translateStaticPage();
+  updateExtendedSpaceTypes();
   applyTheme(document.documentElement.dataset.theme ?? "light");
   applyTextSizeLabel();
   initializeFilters();
@@ -1074,6 +1078,7 @@ function createLayoutParkingSpaces(layout, facility) {
 
   return layout.objects
     .filter((object) => object.objectType === "parkingSpace")
+    .filter((object) => mapDisplay.isGuidableType(object.spaceType ?? "standard"))
     .filter((object) => Number.isFinite(object.x) && Number.isFinite(object.y))
     .map((object, index) => {
       const distance = calculateLayoutDistance(object, entrance, layout);
@@ -1145,10 +1150,23 @@ function getDemoParkingSpaces(facility) {
   return state.demoParkingSpaces.get(id).map((space) => ({ ...space }));
 }
 
+/** 基本5種類以外は分類付きセレクトへまとめる。 */
+function updateExtendedSpaceTypes(){
+  const select=document.querySelector('#extended-space-type');if(!select)return;
+  const selected=select.value,groups=new Map();select.replaceChildren();
+  for(const [key,preset] of Object.entries(mapDisplay.spacePresets)){
+    if(['standard','compact','accessible','ev','priority'].includes(key)||!preset.guidable)continue;
+    if(!groups.has(preset.group)){const g=document.createElement('optgroup');g.label=isEnglish()?({'乗用車':'Passenger vehicles','大型車・貨物車':'Large vehicles / trucks','バス':'Buses','二輪・自転車':'Bikes / mobility','優先・配慮':'Priority','充電':'Charging','専用・契約':'Dedicated / permit','荷さばき':'Loading'})[preset.group]||preset.group:preset.group;groups.set(preset.group,g);select.append(g);}
+    const option=document.createElement('option');option.value=key;option.textContent=getSpaceTypeLabel(key);groups.get(preset.group).append(option);
+  }
+  if(selected&&mapDisplay.isGuidableType(selected))select.value=selected;
+  select.onchange=()=>{document.querySelector('input[name="spaceType"][value="extended"]').checked=true;};
+}
+
 /** 希望条件に合う空き区画を1件選ぶ。 */
 function selectRecommendedSpace(spaces, priority, requestedSpaceType = "standard", randomize = false) {
   const availableSpaces = spaces.filter((space) =>
-    !space.isOccupied && space.spaceType === requestedSpaceType,
+    !space.isOccupied && mapDisplay.isGuidableType(space.spaceType) && space.spaceType === requestedSpaceType,
   );
   if (availableSpaces.length === 0) {
     return null;
@@ -1448,7 +1466,7 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         }
 
         const isRecommended = object.uid === recommendedSpace?.uid;
-        const isOccupied = object.status !== "available";
+        const isOccupied = !mapDisplay.isGuidableType(object.spaceType ?? "standard") || object.status !== "available";
         item.classList.toggle("is-occupied", isOccupied);
         item.classList.toggle("is-recommended", isRecommended);
         item.setAttribute("role", "listitem");
@@ -1750,7 +1768,9 @@ function saveSearchConditions() {
   const checkedPriority = conditionForm.querySelector('input[name="priority"]:checked');
   const checkedSpaceType = conditionForm.querySelector('input[name="spaceType"]:checked');
   state.selectedPriority = checkedPriority?.value ?? "balanced";
-  state.requestedSpaceType = checkedSpaceType?.value ?? "standard";
+  const selectedType = checkedSpaceType?.value === "extended"
+    ? document.querySelector('#extended-space-type')?.value : checkedSpaceType?.value;
+  state.requestedSpaceType = mapDisplay.isGuidableType(selectedType) ? selectedType : "standard";
   state.voiceEnabled = voiceEnabledInput?.checked !== false;
   const checkedGuidanceVoice = guidanceVoiceInputs.find((input) => input.checked);
   const selectedGuidanceLanguage = checkedGuidanceVoice?.value ?? "en-US";
