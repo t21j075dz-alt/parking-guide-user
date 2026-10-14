@@ -89,6 +89,7 @@ const SPACE_TYPE_LABELS = Object.freeze({
   standard: "普通車",
   compact: "軽自動車",
   accessible: "車いす使用者用",
+  priority: "優先区画",
   ev: "EV充電",
 });
 
@@ -96,6 +97,7 @@ const SPACE_TYPE_LABELS_EN = Object.freeze({
   standard: "Standard",
   compact: "Kei car",
   accessible: "Accessible",
+  priority: "Priority parking",
   ev: "EV charging",
 });
 
@@ -1234,7 +1236,8 @@ function calculateLayoutCrop(layout, supportedTypes) {
   }
 
   const bounds = visibleObjects.map(getRotatedObjectBounds);
-  const logicalPadding = Math.max(18, Math.min(canvasWidth, canvasHeight) * 0.025);
+  const extent=Math.max(Math.max(...bounds.map(b=>b.maxX))-Math.min(...bounds.map(b=>b.minX)),Math.max(...bounds.map(b=>b.maxY))-Math.min(...bounds.map(b=>b.minY)));
+  const logicalPadding = Math.max(.001,extent*.04);
   const minX = Math.max(0, Math.min(...bounds.map((item) => item.minX)) - logicalPadding);
   const minY = Math.max(0, Math.min(...bounds.map((item) => item.minY)) - logicalPadding);
   const maxX = Math.min(canvasWidth, Math.max(...bounds.map((item) => item.maxX)) + logicalPadding);
@@ -1243,8 +1246,8 @@ function calculateLayoutCrop(layout, supportedTypes) {
   return {
     x: minX,
     y: minY,
-    width: Math.max(1, maxX - minX),
-    height: Math.max(1, maxY - minY),
+    width: Math.max(.001, maxX - minX),
+    height: Math.max(.001, maxY - minY),
   };
 }
 
@@ -1271,10 +1274,11 @@ function calculateGuidanceViewport(layout, recommendedSpace, supportedTypes, ent
   } else {
     bounds = calculateLayoutCrop(layout, supportedTypes);
   }
-  const horizontalPadding = Math.min(90, screenWidth * 0.28);
-  const verticalPadding = 64;
-  const width = Math.max(100, bounds.width) / Math.max(0.1, 1 - 2 * horizontalPadding / screenWidth);
-  const height = Math.max(100, bounds.height) / Math.max(0.1, 1 - 2 * verticalPadding / screenHeight);
+  const focused=mapViewMode === "focus" && points.length>0;
+  const horizontalPadding = focused ? Math.min(80, screenWidth * 0.24) : 18;
+  const verticalPadding = focused ? 64 : 44;
+  const width = Math.max(.001, bounds.width) / Math.max(0.1, 1 - 2 * horizontalPadding / screenWidth);
+  const height = Math.max(.001, bounds.height) / Math.max(0.1, 1 - 2 * verticalPadding / screenHeight);
   const viewWidth = Math.max(width, height * aspect);
   const viewHeight = viewWidth / aspect;
   return {
@@ -1410,6 +1414,7 @@ function renderRegisteredLayout(layout, recommendedSpace) {
       }
 
       if (object.objectType === "roadSign") mapDisplay.appendSign(item,object);
+      if (object.objectType === "pavementMarking") mapDisplay.appendPavement(item,object);
       if (mapDisplay.roads.has(object.objectType)) {
         mapDisplay.appendRoute(item,object,layout);
         mapDisplay.appendSurface(item,object,layout);
@@ -1419,12 +1424,7 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         const label = document.createElement("span");
         label.className = "map-object-label";
         label.textContent = text;
-        item.style.setProperty("--map-label-size", `${mapDisplay.fitLabel(text,objectWidth*crop.scale*.8,objectHeight*crop.scale*.8,16)}px`);
-        if (object.objectType === "building" && object.labelAutoScale === false) {
-          const cap = Math.max(3,Math.min(18,Number(object.labelFontSize)||6))*crop.scale;
-          const fitted = mapDisplay.fitLabel(text,objectWidth*crop.scale*.8,objectHeight*crop.scale*.8,18);
-          item.style.setProperty("--map-label-size", `${Math.min(cap,fitted)}px`);
-        }
+        mapDisplay.applyTypography(item,{...object,name:text},crop.scale);
         label.title = text;
         label.style.position = "absolute";
         label.style.inset = "10%";
@@ -1440,19 +1440,9 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         item.style.setProperty("--map-number-color", "var(--color-text)");
         mapDisplay.appendParking(item,object);
 
-        const typeMark = document.createElement("span");
-        typeMark.className = "space-type-mark";
-        typeMark.setAttribute("aria-hidden", "true");
-        if (object.spaceType === "compact") typeMark.textContent = "軽";
-        if (object.spaceType === "accessible") typeMark.textContent = "♿";
-        if (object.spaceType === "ev") typeMark.textContent = "EV";
-        const hasType = Boolean(typeMark.textContent);
-        item.style.setProperty("--space-type-size", `${mapDisplay.fitLabel(typeMark.textContent,objectWidth*crop.scale*.9,objectHeight*crop.scale*.28,14)}px`);
-        if (hasType) item.append(typeMark);
+        mapDisplay.appendType(item,object);
         const displayNumber = [mapDisplay.groupName(object),mapDisplay.spaceNumber(object)].filter(Boolean).join("\n");
-        item.style.setProperty("--number-top",hasType?"48%":"18%");
-        item.style.setProperty("--number-height",hasType?"45%":"65%");
-        item.style.setProperty("--space-number-size",`${mapDisplay.fitLabel(displayNumber,objectWidth*crop.scale*.9,objectHeight*crop.scale*(hasType?.45:.65),18)}px`);
+        mapDisplay.applyTypography(item,object,crop.scale);
         if (object.uid !== recommendedSpace?.uid && objectWidth*crop.scale >= 6) {
           const numberMark=document.createElement("span");numberMark.className="space-number-mark";numberMark.textContent=displayNumber;numberMark.setAttribute("aria-hidden","true");item.append(numberMark);
         }
@@ -1513,6 +1503,15 @@ function renderRegisteredLayout(layout, recommendedSpace) {
       }
 
       parkingMap.append(item);
+      // 建物名称の領域を予約し、案内ラベルが名称を隠さないようにする。
+      if (object.objectType === "building" && item.querySelector(".map-object-label")) {
+        const labelBounds = item.querySelector(".map-object-label").getBoundingClientRect?.();
+        const mapBounds = parkingMap.getBoundingClientRect?.();
+        if (labelBounds?.width > 0 && mapBounds) guidanceLabelRects.push({
+          x: labelBounds.left-mapBounds.left, y: labelBounds.top-mapBounds.top,
+          width: labelBounds.width, height: labelBounds.height,
+        });
+      }
     });
   if (recommendedSpace?.sourceObject) {
     const object = recommendedSpace.sourceObject;
