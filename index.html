@@ -26,6 +26,7 @@
     <script src="./sync-config.js" defer></script>
     <script src="./parking-layouts.js" defer></script>
     <script src="./speech-readings.js?v=20261011-fukuoka-100" defer></script>
+    <script src="./home-live-status.js?v=20261023" defer></script>
     <script src="./app.js?v=20261014-interaction" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
   </head>
@@ -216,6 +217,17 @@
             <div class="private-test-location-actions">
               <button class="secondary-button" id="save-private-test-location-button" type="button">現在地をテスト地点として登録</button>
               <button class="secondary-button" id="clear-private-test-location-button" type="button">登録地点を削除</button>
+            </div>
+            <div class="private-test-location-actions" style="display:block;margin-top:1em">
+              <h3>YOLOリアルタイム満空（研究用）</h3>
+              <p class="muted">自宅の判定情報は非公開です。管理者としてログインした場合のみ最新状態を表示します。</p>
+              <form id="home-live-user-login" autocomplete="on">
+                <label>管理者メール<input type="email" name="email" autocomplete="username" required></label>
+                <label>パスワード<input type="password" name="password" autocomplete="current-password" required></label>
+                <button class="secondary-button" type="submit">ライブ判定にログイン</button>
+              </form>
+              <button class="secondary-button" id="home-live-user-logout" type="button" hidden>ライブ判定からログアウト</button>
+              <p class="private-test-location-status" id="home-live-user-status" aria-live="polite">保存済みの区画状態を表示しています。</p>
             </div>
           </section>
           <p id="random-guidance-note" class="random-guidance-note" hidden>研究用：空き区画からランダムに案内します。</p>
