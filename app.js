@@ -1074,6 +1074,16 @@ function calculateLayoutDistance(space, entrance, layout) {
   };
 }
 
+/** 自宅テスト用は認証済みの場合だけYOLOの新鮮な満空データを優先する。 */
+function effectiveParkingStatus(layout, object) {
+  const saved = object.status ?? "unknown";
+  if (layout?.facilityId === "home-test-001" && saved !== "unavailable"
+      && window.PARKING_HOME_LIVE?.active()) {
+    return window.PARKING_HOME_LIVE.getStatus(object.uid);
+  }
+  return saved;
+}
+
 /** 管理画面から登録された駐車区画を検索用データへ変換する。 */
 function createLayoutParkingSpaces(layout, facility) {
   const entrance = getGuideEntrance(layout, facility);
@@ -1084,7 +1094,7 @@ function createLayoutParkingSpaces(layout, facility) {
     .filter((object) => Number.isFinite(object.x) && Number.isFinite(object.y))
     .map((object, index) => {
       const distance = calculateLayoutDistance(object, entrance, layout);
-      const status = object.status ?? "unknown";
+      const status = effectiveParkingStatus(layout, object);
       const width = Number(object.width) || 0;
       const height = Number(object.height) || 0;
 
@@ -1468,13 +1478,14 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         }
 
         const isRecommended = object.uid === recommendedSpace?.uid;
-        const isOccupied = !mapDisplay.isGuidableType(object.spaceType ?? "standard") || object.status !== "available";
+        const liveStatus = effectiveParkingStatus(layout, object);
+        const isOccupied = !mapDisplay.isGuidableType(object.spaceType ?? "standard") || liveStatus !== "available";
         item.classList.toggle("is-occupied", isOccupied);
         item.classList.toggle("is-recommended", isRecommended);
         item.setAttribute("role", "listitem");
         item.setAttribute(
           "aria-label",
-          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isRecommended ? ui("案内先","Destination") : object.status === "occupied" ? ui("使用中","Occupied") : object.status === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
+          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isRecommended ? ui("案内先","Destination") : liveStatus === "occupied" ? ui("使用中","Occupied") : liveStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
         );
       } else if (object.objectType === "buildingEntrance") {
         mapDisplay.appendEntrance(item,object);
@@ -1917,14 +1928,16 @@ function getFacilityOccupancy(facility) {
   return summarizeOccupancy(prepared.spaces, prepared.isSimulation);
 }
 function getOccupancyLabel(occupancy) {
-  const source = occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
+  const live = state.selectedFacility?.id === "home-test-001" && window.PARKING_HOME_LIVE?.active();
+  const source = live ? ui("YOLO判定", "YOLO live") : occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
   const label = {full:ui("満車", "Full"),busy:ui("混雑", "Busy"),open:ui("空きあり", "Spaces available"),unknown:ui("空き状況未確認", "Availability unknown")}[occupancy.level];
   return `${label} · ${source}${occupancy.level !== "unknown" ? ui(` · 空き${occupancy.available}区画`, ` · ${occupancy.available} free spaces`) : ""}`;
 }
 function updateSearchResultNotice() {
   if (!state.searchOutcome) return;
   const occupancy = summarizeOccupancy(state.currentSpaces, state.resultSimulation);
-  searchStatus.textContent = (state.searchOutcome === "not-found" ? ui("駐車場全体：", "Entire parking lot: ") : "") + getOccupancyLabel(occupancy) + ui("（実際の空き情報ではありません）", " (not live availability)");
+  const live = state.selectedFacility?.id === "home-test-001" && window.PARKING_HOME_LIVE?.active();
+  searchStatus.textContent = (state.searchOutcome === "not-found" ? ui("駐車場全体：", "Entire parking lot: ") : "") + getOccupancyLabel(occupancy) + (live ? ui("（AI判定です。必ず現地を確認）", " (AI estimate; verify on site)") : ui("（実際の空き情報ではありません）", " (not live availability)"));
   congestionNotice.hidden = occupancy.level !== "busy" || state.searchOutcome !== "found";
   congestionNotice.textContent = ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: only ${occupancy.available} spaces remain.`);
   noSpaceContent.hidden = state.searchOutcome !== "not-found";
@@ -1953,11 +1966,14 @@ function getNoSpaceGuidanceMessage(locale = getGuidanceSpeechLocale()) {
 
 /** 空き区画検索を実行する。 */
 async function runSpaceSearch(priorityOverride = null, options = {}) {
-  const { autoTriggered = false, skipSafetyGuard = false, refreshSimulation = false } = options;
+  const { autoTriggered = false, skipSafetyGuard = false, refreshSimulation = false, silentRefresh = false } = options;
   // 通信を待つ前に依頼元を固定し、戻る操作・施設変更・再検索で無効化する。
   const requestId = ++state.searchRequestId;
   const facility = state.selectedFacility;
-  await loadRemoteParkingLayouts();
+  if (!silentRefresh) await loadRemoteParkingLayouts();
+  if (!silentRefresh && facility?.id === "home-test-001" && window.PARKING_HOME_LIVE?.active()) {
+    await window.PARKING_HOME_LIVE.refresh();
+  }
   if (requestId !== state.searchRequestId || state.selectedFacility !== facility) {
     return { cancelled: true };
   }
@@ -1978,7 +1994,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
   if (matchingRadio) matchingRadio.checked = true;
 
   const priority = state.selectedPriority;
-  cancelSpeech();
+  if (!silentRefresh) cancelSpeech();
   state.searchOutcome = null;
   state.recommendedSpace = null;
   noSpaceContent.hidden = true;
@@ -2019,7 +2035,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
         state.lastSearchWasAuto = autoTriggered;
         updateSearchResultNotice();
         renderFacilities();
-        if (state.voiceEnabled) speakCurrentGuidance();
+        if (state.voiceEnabled && !silentRefresh) speakCurrentGuidance();
         resolve({ facility: facility.name, spaceId: null, priority, spaceType: state.requestedSpaceType });
         return;
       }
@@ -2057,7 +2073,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       renderFacilities();
       state.lastSearchWasAuto = autoTriggered;
 
-      if (state.voiceEnabled) {
+      if (state.voiceEnabled && !silentRefresh) {
         speakCurrentGuidance();
       }
 
@@ -3359,6 +3375,15 @@ window.addEventListener("popstate", (event) => {
     (requestedScreen === "result" && state.searchOutcome);
 
   showScreen(canOpenScreen ? requestedScreen : "facility", { addHistory: false });
+});
+
+// ログイン中のライブ区画の変化だけ、画面と案内候補を静かに再計算する。
+window.addEventListener("parking-home-live-update", () => {
+  renderFacilities();
+  if (state.selectedFacility?.id === "home-test-001"
+      && state.currentScreen === "result" && state.searchOutcome) {
+    void runSpaceSearch(null, { silentRefresh: true, skipSafetyGuard: true });
+  }
 });
 
 /* =========================================================
