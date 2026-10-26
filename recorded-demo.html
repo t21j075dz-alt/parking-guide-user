@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>録画実験デモ | 駐車場案内</title>
+<style>
+:root { color-scheme:light; font-family:"Yu Gothic UI","Noto Sans JP",system-ui,sans-serif; color:#182334; background:#f2f5f9 }
+* { box-sizing:border-box }
+body { margin:0 }
+header { background:#12365d; color:white; padding:24px max(24px,calc((100% - 1050px)/2)) }
+header a {color:#d5efff}
+header h1 {margin:8px 0;font-size:clamp(1.45rem,4vw,2.1rem)}
+main {max-width:1050px;margin:24px auto;padding:0 20px 50px}
+.notice {background:#ffefd1;border:2px solid #b36700;border-radius:12px;padding:18px;line-height:1.8;font-size:1.05rem}
+.notice strong {display:block;font-size:1.15rem}
+.panel {border-radius:12px;background:white;padding:24px;margin:20px 0;box-shadow:0 4px 20px #0a29401a}
+.row {display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:12px 0}
+button, select {font:inherit;padding:10px 16px;border-radius:8px;border:1px solid #7290ad;background:white;color:#173354}
+button {cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible {outline:3px solid #1f7dce}
+button:hover {background:#ecf6ff}
+input[type=range] {flex:1;min-width:180px;accent-color:#0672b7}
+#time-display {font-weight:700;font-variant-numeric:tabular-nums}
+#spaces {display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:12px}
+.space {border:2px solid #a0adbd;border-radius:10px;padding:16px;min-height:98px}
+.space b {display:block;font-size:1.12rem}
+.space span {display:block;margin-top:8px}
+.space.available {border-color:#127d3d;background:#e9faef}
+.space.occupied {border-color:#ae3131;background:#fff1f1}
+.space.blocked {border-color:#a66b00;background:#fff6dc}
+.space.unknown {border-color:#78818b;background:#eff1f4}
+.muted {color:#536178}
+#error {color:#a72828;font-weight:700}
+[hidden]{display:none!important}
+</style>
+<script src="./recorded-demo.js" defer></script>
+</head>
+<body>
+<header><a href="./index.html">← 通常の駐車場案内へ戻る</a><h1>🏠 自宅駐車場・録画実験の再生</h1><p>卒業研究：車両検出と駐車枠判定の確認</p></header>
+<main>
+<div class="notice" role="note"><strong>これは過去に撮影した映像の判定結果です。現在の空き状況ではありません。</strong>
+実験結果の閲覧専用です。この画面から駐車枠への案内やリアルタイムの空き確認はできません。録画そのもの・車両ID・ナンバープレートは共有リンクに含まれません。</div>
+<section class="panel">
+<h2>再生する実験</h2>
+<p id="summary" class="muted">管理者アプリで録画の「駐車枠の状態.csv」を選択し、作成したリンクから開いてください。</p>
+<p id="error" role="alert" hidden></p>
+<div id="controls" hidden>
+<div class="row">
+<button type="button" id="play">再生する ▶</button>
+<label for="speed">再生速度</label>
+<select id="speed"><option value="1">1倍</option><option value="2">2倍</option><option value="4">4倍</option><option value="8">8倍</option></select>
+<span id="time-display" aria-live="off">0:00 / 0:00</span>
+</div>
+<div class="row"><label for="seek">動画の経過時間</label><input id="seek" type="range" min="0" max="1000" value="0" aria-label="録画の再生位置"></div>
+<p class="muted">再生位置を動かすと、過去に記録された区画判定が更新されます。</p>
+</div>
+</section>
+<section class="panel" id="results" hidden>
+<h2>駐車枠ごとの判定</h2>
+<p id="totals" role="status" aria-live="polite"></p>
+<div id="spaces"></div>
+</section>
+</main>
+</body>
+</html>
