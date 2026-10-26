@@ -480,6 +480,7 @@ const state = {
   pendingPrivateTestCalibration: false,
   searchOutcome: null,
   resultSimulation: false,
+  resultLive: false,
   recommendedSpace: null,
   currentSpaces: [],
   currentLayout: null,
@@ -1387,9 +1388,12 @@ function renderRegisteredLayout(layout, recommendedSpace) {
     `Parking map. Your space: ${recommendedSpace?.id ?? ""}. ${entrance ? "The destination entrance is shown." : "No destination entrance is registered."}`,
   ));
 
+  const visibleSpaceStates = new Map(state.currentSpaces.map(space => [space.uid, space.occupancyStatus]));
   layout.objects
     .filter((object) => supportedTypes.has(object.objectType))
     .forEach((object) => {
+      const displayStatus = object.objectType === "parkingSpace"
+        ? visibleSpaceStates.get(object.uid) ?? object.status : object.status;
       const item = document.createElement("div");
       item.className = `map-object map-object--${object.objectType}`;
       item.dataset.objectType = object.objectType;
@@ -1468,13 +1472,14 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         }
 
         const isRecommended = object.uid === recommendedSpace?.uid;
-        const isOccupied = !mapDisplay.isGuidableType(object.spaceType ?? "standard") || object.status !== "available";
+        const isOccupied = !mapDisplay.isGuidableType(object.spaceType ?? "standard") || displayStatus !== "available";
         item.classList.toggle("is-occupied", isOccupied);
+        item.classList.toggle("is-blocked", displayStatus === "blocked");
         item.classList.toggle("is-recommended", isRecommended);
         item.setAttribute("role", "listitem");
         item.setAttribute(
           "aria-label",
-          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isRecommended ? ui("案内先","Destination") : object.status === "occupied" ? ui("使用中","Occupied") : object.status === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
+          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isRecommended ? ui("案内先","Destination") : displayStatus === "occupied" ? ui("使用中","Occupied") : displayStatus === "blocked" ? ui("障害物あり","Blocked") : displayStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
         );
       } else if (object.objectType === "buildingEntrance") {
         mapDisplay.appendEntrance(item,object);
@@ -1618,6 +1623,7 @@ if ("ResizeObserver" in window) {
 /** 指定した4画面（施設・条件・待機・区画）のうち1画面だけを表示する。 */
 function showScreen(screenName, options = {}) {
   const { addHistory = true, moveFocus = true } = options;
+  if (screenName !== "result") window.ParkingLiveStatus?.stop();
   if (!SCREEN_ORDER.includes(screenName)) {
     return;
   }
@@ -1889,8 +1895,11 @@ async function checkAutomaticProximitySearch() {
 function prepareSpaces(facility) {
   const layout = getFacilityLayout(facility);
   if (layout) {
-    const spaces = createLayoutParkingSpaces(layout, facility);
-    return { layout, spaces, entrance: getGuideEntrance(layout, facility), isSimulation: false };
+    const live = window.ParkingLiveStatus?.snapshot(facility.id)?.published === true;
+    const spaces = window.ParkingLiveStatus?.apply(
+      facility.id, createLayoutParkingSpaces(layout, facility),
+    ) ?? createLayoutParkingSpaces(layout, facility);
+    return { layout, spaces, entrance: getGuideEntrance(layout, facility), isSimulation: false, isLive: live };
   }
 
   return {
@@ -1901,8 +1910,27 @@ function prepareSpaces(facility) {
   };
 }
 
+/**
+ * カメラ情報が変わったらマップと警告だけを更新する。
+ * 運転中に勝手に案内先を変更したり、音声を割り込ませたりしない。
+ */
+function beginLiveUpdates(facility) {
+  if (!state.resultLive || !window.ParkingLiveStatus) return;
+  window.ParkingLiveStatus.watch(facility.id, () => {
+    if (state.currentScreen !== "result" || state.selectedFacility !== facility) return;
+    const current = prepareSpaces(facility);
+    state.currentSpaces = current.spaces;
+    state.resultLive = current.isLive === true;
+    if (state.recommendedSpace && state.currentLayout) {
+      renderParkingMap(state.currentSpaces, state.recommendedSpace, state.currentLayout);
+    }
+    updateSearchResultNotice();
+    renderFacilities();
+  });
+}
+
 /** 状態が不明な区画や利用不可の区画を「空き」に数えない。混雑の閾値は研究用。 */
-function summarizeOccupancy(spaces, simulation = false) {
+function summarizeOccupancy(spaces, simulation = false, live = false) {
   const usable = spaces.filter(space => space.occupancyStatus !== "unavailable");
   const available = usable.filter(space => !space.isOccupied).length;
   const unknown = usable.filter(space => space.occupancyStatus === "unknown" ||
@@ -1910,21 +1938,29 @@ function summarizeOccupancy(spaces, simulation = false) {
   const total = usable.length;
   const level = !total || unknown ? "unknown" : !available ? "full"
     : available <= 3 || available / total <= 0.2 ? "busy" : "open";
-  return { available, total, unknown, level, simulation };
+  return { available, total, unknown, level, simulation, live };
 }
 function getFacilityOccupancy(facility) {
   const prepared = prepareSpaces(facility);
-  return summarizeOccupancy(prepared.spaces, prepared.isSimulation);
+  return summarizeOccupancy(prepared.spaces, prepared.isSimulation, prepared.isLive);
 }
 function getOccupancyLabel(occupancy) {
-  const source = occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
+  const source = occupancy.live ? ui("カメラ確認", "Camera verified")
+    : occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
   const label = {full:ui("満車", "Full"),busy:ui("混雑", "Busy"),open:ui("空きあり", "Spaces available"),unknown:ui("空き状況未確認", "Availability unknown")}[occupancy.level];
   return `${label} · ${source}${occupancy.level !== "unknown" ? ui(` · 空き${occupancy.available}区画`, ` · ${occupancy.available} free spaces`) : ""}`;
 }
 function updateSearchResultNotice() {
   if (!state.searchOutcome) return;
-  const occupancy = summarizeOccupancy(state.currentSpaces, state.resultSimulation);
-  searchStatus.textContent = (state.searchOutcome === "not-found" ? ui("駐車場全体：", "Entire parking lot: ") : "") + getOccupancyLabel(occupancy) + ui("（実際の空き情報ではありません）", " (not live availability)");
+  const occupancy = summarizeOccupancy(state.currentSpaces, state.resultSimulation, state.resultLive);
+  const chosenIsUnavailable = state.resultLive && state.recommendedSpace
+    && state.currentSpaces.some(space => space.uid === state.recommendedSpace.uid && space.isOccupied);
+  searchStatus.textContent = chosenIsUnavailable
+    ? ui("案内先の状況が変わりました。安全な場所に停車して「空き状況を更新」を押してください。", "The recommended space has changed. Stop safely and tap Refresh availability.")
+    : (state.searchOutcome === "not-found" ? ui("駐車場全体：", "Entire parking lot: ") : "")
+      + getOccupancyLabel(occupancy)
+      + (state.resultLive ? ui("（数秒ごとに更新・現地優先）", " (updates every few seconds; follow on-site signs)")
+        : ui("（実際の空き情報ではありません）", " (not live availability)"));
   congestionNotice.hidden = occupancy.level !== "busy" || state.searchOutcome !== "found";
   congestionNotice.textContent = ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: only ${occupancy.available} spaces remain.`);
   noSpaceContent.hidden = state.searchOutcome !== "not-found";
@@ -1932,7 +1968,9 @@ function updateSearchResultNotice() {
     ? (state.resultSimulation
         ? ui("デモでは満車です。空き状況を更新すると再抽選します。", "The demo parking lot is full. Refresh availability to draw again.")
         : ui("登録データでは満車です。", "The saved data shows a full parking lot."))
-    : ui(`${getSpaceTypeLabel(state.requestedSpaceType)}の空き区画が見つかりませんでした。`, `No available ${getSpaceTypeLabel(state.requestedSpaceType)} space was found.`);
+    : state.resultLive
+      ? ui("現在のカメラ情報では空き区画を確認できません。現地の表示を確認してください。", "The camera cannot confirm an available space now. Follow on-site signs.")
+      : ui(`${getSpaceTypeLabel(state.requestedSpaceType)}の空き区画が見つかりませんでした。`, `No available ${getSpaceTypeLabel(state.requestedSpaceType)} space was found.`);
 }
 function getFacilitySpokenName(locale) {
   const facility = state.selectedFacility;
@@ -1958,6 +1996,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
   const requestId = ++state.searchRequestId;
   const facility = state.selectedFacility;
   await loadRemoteParkingLayouts();
+  if (facility?.id) await window.ParkingLiveStatus?.refresh(facility.id);
   if (requestId !== state.searchRequestId || state.selectedFacility !== facility) {
     return { cancelled: true };
   }
@@ -2003,10 +2042,11 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       const prepared = prepareSpaces(facility);
 
       state.resultSimulation = prepared.isSimulation;
+      state.resultLive = prepared.isLive === true;
       state.currentLayout = prepared.layout;
       state.currentSpaces = prepared.spaces;
       state.guideEntrance = prepared.entrance;
-      const useRandomGuidance = RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id);
+      const useRandomGuidance = !state.resultLive && RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id);
       state.recommendedSpace = selectRecommendedSpace(
         prepared.spaces,
         priority,
@@ -2019,13 +2059,14 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
         state.lastSearchWasAuto = autoTriggered;
         updateSearchResultNotice();
         renderFacilities();
+        beginLiveUpdates(facility);
         if (state.voiceEnabled) speakCurrentGuidance();
         resolve({ facility: facility.name, spaceId: null, priority, spaceType: state.requestedSpaceType });
         return;
       }
 
       spaceNumber.textContent = state.recommendedSpace.id;
-      priorityBadge.textContent = RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id)
+      priorityBadge.textContent = (!state.resultLive && RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id))
         ? `${getSpaceTypeLabel(state.requestedSpaceType)} / ${ui("ランダム", "Random")}`
         : `${getSpaceTypeLabel(state.requestedSpaceType)} / ${getPriorityLabel(priority)}`;
 
@@ -2055,6 +2096,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       state.searchOutcome = "found";
       updateSearchResultNotice();
       renderFacilities();
+      beginLiveUpdates(facility);
       state.lastSearchWasAuto = autoTriggered;
 
       if (state.voiceEnabled) {
@@ -3082,6 +3124,7 @@ function resetApplication() {
   state.pendingPrivateTestCalibration = false;
   state.recommendedSpace = null;
   state.searchOutcome = null;
+  state.resultLive = false;
   state.currentSpaces = [];
   state.currentLayout = null;
   state.guideEntrance = null;
@@ -3107,6 +3150,7 @@ facilityList.addEventListener("click", (event) => {
 
   state.selectedFacility = facility;
   state.searchOutcome = null;
+  state.resultLive = false;
   state.currentSpaces = [];
   state.currentLayout = null;
   state.searchRequestId += 1;
