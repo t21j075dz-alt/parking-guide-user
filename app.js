@@ -1468,13 +1468,14 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         }
 
         const isRecommended = object.uid === recommendedSpace?.uid;
-        const isOccupied = !mapDisplay.isGuidableType(object.spaceType ?? "standard") || object.status !== "available";
+        const currentStatus = state.currentSpaces?.find(space => space.uid === object.uid)?.occupancyStatus ?? object.status;
+        const isOccupied = !mapDisplay.isGuidableType(object.spaceType ?? "standard") || currentStatus !== "available";
         item.classList.toggle("is-occupied", isOccupied);
         item.classList.toggle("is-recommended", isRecommended);
         item.setAttribute("role", "listitem");
         item.setAttribute(
           "aria-label",
-          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isRecommended ? ui("案内先","Destination") : object.status === "occupied" ? ui("使用中","Occupied") : object.status === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
+          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isRecommended ? ui("案内先","Destination") : currentStatus === "occupied" ? ui("使用中","Occupied") : currentStatus === "blocked" ? ui("障害物あり","Obstacle present") : currentStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
         );
       } else if (object.objectType === "buildingEntrance") {
         mapDisplay.appendEntrance(item,object);
@@ -1890,7 +1891,9 @@ function prepareSpaces(facility) {
   const layout = getFacilityLayout(facility);
   if (layout) {
     const spaces = createLayoutParkingSpaces(layout, facility);
-    return { layout, spaces, entrance: getGuideEntrance(layout, facility), isSimulation: false };
+    // 実測値がある場合だけ上書き。15秒を超えた値や未監視区画は「未確認」。
+    const shown = window.PARKING_LIVE?.apply(spaces, facility.id) ?? spaces;
+    return { layout, spaces: shown, entrance: getGuideEntrance(layout, facility), isSimulation: false };
   }
 
   return {
@@ -1903,7 +1906,7 @@ function prepareSpaces(facility) {
 
 /** 状態が不明な区画や利用不可の区画を「空き」に数えない。混雑の閾値は研究用。 */
 function summarizeOccupancy(spaces, simulation = false) {
-  const usable = spaces.filter(space => space.occupancyStatus !== "unavailable");
+  const usable = spaces.filter(space => !["unavailable", "blocked"].includes(space.occupancyStatus));
   const available = usable.filter(space => !space.isOccupied).length;
   const unknown = usable.filter(space => space.occupancyStatus === "unknown" ||
     (space.occupancyStatus && !["available", "occupied"].includes(space.occupancyStatus))).length;
@@ -1917,14 +1920,22 @@ function getFacilityOccupancy(facility) {
   return summarizeOccupancy(prepared.spaces, prepared.isSimulation);
 }
 function getOccupancyLabel(occupancy) {
-  const source = occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
+  const facilityId = state.selectedFacility?.id;
+  const source = occupancy.simulation ? ui("デモ", "Demo")
+    : window.PARKING_LIVE?.hasFresh(facilityId) ? ui("カメラ判定", "Camera live")
+    : window.PARKING_LIVE?.hasAny(facilityId) ? ui("更新確認できず", "Update unavailable")
+    : ui("登録データ", "Saved data");
   const label = {full:ui("満車", "Full"),busy:ui("混雑", "Busy"),open:ui("空きあり", "Spaces available"),unknown:ui("空き状況未確認", "Availability unknown")}[occupancy.level];
   return `${label} · ${source}${occupancy.level !== "unknown" ? ui(` · 空き${occupancy.available}区画`, ` · ${occupancy.available} free spaces`) : ""}`;
 }
 function updateSearchResultNotice() {
   if (!state.searchOutcome) return;
   const occupancy = summarizeOccupancy(state.currentSpaces, state.resultSimulation);
-  searchStatus.textContent = (state.searchOutcome === "not-found" ? ui("駐車場全体：", "Entire parking lot: ") : "") + getOccupancyLabel(occupancy) + ui("（実際の空き情報ではありません）", " (not live availability)");
+  const live = !state.resultSimulation && window.PARKING_LIVE?.hasFresh(state.selectedFacility?.id);
+  searchStatus.textContent = (state.searchOutcome === "not-found" ? ui("駐車場全体：", "Entire parking lot: ") : "")
+    + getOccupancyLabel(occupancy)
+    + (live ? ui("（15秒以内のカメラ判定。現地でも確認してください）", " (Camera checked within 15 s. Verify on site)")
+      : ui("（現在の空き情報ではありません）", " (not current availability)"));
   congestionNotice.hidden = occupancy.level !== "busy" || state.searchOutcome !== "found";
   congestionNotice.textContent = ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: only ${occupancy.available} spaces remain.`);
   noSpaceContent.hidden = state.searchOutcome !== "not-found";
@@ -1958,6 +1969,10 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
   const requestId = ++state.searchRequestId;
   const facility = state.selectedFacility;
   await loadRemoteParkingLayouts();
+  if (facility) {
+    window.PARKING_LIVE?.watch(facility.id);
+    await window.PARKING_LIVE?.refresh(facility.id);
+  }
   if (requestId !== state.searchRequestId || state.selectedFacility !== facility) {
     return { cancelled: true };
   }
@@ -3359,6 +3374,26 @@ window.addEventListener("popstate", (event) => {
     (requestedScreen === "result" && state.searchOutcome);
 
   showScreen(canOpenScreen ? requestedScreen : "facility", { addHistory: false });
+});
+
+/* =========================================================
+   新しいカメラ判定を受信したときの画面更新
+   ========================================================= */
+window.addEventListener("parking:livechange", (event) => {
+  renderFacilities();
+  if (!state.selectedFacility || state.selectedFacility.id !== event.detail?.facilityId
+      || state.currentScreen !== "result" || !state.searchOutcome || !state.currentLayout) return;
+  const current = prepareSpaces(state.selectedFacility);
+  state.currentSpaces = current.spaces;
+  updateSearchResultNotice();
+  renderParkingMap(state.currentSpaces, state.recommendedSpace, state.currentLayout);
+  const selected = state.currentSpaces.find(space => space.uid === state.recommendedSpace?.uid);
+  if (selected?.isOccupied) {
+    searchStatus.textContent = ui(
+      "案内先の空きが確認できなくなりました。安全な場所に停車してから「空き状況を更新」を押してください。",
+      "Your space is no longer confirmed available. Stop safely before refreshing availability.",
+    );
+  }
 });
 
 /* =========================================================
