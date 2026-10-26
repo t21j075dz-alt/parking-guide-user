@@ -1475,11 +1475,11 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         const isOccupied = !mapDisplay.isGuidableType(object.spaceType ?? "standard") || displayStatus !== "available";
         item.classList.toggle("is-occupied", isOccupied);
         item.classList.toggle("is-blocked", displayStatus === "blocked");
-        item.classList.toggle("is-recommended", isRecommended);
+        item.classList.toggle("is-recommended", isRecommended && !isOccupied);
         item.setAttribute("role", "listitem");
         item.setAttribute(
           "aria-label",
-          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isRecommended ? ui("案内先","Destination") : displayStatus === "occupied" ? ui("使用中","Occupied") : displayStatus === "blocked" ? ui("障害物あり","Blocked") : displayStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
+          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isRecommended && !isOccupied ? ui("案内先","Destination") : displayStatus === "occupied" ? ui("使用中","Occupied") : displayStatus === "blocked" ? ui("障害物あり","Blocked") : displayStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
         );
       } else if (object.objectType === "buildingEntrance") {
         mapDisplay.appendEntrance(item,object);
