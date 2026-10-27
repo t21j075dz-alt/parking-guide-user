@@ -73,7 +73,18 @@ window.ParkingLiveStatus = (() => {
 
   function apply(facilityId, spaces) {
     const current = snapshot(facilityId);
-    if (!current.published) return spaces;
+    // 自宅のライブ実験施設では、未公開中でもレイアウト保存時の
+    // 古い「available」を現在の空きとして使わない。
+    // 他の手動運用施設や録画デモの動作は変更しない。
+    if (!current.published) {
+      if (facilityId !== "home-test-001" || !settings()) return spaces;
+      return spaces.map(space => ({
+        ...space,
+        occupancyStatus: "unknown",
+        isOccupied: true,
+        liveCheckedAt: null,
+      }));
+    }
     const now = Date.now();
     return spaces.map((space) => {
       const row = current.rows.get(space.uid);
