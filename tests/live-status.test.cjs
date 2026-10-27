@@ -49,3 +49,12 @@ test("通信が切れた場合、過去の空き情報を使わない", async ()
   await client.refresh("f");
   assert.equal(client.apply("f", [space])[0].occupancyStatus, "unknown");
 });
+
+test("自宅のライブ実験施設は未公開時に古い空き表示を使わない", async () => {
+  const client = makeClient(false, "available", new Date().toISOString());
+  await client.refresh("home-test-001");
+  const result = client.apply("home-test-001", [space])[0];
+  assert.equal(result.occupancyStatus, "unknown");
+  assert.equal(result.isOccupied, true);
+  assert.equal(result.liveCheckedAt, null);
+});
