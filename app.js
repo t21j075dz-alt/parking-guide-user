@@ -453,6 +453,15 @@ const AUTO_GUIDANCE_DISTANCE_KM = 0.25;
 const AUTO_GUIDANCE_MAX_ACCURACY_METERS = 80;
 const PRIVATE_TEST_FACILITY_ID = "home-test-001";
 const PRIVATE_TEST_COORDINATE_STORAGE_KEY = "parkingGuidePrivateTestCoordinatesV1";
+// 実験施設ごとに別の座標を保持する。自宅の旧保存キーは変更しない。
+function isPrivateTestFacility(facility) {
+  return Boolean(facility?.requiresLocalCalibration || facility?.id === PRIVATE_TEST_FACILITY_ID);
+}
+function privateTestStorageKey(facility) {
+  return facility?.id && facility.id !== PRIVATE_TEST_FACILITY_ID
+    ? `${PRIVATE_TEST_COORDINATE_STORAGE_KEY}:${facility.id}`
+    : PRIVATE_TEST_COORDINATE_STORAGE_KEY;
+}
 const RANDOM_GUIDANCE_FACILITY_IDS = new Set(["target_021", PRIVATE_TEST_FACILITY_ID]);
 
 const SCREEN_ORDER = Object.freeze(["facility", "condition", "waiting", "result"]);
@@ -528,6 +537,7 @@ const voiceStatus = document.querySelector("#voice-status");
 const randomGuidanceNote = document.querySelector("#random-guidance-note");
 const privateTestLocationPanel = document.querySelector("#private-test-location-panel");
 const privateTestLocationStatus = document.querySelector("#private-test-location-status");
+const privateTestLocationTitle = document.querySelector("#private-test-location-title");
 const savePrivateTestLocationButton = document.querySelector("#save-private-test-location-button");
 const clearPrivateTestLocationButton = document.querySelector("#clear-private-test-location-button");
 const proximityStatus = document.querySelector("#proximity-status");
@@ -627,9 +637,9 @@ function calculateDistanceKm(lat1, lon1, lat2, lon2) {
 }
 
 /** 自宅テスト用の正確な座標は、このブラウザー端末内だけに保持する。 */
-function readPrivateTestCoordinate() {
+function readPrivateTestCoordinate(facility = state.selectedFacility) {
   try {
-    const saved = JSON.parse(localStorage.getItem(PRIVATE_TEST_COORDINATE_STORAGE_KEY) ?? "null");
+    const saved = JSON.parse(localStorage.getItem(privateTestStorageKey(facility)) ?? "null");
     if (!saved || !Number.isFinite(saved.latitude) || !Number.isFinite(saved.longitude)) {
       return null;
     }
@@ -651,7 +661,7 @@ function savePrivateTestCoordinate(location) {
     return false;
   }
   try {
-    localStorage.setItem(PRIVATE_TEST_COORDINATE_STORAGE_KEY, JSON.stringify({
+    localStorage.setItem(privateTestStorageKey(state.selectedFacility), JSON.stringify({
       latitude: location.latitude,
       longitude: location.longitude,
       accuracy: Number.isFinite(location.accuracy) ? location.accuracy : null,
@@ -665,7 +675,7 @@ function savePrivateTestCoordinate(location) {
 
 function clearPrivateTestCoordinate() {
   try {
-    localStorage.removeItem(PRIVATE_TEST_COORDINATE_STORAGE_KEY);
+    localStorage.removeItem(privateTestStorageKey(state.selectedFacility));
   } catch {
     /* 保存領域を利用できない環境では何もしない。 */
   }
@@ -673,11 +683,14 @@ function clearPrivateTestCoordinate() {
 
 /** 自宅テスト用の端末内登録状態を条件画面へ反映する。 */
 function updatePrivateTestLocationPanel() {
-  const isPrivateTest = state.selectedFacility?.id === PRIVATE_TEST_FACILITY_ID;
+  const isPrivateTest = isPrivateTestFacility(state.selectedFacility);
   if (privateTestLocationPanel) privateTestLocationPanel.hidden = !isPrivateTest;
   if (!isPrivateTest || !privateTestLocationStatus) return;
-
-  const saved = readPrivateTestCoordinate();
+  if (privateTestLocationTitle) privateTestLocationTitle.textContent = ui(
+    `${getFacilityDisplayName(state.selectedFacility)}：実験地点（現在地）`,
+    `Test location (current position): ${getFacilityDisplayName(state.selectedFacility)}`,
+  );
+  const saved = readPrivateTestCoordinate(state.selectedFacility);
   if (!saved) {
     privateTestLocationStatus.textContent = ui(
       state.pendingPrivateTestCalibration
@@ -704,7 +717,7 @@ function updatePrivateTestLocationPanel() {
  * 取得値はページ内メモリだけに保持し、施設マスター自体は書き換えない。
  */
 async function ensureFacilityCoordinate(facility) {
-  if (!facility || facility.id === PRIVATE_TEST_FACILITY_ID || facility.requiresLocalCalibration) {
+  if (!facility || isPrivateTestFacility(facility)) {
     return getFacilityCoordinate(facility);
   }
 
@@ -768,9 +781,9 @@ async function ensureFacilityCoordinate(facility) {
  * 店舗名だけを検索した曖昧な座標は使わない。
  */
 function getFacilityCoordinate(facility) {
-  if (facility?.id === PRIVATE_TEST_FACILITY_ID || facility?.requiresLocalCalibration) {
-    const privateCoordinate = readPrivateTestCoordinate();
-    if (privateCoordinate) return privateCoordinate;
+  if (isPrivateTestFacility(facility)) {
+    // 公開住所・管理用航空写真の座標を代用せず、この施設専用の登録地点だけを使う。
+    return readPrivateTestCoordinate(facility);
   }
 
   const resolvedCoordinate = facility?.id
@@ -907,7 +920,9 @@ function renderFacilities() {
       badge.className = `availability-badge availability-${occupancy.level}`;
       badge.textContent = isEnglish() ? ({full:"Full",busy:"Busy",open:"Open",unknown:"—"}[occupancy.level]) : ({full:"満",busy:"混",open:"空",unknown:"—"}[occupancy.level]);
       const source = document.createElement("small");
-      source.textContent = occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
+      source.textContent = facility.isRecordedExperiment && !occupancy.live
+        ? ui("録画実験・現在未確認", "Recorded experiment") :
+        occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
       action.append(badge, source);
       action.title = getOccupancyLabel(occupancy);
     }
@@ -1151,6 +1166,25 @@ function getDemoParkingSpaces(facility) {
   }
   // 案内候補の処理から、一覧側の保持データを変更させない。
   return state.demoParkingSpaces.get(id).map((space) => ({ ...space }));
+}
+
+/** 日光の過去録画は8区画。現在の映像がないときは全区画を未確認にする。 */
+function getRecordedExperimentUnknownSpaces(facility) {
+  const count = Number.isInteger(facility?.researchSpaceCount)
+    && facility.researchSpaceCount > 0 && facility.researchSpaceCount <= 100
+    ? facility.researchSpaceCount : 8;
+  return Array.from({ length: count }, (_, index) => ({
+    id: `space_${String(index + 1).padStart(3, "0")}`,
+    uid: `space_${String(index + 1).padStart(3, "0")}`,
+    number: index + 1,
+    isOccupied: true,
+    occupancyStatus: "unknown",
+    isWide: false,
+    spaceType: "standard",
+    entranceDistanceMeters: null,
+    distanceScore: Infinity,
+    sourceObject: null,
+  }));
 }
 
 /** 基本5種類以外は分類付きセレクトへまとめる。 */
@@ -1717,8 +1751,8 @@ function updateRandomGuidanceNote() {
 function getFacilityGoogleMapsUrl(facility) {
   if (!facility) return null;
 
-  if (facility.id === PRIVATE_TEST_FACILITY_ID) {
-    const coordinate = readPrivateTestCoordinate();
+  if (isPrivateTestFacility(facility)) {
+    const coordinate = readPrivateTestCoordinate(facility);
     if (!coordinate) return null;
     const query = `${coordinate.latitude},${coordinate.longitude}`;
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
@@ -1740,10 +1774,10 @@ function updateWaitingScreen() {
   if (!facility) return;
 
   waitingFacilityName.textContent = getFacilityDisplayName(facility);
-  waitingFacilityAddress.textContent = facility.id === PRIVATE_TEST_FACILITY_ID
+  waitingFacilityAddress.textContent = isPrivateTestFacility(facility)
     ? ui(
-        "自宅テスト用（正確な位置はこの端末内に保存）",
-        "Home test facility (exact location stored only on this device)",
+        "現在地を実験用所在地として端末内に登録（実施設の住所ではありません）",
+        "Current position is the device-local test location, not the real facility address",
       )
     : (facility.address || ui("住所未登録", "Address not registered"));
   waitingSpaceType.textContent = getSpaceTypeLabel(state.requestedSpaceType);
@@ -1762,7 +1796,7 @@ function updateWaitingScreen() {
     waitingGoogleMapsLink.removeAttribute("href");
     waitingGoogleMapsLink.hidden = true;
   }
-  waitingGoogleMapsNote.hidden = facility.id !== PRIVATE_TEST_FACILITY_ID || !mapsUrl;
+  waitingGoogleMapsNote.hidden = !isPrivateTestFacility(facility) || !mapsUrl;
 }
 
 /** 条件画面と待機画面へ同じ接近状態を表示する。 */
@@ -1828,10 +1862,10 @@ function updateProximityStatus() {
 
   const distanceKm = getSelectedFacilityProximityKm();
   if (distanceKm === null) {
-    setProximityMessage(state.selectedFacility.id === PRIVATE_TEST_FACILITY_ID
+    setProximityMessage(isPrivateTestFacility(state.selectedFacility)
       ? ui(
-          "自宅テスト地点をこの端末に登録すると、250m接近時の自動案内を利用できます。",
-          "Save the home test point on this device to use automatic guidance within 250 m.",
+          "現在地をこの端末に実験地点として登録すると、250m接近時の自動案内を利用できます。",
+          "Save the current position as the test point to use automatic guidance within 250 m.",
         )
       : ui(
           "この施設の位置座標を確認できないため、自動案内を開始できません。",
@@ -1896,15 +1930,20 @@ function prepareSpaces(facility) {
   const layout = getFacilityLayout(facility);
   if (layout) {
     const live = window.ParkingLiveStatus?.snapshot(facility.id)?.published === true;
-    const spaces = window.ParkingLiveStatus?.apply(
+    let spaces = window.ParkingLiveStatus?.apply(
       facility.id, createLayoutParkingSpaces(layout, facility),
     ) ?? createLayoutParkingSpaces(layout, facility);
+    if (facility.isRecordedExperiment && !live) {
+      // 編集画面で仮設定した空きや録画結果を、現在の空きとして案内しない。
+      spaces = spaces.map(space => ({ ...space, isOccupied: true, occupancyStatus: "unknown" }));
+    }
     return { layout, spaces, entrance: getGuideEntrance(layout, facility), isSimulation: false, isLive: live };
   }
 
   return {
     layout: null,
-    spaces: getDemoParkingSpaces(facility),
+    spaces: facility.isRecordedExperiment
+      ? getRecordedExperimentUnknownSpaces(facility) : getDemoParkingSpaces(facility),
     entrance: null,
     isSimulation: true,
   };
@@ -1942,17 +1981,20 @@ function summarizeOccupancy(spaces, simulation = false, live = false) {
 }
 function getFacilityOccupancy(facility) {
   const prepared = prepareSpaces(facility);
-  return summarizeOccupancy(prepared.spaces, prepared.isSimulation, prepared.isLive);
+  return { ...summarizeOccupancy(prepared.spaces, prepared.isSimulation, prepared.isLive),
+    recordedExperiment: facility?.isRecordedExperiment === true };
 }
 function getOccupancyLabel(occupancy) {
   const source = occupancy.live ? ui("カメラ確認", "Camera verified")
+    : occupancy.recordedExperiment ? ui("録画実験・現在未確認", "Recorded experiment · not live")
     : occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
   const label = {full:ui("満車", "Full"),busy:ui("混雑", "Busy"),open:ui("空きあり", "Spaces available"),unknown:ui("空き状況未確認", "Availability unknown")}[occupancy.level];
   return `${label} · ${source}${occupancy.level !== "unknown" ? ui(` · 空き${occupancy.available}区画`, ` · ${occupancy.available} free spaces`) : ""}`;
 }
 function updateSearchResultNotice() {
   if (!state.searchOutcome) return;
-  const occupancy = summarizeOccupancy(state.currentSpaces, state.resultSimulation, state.resultLive);
+  const occupancy = { ...summarizeOccupancy(state.currentSpaces, state.resultSimulation, state.resultLive),
+    recordedExperiment: state.selectedFacility?.isRecordedExperiment === true };
   const chosenIsUnavailable = state.resultLive && state.recommendedSpace
     && state.currentSpaces.some(space => space.uid === state.recommendedSpace.uid && space.isOccupied);
   searchStatus.textContent = chosenIsUnavailable
@@ -1964,7 +2006,10 @@ function updateSearchResultNotice() {
   congestionNotice.hidden = occupancy.level !== "busy" || state.searchOutcome !== "found";
   congestionNotice.textContent = ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: only ${occupancy.available} spaces remain.`);
   noSpaceContent.hidden = state.searchOutcome !== "not-found";
-  noSpaceDescription.textContent = occupancy.level === "full"
+  noSpaceDescription.textContent = occupancy.recordedExperiment && !occupancy.live
+    ? ui("ここは過去録画の研究用施設です。現在の空きが確認できないため、ライブ案内はできません。",
+         "This is a recorded research facility. Current spaces cannot be verified for live guidance.")
+    : occupancy.level === "full"
     ? (state.resultSimulation
         ? ui("デモでは満車です。空き状況を更新すると再抽選します。", "The demo parking lot is full. Refresh availability to draw again.")
         : ui("登録データでは満車です。", "The saved data shows a full parking lot."))
@@ -3149,6 +3194,7 @@ facilityList.addEventListener("click", (event) => {
   }
 
   state.selectedFacility = facility;
+  state.pendingPrivateTestCalibration = false;
   state.searchOutcome = null;
   state.resultLive = false;
   state.currentSpaces = [];
@@ -3254,7 +3300,7 @@ guidanceVoiceInputs.forEach((input) => {
 });
 
 savePrivateTestLocationButton?.addEventListener("click", () => {
-  if (state.selectedFacility?.id !== PRIVATE_TEST_FACILITY_ID) return;
+  if (!isPrivateTestFacility(state.selectedFacility)) return;
 
   if (state.userLocation && savePrivateTestCoordinate(state.userLocation)) {
     state.pendingPrivateTestCalibration = false;
@@ -3305,7 +3351,7 @@ window.addEventListener("parking:locationchange", (event) => {
   state.userLocation = event.detail.location;
 
   if (state.pendingPrivateTestCalibration && state.userLocation
-      && state.selectedFacility?.id === PRIVATE_TEST_FACILITY_ID) {
+      && isPrivateTestFacility(state.selectedFacility)) {
     if (savePrivateTestCoordinate(state.userLocation)) {
       state.pendingPrivateTestCalibration = false;
       updatePrivateTestLocationPanel();

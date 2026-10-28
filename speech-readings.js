@@ -124,6 +124,7 @@ window.PARKING_SPEECH_READINGS = Object.freeze({
   "target_119": "とらいある かじきてん",
   "target_120": "ほーむぷらざなふこ かごしまとうかいてん",
   "home-test-001": "じたくてすとよう",
+  "nikko-test-001": "みちのえき にっこう ろくがじっけん",
   "ous-main-gate-experiment": "じっけんようちゅうしゃじょう、おかやまりかだいがくせいもん",
   "target_121": "とらいあるすまーと いとしまおぎのうらてん",
   "target_122": "すーぱーせんたーとらいある なかがわてん",

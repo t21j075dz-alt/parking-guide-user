@@ -7,10 +7,19 @@ test('福岡県100店舗を4地域・47市町に配置し、全件に接近案�
   const c=vm.createContext({});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../facilities.js'),'utf8'),c);
   const {metadata,facilities}=JSON.parse(vm.runInContext('JSON.stringify({metadata:CATALOG_METADATA,facilities:FACILITY_CATALOG})',c));
+  const nikko=facilities.find(f=>f.id==='nikko-test-001');
+  assert.ok(nikko);
+  assert.equal(nikko.requiresLocalCalibration,true);
+  assert.equal(nikko.isRecordedExperiment,true);
+  assert.equal(nikko.researchSpaceCount,8);
+  assert.equal(nikko.recordedCameraId,'nikko-recording-01');
+  assert.equal('latitude' in nikko,false);
+  assert.equal('longitude' in nikko,false);
+  assert.equal(metadata.testFacilityCount,2);
   const fukuoka=facilities.filter(f=>f.prefecture==='福岡県');
-  assert.equal(facilities.length,211);
+  assert.equal(facilities.length,212);
   assert.equal(fukuoka.length,100);
-  assert.equal(new Set(facilities.map(f=>f.id)).size,211);
+  assert.equal(new Set(facilities.map(f=>f.id)).size,212);
   assert.equal(new Set(fukuoka.map(f=>f.municipality)).size,47);
   for(const region of ['福岡地域','北九州地域','筑豊地域','筑後地域'])assert.equal(fukuoka.filter(f=>f.region===region).length,25);
   for(const f of fukuoka){

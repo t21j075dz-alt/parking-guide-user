@@ -612,11 +612,11 @@ test('音声調整UIは選択言語の実在音声を表示し、選択を保存
   assert.equal(nodes.get('#voice-rate').value, '0.8');
 });
 
-test('全212施設に独立した日本語読み仮名があり、難読名を正しい読みで保持する', () => {
+test('全213施設に独立した日本語読み仮名があり、難読名を正しい読みで保持する', () => {
   const context = vm.createContext({ window: {} });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../facilities.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../speech-readings.js'), 'utf8'), context);
-  assert.equal(vm.runInContext('Object.keys(window.PARKING_SPEECH_READINGS).length', context), 212);
+  assert.equal(vm.runInContext('Object.keys(window.PARKING_SPEECH_READINGS).length', context), 213);
   assert.equal(vm.runInContext('FACILITY_CATALOG.every(f => /^[ぁ-ゖー、 ]+$/.test(window.PARKING_SPEECH_READINGS[f.id]))', context), true);
   for (const [id, reading] of Object.entries({target_024:'まるなか よしだてん',target_034:'みすたーまっくす はちほんまつてん',target_073:'みちのえき そのぎのしょう',target_098:'まるきょう みなはるてん',target_107:'とらいある みやこのじょうとほくてん',target_111:'はんずまん うすきてん',target_118:'とらいある いずみこがねてん'})) {
     assert.equal(context.window.PARKING_SPEECH_READINGS[id], reading);
@@ -733,6 +733,45 @@ function loadFacilityCatalog() {
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../facilities.js'),'utf8'),context);
   return JSON.parse(vm.runInContext('JSON.stringify(FACILITY_CATALOG)',context));
 }
+
+test('道の駅日光は過去録画だけでは8区画すべて未確認で案内しない',()=>{
+  const nikko={id:'nikko-test-001',name:'道の駅日光',isRecordedExperiment:true,researchSpaceCount:8,requiresLocalCalibration:true};
+  const {run,context}=app([nikko]);
+  context.nikko=nikko;
+  assert.equal(run('getFacilityOccupancy(nikko).level'),'unknown');
+  assert.equal(run('prepareSpaces(nikko).spaces.length'),8);
+  assert.equal(run('prepareSpaces(nikko).spaces.every(s=>s.occupancyStatus==="unknown"&&s.isOccupied)'),true);
+  assert.equal(run('selectRecommendedSpace(prepareSpaces(nikko).spaces,"near","standard")'),null);
+  context.window.PARKING_LAYOUTS['nikko-test-001']={
+    facilityId:'nikko-test-001',
+    objects:[{objectType:'parkingSpace',uid:'space_001',spaceType:'standard',status:'available',x:0,y:0,width:25,height:50}],
+  };
+  assert.equal(run('prepareSpaces(nikko).isSimulation'),false);
+  assert.equal(run('prepareSpaces(nikko).spaces[0].occupancyStatus'),'unknown');
+  assert.equal(run('getFacilityOccupancy(nikko).level'),'unknown');
+});
+test('自宅と日光の現在地は端末内で別々に登録・削除する',()=>{
+  const {run,context}=app();
+  const data=new Map();
+  context.localStorage={
+    getItem:(key)=>data.has(key)?data.get(key):null,
+    setItem:(key,value)=>data.set(key,value),
+    removeItem:(key)=>data.delete(key),
+  };
+  context.home={id:'home-test-001',requiresLocalCalibration:true};
+  context.nikko={id:'nikko-test-001',requiresLocalCalibration:true};
+  assert.equal(run('getFacilityCoordinate(nikko)'),null);
+  run('state.selectedFacility=home; savePrivateTestCoordinate({latitude:34.5,longitude:133.7,accuracy:10})');
+  assert.equal(run('readPrivateTestCoordinate(home).latitude'),34.5);
+  assert.equal(run('getFacilityCoordinate(nikko)'),null);
+  run('state.selectedFacility=nikko; savePrivateTestCoordinate({latitude:35.2,longitude:134.3,accuracy:20})');
+  assert.equal(run('readPrivateTestCoordinate(nikko).latitude'),35.2);
+  assert.equal(run('readPrivateTestCoordinate(home).latitude'),34.5);
+  assert.notEqual([...data.keys()].find(key=>key.endsWith(':nikko-test-001')),undefined);
+  run('clearPrivateTestCoordinate()');
+  assert.equal(run('getFacilityCoordinate(nikko)'),null);
+  assert.equal(run('getFacilityCoordinate(home).latitude'),34.5);
+});
 
 test('ランダムデモは空車・混雑・満車を生成し、区画数・案内対象が状態に一致する',()=>{
   const {run}=app();
