@@ -17,7 +17,7 @@
     >
     <title>駐車場空き区画案内｜卒業研究</title>
     <!-- 利用者画面の共通スタイル。管理画面とは別リポジトリで管理する。 -->
-    <link rel="stylesheet" href="./styles.css?v=20261014-interaction">
+    <link rel="stylesheet" href="./styles.css?v=20261028-closed-rest-1">
     <!-- 安全確認 → 施設データ → 同期設定 → レイアウト → 画面制御の順で読み込む。 -->
     <link rel="stylesheet" href="./map-display.css?v=20261014-interaction">
     <script src="./map-display.js?v=20261014-interaction" defer></script>
@@ -26,9 +26,9 @@
     <script src="./sync-config.js" defer></script>
     <script src="./parking-layouts.js" defer></script>
     <script src="./live-status.js?v=20261027-live" defer></script>
-    <script src="./facility-operations.js?v=20261028-verified-hours-2" defer></script>
+    <script src="./facility-operations.js?v=20261028-closed-rest-1" defer></script>
     <script src="./speech-readings.js?v=20261028-nikko-test" defer></script>
-    <script src="./app.js?v=20261028-production-1" defer></script>
+    <script src="./app.js?v=20261028-closed-rest-1" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
   <link href="./experience.css" rel="stylesheet">
 <script defer src="./camera-view.js"></script>
@@ -201,7 +201,7 @@
         </form>
 
         <p id="facility-empty" class="empty-state" hidden>条件に一致する施設がありません。</p>
-        <p class="availability-key">満：満車 · 混：混雑 · 空：空きあり · 休：営業時間外・休業 · —：未確認</p>
+        <p class="availability-key">満：満車 · 混：混雑 · 空：空きあり · 休：休業日 · 閉：開店前・閉店後 · —：未確認</p>
 
         <div id="facility-list" class="facility-list" aria-label="選択できる施設"></div>
       </section>
