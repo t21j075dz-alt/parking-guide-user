@@ -920,7 +920,9 @@ function renderFacilities() {
       badge.className = `availability-badge availability-${occupancy.level}`;
       badge.textContent = isEnglish() ? ({full:"Full",busy:"Busy",open:"Open",unknown:"—"}[occupancy.level]) : ({full:"満",busy:"混",open:"空",unknown:"—"}[occupancy.level]);
       const source = document.createElement("small");
-      source.textContent = occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
+      source.textContent = facility.isRecordedExperiment && !occupancy.live
+        ? ui("録画実験・現在未確認", "Recorded experiment") :
+        occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
       action.append(badge, source);
       action.title = getOccupancyLabel(occupancy);
     }
@@ -1164,6 +1166,25 @@ function getDemoParkingSpaces(facility) {
   }
   // 案内候補の処理から、一覧側の保持データを変更させない。
   return state.demoParkingSpaces.get(id).map((space) => ({ ...space }));
+}
+
+/** 日光の過去録画は8区画。現在の映像がないときは全区画を未確認にする。 */
+function getRecordedExperimentUnknownSpaces(facility) {
+  const count = Number.isInteger(facility?.researchSpaceCount)
+    && facility.researchSpaceCount > 0 && facility.researchSpaceCount <= 100
+    ? facility.researchSpaceCount : 8;
+  return Array.from({ length: count }, (_, index) => ({
+    id: `space_${String(index + 1).padStart(3, "0")}`,
+    uid: `space_${String(index + 1).padStart(3, "0")}`,
+    number: index + 1,
+    isOccupied: true,
+    occupancyStatus: "unknown",
+    isWide: false,
+    spaceType: "standard",
+    entranceDistanceMeters: null,
+    distanceScore: Infinity,
+    sourceObject: null,
+  }));
 }
 
 /** 基本5種類以外は分類付きセレクトへまとめる。 */
@@ -1909,15 +1930,20 @@ function prepareSpaces(facility) {
   const layout = getFacilityLayout(facility);
   if (layout) {
     const live = window.ParkingLiveStatus?.snapshot(facility.id)?.published === true;
-    const spaces = window.ParkingLiveStatus?.apply(
+    let spaces = window.ParkingLiveStatus?.apply(
       facility.id, createLayoutParkingSpaces(layout, facility),
     ) ?? createLayoutParkingSpaces(layout, facility);
+    if (facility.isRecordedExperiment && !live) {
+      // 編集画面で仮設定した空きや録画結果を、現在の空きとして案内しない。
+      spaces = spaces.map(space => ({ ...space, isOccupied: true, occupancyStatus: "unknown" }));
+    }
     return { layout, spaces, entrance: getGuideEntrance(layout, facility), isSimulation: false, isLive: live };
   }
 
   return {
     layout: null,
-    spaces: getDemoParkingSpaces(facility),
+    spaces: facility.isRecordedExperiment
+      ? getRecordedExperimentUnknownSpaces(facility) : getDemoParkingSpaces(facility),
     entrance: null,
     isSimulation: true,
   };
@@ -1955,17 +1981,20 @@ function summarizeOccupancy(spaces, simulation = false, live = false) {
 }
 function getFacilityOccupancy(facility) {
   const prepared = prepareSpaces(facility);
-  return summarizeOccupancy(prepared.spaces, prepared.isSimulation, prepared.isLive);
+  return { ...summarizeOccupancy(prepared.spaces, prepared.isSimulation, prepared.isLive),
+    recordedExperiment: facility?.isRecordedExperiment === true };
 }
 function getOccupancyLabel(occupancy) {
   const source = occupancy.live ? ui("カメラ確認", "Camera verified")
+    : occupancy.recordedExperiment ? ui("録画実験・現在未確認", "Recorded experiment · not live")
     : occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
   const label = {full:ui("満車", "Full"),busy:ui("混雑", "Busy"),open:ui("空きあり", "Spaces available"),unknown:ui("空き状況未確認", "Availability unknown")}[occupancy.level];
   return `${label} · ${source}${occupancy.level !== "unknown" ? ui(` · 空き${occupancy.available}区画`, ` · ${occupancy.available} free spaces`) : ""}`;
 }
 function updateSearchResultNotice() {
   if (!state.searchOutcome) return;
-  const occupancy = summarizeOccupancy(state.currentSpaces, state.resultSimulation, state.resultLive);
+  const occupancy = { ...summarizeOccupancy(state.currentSpaces, state.resultSimulation, state.resultLive),
+    recordedExperiment: state.selectedFacility?.isRecordedExperiment === true };
   const chosenIsUnavailable = state.resultLive && state.recommendedSpace
     && state.currentSpaces.some(space => space.uid === state.recommendedSpace.uid && space.isOccupied);
   searchStatus.textContent = chosenIsUnavailable
@@ -1977,7 +2006,10 @@ function updateSearchResultNotice() {
   congestionNotice.hidden = occupancy.level !== "busy" || state.searchOutcome !== "found";
   congestionNotice.textContent = ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: only ${occupancy.available} spaces remain.`);
   noSpaceContent.hidden = state.searchOutcome !== "not-found";
-  noSpaceDescription.textContent = occupancy.level === "full"
+  noSpaceDescription.textContent = occupancy.recordedExperiment && !occupancy.live
+    ? ui("ここは過去録画の研究用施設です。現在の空きが確認できないため、ライブ案内はできません。",
+         "This is a recorded research facility. Current spaces cannot be verified for live guidance.")
+    : occupancy.level === "full"
     ? (state.resultSimulation
         ? ui("デモでは満車です。空き状況を更新すると再抽選します。", "The demo parking lot is full. Refresh availability to draw again.")
         : ui("登録データでは満車です。", "The saved data shows a full parking lot."))
