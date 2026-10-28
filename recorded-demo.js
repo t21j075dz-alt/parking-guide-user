@@ -4,6 +4,10 @@
   const VALID = ["unknown", "available", "occupied", "blocked"];
   const NAMES = ["未確認", "空き", "駐車中", "障害物あり"];
   const MAX_EVENTS = 4000;
+  const RECORDING_FACILITIES = Object.freeze({
+    "home-test-001": "自宅駐車場",
+    "nikko-test-001": "道の駅日光（日光街道ニコニコ本陣）",
+  });
   const qs = selector => document.querySelector(selector);
   let payload, current = 0, previousTick = 0, timer = null;
 
@@ -22,7 +26,8 @@
     } catch {
       throw new Error("リンク内の録画データを読み取れません。");
     }
-    if (data?.version !== 1 || data.facility_id !== "home-test-001" ||
+    if (data?.version !== 1 ||
+        !Object.prototype.hasOwnProperty.call(RECORDING_FACILITIES, data.facility_id) ||
         typeof data.duration !== "number" || !Number.isFinite(data.duration) ||
         data.duration <= 0 || data.duration > 86400 ||
         !Array.isArray(data.spaces) || !data.spaces.length || data.spaces.length > 100 ||
@@ -94,7 +99,8 @@
   }
   try {
     payload = fromHash();
-    qs("#summary").textContent = "施設：自宅駐車場 (home-test-001)｜記録 " +
+    qs("#summary").textContent = "施設：" + RECORDING_FACILITIES[payload.facility_id] +
+      " (" + payload.facility_id + ")｜記録 " +
       payload.spaces.length + "区画｜長さ " + timecode(payload.duration) +
       "｜過去の録画デモ（ライブではありません）";
     qs("#controls").hidden = false;
