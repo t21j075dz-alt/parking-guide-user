@@ -2073,6 +2073,8 @@ html[data-theme="dark"] .parking-map.parking-map--layout {
 .availability-open { color: var(--color-available); background: var(--color-available-soft); }
 .availability-busy { color: var(--color-warning); background: var(--color-warning-soft); }
 .availability-full { color: var(--color-danger); background: var(--color-surface-subtle); }
+.availability-rest { color: var(--color-danger); background: var(--color-surface-subtle); }
+.availability-closed { color: var(--color-occupied); background: var(--color-occupied-soft); }
 .availability-unknown { color: var(--color-muted); background: var(--color-surface-subtle); }
 .availability-key { font-size: var(--font-size-label); color: var(--color-muted); margin-block: 1rem .7rem; }
 .choice-list { border: 0; display: grid; gap: .5rem; }
