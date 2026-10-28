@@ -508,12 +508,65 @@ const FACILITY_CATALOG = Object.freeze([
   "siteType": "compound",
   "parkingCapacity": 392,
   "destinations": [
-    { "id": "lamu", "name": "ラ・ムー 岡山中央店", "buildingId": "building_lamu" },
-    { "id": "uniqlo", "name": "ユニクロ", "buildingId": "building_uniqlo" },
-    { "id": "gu", "name": "GU", "buildingId": "building_gu" },
-    { "id": "zagzag", "name": "ザグザグ", "buildingId": "building_zagzag" },
-    { "id": "nishimatsuya", "name": "西松屋", "buildingId": "building_nishimatsuya" },
-    { "id": "daiso", "name": "ダイソー", "buildingId": "building_daiso" }
+    {
+      "buildingId": "lamu_okayama_chuo",
+      "name": "ラ・ムー 岡山中央店",
+      "sourceUrl": "https://www.dkt-s.com/map.html?id=371",
+      "id": "lamu",
+      "buildingAliases": [
+        "building_lamu"
+      ]
+    },
+    {
+      "buildingId": "uniqlo_okayama_okakita",
+      "name": "ユニクロ 岡山岡北店",
+      "sourceUrl": "https://map.uniqlo.com/jp/ja/detail/10101688",
+      "id": "uniqlo",
+      "buildingAliases": [
+        "building_uniqlo"
+      ]
+    },
+    {
+      "buildingId": "gu_okayama_okakita",
+      "name": "ジーユー 岡山岡北店",
+      "sourceUrl": "https://map.gu-global.com/jp/ja/detail/10100988",
+      "id": "gu",
+      "buildingAliases": [
+        "building_gu"
+      ]
+    },
+    {
+      "buildingId": "jins_okayama_okakita",
+      "name": "JINS 岡山岡北店",
+      "sourceUrl": "https://store-jp.jins.com/b/jins/info/20471/",
+      "id": "jins"
+    },
+    {
+      "buildingId": "zagzag_kohoku",
+      "name": "ザグザグ岡北店",
+      "sourceUrl": "https://www.zagzag.co.jp/shops/kouhoku/",
+      "id": "zagzag",
+      "buildingAliases": [
+        "building_zagzag"
+      ]
+    },
+    {
+      "buildingId": "daiso_okayama_okakita",
+      "name": "ダイソー 岡山岡北店",
+      "id": "daiso",
+      "buildingAliases": [
+        "building_daiso"
+      ]
+    },
+    {
+      "buildingId": "nishimatsuya_okayama_okakita",
+      "name": "西松屋 岡山岡北店",
+      "sourceUrl": "https://www.24028.jp/tenpo/detail.php?cid=33&doc=1035",
+      "id": "nishimatsuya",
+      "buildingAliases": [
+        "building_nishimatsuya"
+      ]
+    }
   ]
 },
 {

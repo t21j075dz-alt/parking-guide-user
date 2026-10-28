@@ -881,3 +881,57 @@ test('全40種類の検索は選んだ種類だけを案内し、専用・消防
  assert.equal(run(`selectRecommendedSpace([{id:'fire',spaceType:'fireAccess',isOccupied:false}],'balanced','standard')`),null);
  assert.equal(run(`getSpaceTypeLabel('bus')`),'バス専用');run(`state.language='en'`);assert.equal(run(`getSpaceTypeLabel('bus')`),'Bus only');
 });
+
+test('全言語でネットワーク音声のエラー時は同言語の端末内音声へ一度だけ切り替える',async()=>{
+ const {run,context}=app();let spoken=[];
+ context.SpeechSynthesisUtterance=class{constructor(text){this.text=text;this.handlers={};}addEventListener(type,fn){this.handlers[type]=fn;}};
+ const voices=['ja-JP','en-US','en-GB','zh-CN','ko-KR','es-ES'].flatMap(lang=>[
+  {name:'Google '+lang,voiceURI:'remote-'+lang,lang,localService:false},
+  {name:'Local '+lang,voiceURI:'local-'+lang,lang,localService:true}]);
+ context.window.speechSynthesis.getVoices=()=>voices;context.window.speechSynthesis.speak=u=>spoken.push(u);
+ for(const lang of ['ja-JP','en-US','en-GB','zh-CN','ko-KR','es-ES']){
+  context.testLocale=lang;run(`state.language=testLocale==='ja-JP'?'ja':'en';state.guidanceVoiceLanguage=testLocale;state.voiceProfiles[testLocale]={voiceURI:'remote-'+testLocale};`);
+  spoken=[];await run("speakTextWhenVoicesReady('sample')");assert.equal(spoken[0].voice.localService,false);
+  spoken[0].handlers.error({error:'network'});
+  assert.equal(spoken.length,2);assert.equal(spoken[1].voice.lang,lang);assert.equal(spoken[1].voice.localService,true);
+  spoken[1].handlers.error({error:'synthesis-failed'});assert.equal(spoken.length,2);
+  assert.match(run('voiceStatus.textContent'),/sample/);
+ }
+});
+test('オフラインでは選択したネット音声より同言語の端末内音声を優先する',async()=>{
+ const {run,context}=app();let spoken;
+ context.window.navigator={onLine:false};
+ context.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}addEventListener(){}};
+ context.window.speechSynthesis.getVoices=()=>[{name:'Google',lang:'en-US',voiceURI:'remote',localService:false},{name:'Samantha Enhanced',lang:'en-US',voiceURI:'local',localService:true}];
+ context.window.speechSynthesis.speak=u=>{spoken=u;};
+ run("state.language='en';state.guidanceVoiceLanguage='en-US';state.voiceProfiles['en-US']={voiceURI:'remote'}");
+ await run("speakTextWhenVoicesReady('sample')");assert.equal(spoken.voice.voiceURI,'local');run('cancelSpeech()');
+});
+
+test('選択店舗の入口に一致しない別店舗の入口へ案内を置き換えない',()=>{
+ const {run}=app();
+ run(`state.selectedDestination={id:'shop',buildingId:'canonical',buildingAliases:['legacy']}`);
+ assert.equal(run(`getGuideEntrance({objects:[{objectType:'buildingEntrance',buildingId:'other',x:0,y:0,guideTarget:true}]},{})`),null);
+ assert.equal(run(`getGuideEntrance({objects:[{objectType:'buildingEntrance',uid:'legacy-entry',buildingId:'legacy',x:0,y:0}]},{}).uid`),'legacy-entry');
+});
+test('閉店前の音声はすべての対応言語の案内文に含まれる',()=>{
+ const {run,context}=app();
+ context.window.ParkingOperations={operating:()=>({closed:false,closingSoon:true,closingKey:'close'})};
+ run(`state.selectedFacility={id:'f',name:'Facility'};state.recommendedSpace={id:'1'};state.searchOutcome='found';state.currentSpaces=[]`);
+ for(const locale of ['ja-JP','en-US','en-GB','zh-CN','ko-KR','es-ES']){
+  context.locale=locale;assert.ok(run('getClosingAnnouncement(locale)').length>0);
+  assert.ok(run('getCurrentGuidanceMessage(locale).startsWith(getClosingAnnouncement(locale))'));
+  assert.ok(run('getAutomaticGuidanceStartMessage(locale).startsWith(getClosingAnnouncement(locale))'));
+ }
+});
+
+test('待機中の閉店通知は一度だけで、音声OFF・非表示・別画面では発話しない',()=>{
+ const {run,context}=app();
+ context.window.ParkingOperations={operating:()=>({closed:false,closingSoon:true,closingKey:'2026-10-26T21:00'})};
+ run(`state.selectedFacility={id:'f'};state.currentScreen='waiting';let closingCalls=0;speakText=()=>{closingCalls++;return true;};`);
+ assert.equal(run('announceClosingTimeIfNeeded()'),true);assert.equal(run('announceClosingTimeIfNeeded()'),false);assert.equal(run('closingCalls'),1);
+ run(`state.selectedDestination={id:'second'};state.voiceEnabled=false;`);assert.equal(run('announceClosingTimeIfNeeded()'),false);
+ run('state.voiceEnabled=true;document.hidden=true;');assert.equal(run('announceClosingTimeIfNeeded()'),false);
+ run(`document.hidden=false;state.currentScreen='condition'`);assert.equal(run('announceClosingTimeIfNeeded()'),false);
+ run(`state.currentScreen='waiting'`);assert.equal(run('announceClosingTimeIfNeeded()'),true);assert.equal(run('closingCalls'),2);
+});

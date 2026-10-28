@@ -120,6 +120,13 @@ const STATIC_JA_EN = Object.freeze({
   "目的の店舗を選んでください。": "Choose your destination.",
   "満：空きなし · 混：残りわずか · 空：空きあり · —：未確認": "Full · Busy: few spaces left · Open · —: unknown",
   "約250m以内で、空き区画を自動検索します。": "Automatically searches within about 250 m.",
+  "駐車場のカメラ写真": "Parking camera photo",
+  "現地の様子を、案内開始前に確認できます。": "Check the parking lot before starting guidance.",
+  "カメラ": "Camera",
+  "写真を更新": "Refresh photo",
+  "現在の写真を確認できません": "Current photo unavailable",
+  "満：満車 · 混：混雑 · 空：空きあり · 休：営業時間外・休業 · —：未確認": "Full · Busy · Open · Closed · —: unknown",
+  "利用規約・プライバシー・このアプリについて": "Terms, privacy and about this app",
   "区画番号や混雑状況を音声で案内します。": "Hear space numbers and availability.",
   "音声・接続の詳細設定": "Voice and connection settings",
   "メディア再生（Safari向け）": "Media playback (Safari)",
@@ -918,7 +925,7 @@ function renderFacilities() {
       action.className = "facility-action facility-availability";
       const badge = document.createElement("span");
       badge.className = `availability-badge availability-${occupancy.level}`;
-      badge.textContent = isEnglish() ? ({full:"Full",busy:"Busy",open:"Open",unknown:"—"}[occupancy.level]) : ({full:"満",busy:"混",open:"空",unknown:"—"}[occupancy.level]);
+      badge.textContent = isEnglish() ? ({closed:"Closed",full:"Full",busy:"Busy",open:"Open",unknown:"—"}[occupancy.level]) : ({closed:"休",full:"満",busy:"混",open:"空",unknown:"—"}[occupancy.level]);
       const source = document.createElement("small");
       source.textContent = facility.isRecordedExperiment && !occupancy.live
         ? ui("録画実験・現在未確認", "Recorded experiment") :
@@ -927,7 +934,11 @@ function renderFacilities() {
       action.title = getOccupancyLabel(occupancy);
     }
 
-    main.append(name, meta);
+    const hours = document.createElement("span");
+    hours.className = "facility-hours";
+    const operation = getOperatingStatus(facility,null);
+    hours.textContent = ui("営業時間：", "Hours: ") + (operation?.hours || ui("未登録", "Not provided"));
+    main.append(name, meta, hours);
     if (facility.statusNote) {
       const status = document.createElement("span");
       status.className = "facility-status";
@@ -1055,16 +1066,15 @@ function getGuideEntrance(layout, facility) {
     Number.isFinite(object.y),
   );
 
-  const targetBuildingId =
-    state.selectedDestination?.buildingId ?? facility?.targetBuildingId ?? null;
+  const targetBuildingId = state.selectedDestination?.buildingId ?? facility?.targetBuildingId ?? null;
+  const targetIds = new Set([targetBuildingId,...(state.selectedDestination?.buildingAliases || [])]);
 
   if (targetBuildingId) {
     const matching = entrances.filter(
-      (entrance) => entrance.buildingId === targetBuildingId,
+      (entrance) => targetIds.has(entrance.buildingId),
     );
     return matching.find((entrance) => entrance.guideTarget === true)
       ?? matching[0]
-      ?? entrances.find((entrance) => entrance.guideTarget === true)
       ?? null;
   }
 
@@ -1702,10 +1712,56 @@ function showScreen(screenName, options = {}) {
   }
 }
 
+/** 保存レイアウトの店舗情報を優先し、旧データの建物IDも維持する。 */
+function getFacilityDestinations(facility = state.selectedFacility) {
+  const saved=getFacilityLayout(facility)?.destinations;
+  return (Array.isArray(saved)?saved:facility?.destinations || []).filter(d=>d && typeof d.id==="string" && typeof d.name==="string");
+}
+function getOperatingStatus(facility=state.selectedFacility, destination=state.selectedDestination) {
+  const site=getFacilityLayout(facility)?.operations || facility?.operations;
+  const siteStatus=window.ParkingOperations?.operating(site);
+  if(siteStatus?.closed || !destination?.operations)return siteStatus;
+  return window.ParkingOperations?.operating(destination.operations);
+}
+let lastClosingAnnouncementKey="";
+function getClosingAnnouncementKey() {
+  const operation=getOperatingStatus();
+  return operation?.closingSoon?`${state.selectedFacility?.id}:${state.selectedDestination?.id||""}:${operation.closingKey}`:"";
+}
+function announceClosingTimeIfNeeded() {
+  if(document.hidden || !state.voiceEnabled || !["waiting","result"].includes(state.currentScreen))return false;
+  const key=getClosingAnnouncementKey();
+  if(!key || key===lastClosingAnnouncementKey || window.speechSynthesis?.speaking)return false;
+  const spoken=speakText(getClosingAnnouncement());
+  if(spoken)lastClosingAnnouncementKey=key;
+  return spoken;
+}
+function getClosingAnnouncement(locale=getGuidanceSpeechLocale()) {
+  if(!getOperatingStatus()?.closingSoon)return "";
+  const messages={"ja-JP":"まもなく、へいてんじこくです。へいてんまで、いちじかんいないです。", "en-US":"This destination closes within one hour. ","en-GB":"This destination closes within one hour. ","zh-CN":"目的地将在一小时内结束营业。", "ko-KR":"목적지가 한 시간 이내에 영업을 종료합니다. ","es-ES":"Este destino cierra en menos de una hora. "};
+  return messages[locale] || messages["en-US"];
+}
+function updateDestinationCards() {
+  const host=document.querySelector("#destination-cards");if(!host)return;
+  host.replaceChildren();
+  for(const destination of getFacilityDestinations()){
+    const status=getOperatingStatus(state.selectedFacility,destination);
+    const button=document.createElement("button");button.type="button";button.className="destination-card";
+    button.dataset.destinationId=destination.id;
+    button.setAttribute("aria-pressed",String(state.selectedDestination?.id===destination.id));
+    const name=document.createElement("strong");name.textContent=isEnglish()?(destination.nameEn||destination.name):destination.name;
+    const hours=document.createElement("span");hours.textContent=status?.hours || ui("営業時間未登録","Hours not provided");
+    const detail=document.createElement("small");detail.textContent=status?.closed?ui("営業時間外・休業","Closed"):status?.preOpening?ui("開店1時間前・案内可能","Opens within one hour · guidance available"):status?.closingSoon?ui("閉店まで1時間以内","Closes within one hour"):status?.unknown?ui("営業時間未確認","Hours unverified"):ui("営業中","Open");
+    button.append(name,hours,detail);
+    button.onclick=()=>{destinationSelect.value=destination.id;saveSelectedDestination();updateDestinationCards();};
+    host.append(button);
+  }
+}
+
 /** 複合施設だけ目的店舗選択を表示する。 */
 function updateDestinationPanel() {
   const facility = state.selectedFacility;
-  const destinations = Array.isArray(facility?.destinations) ? facility.destinations : [];
+  const destinations = getFacilityDestinations(facility);
   const isCompound = destinations.length > 0;
 
   destinationFieldset.hidden = !isCompound;
@@ -1720,16 +1776,18 @@ function updateDestinationPanel() {
 
   if (isCompound && state.selectedDestination
       && destinations.some((item) => item.id === state.selectedDestination.id)) {
+    state.selectedDestination = destinations.find(item=>item.id===state.selectedDestination.id);
     destinationSelect.value = state.selectedDestination.id;
   } else {
     state.selectedDestination = null;
     destinationSelect.value = "";
   }
+  updateDestinationCards();
 }
 
 /** 現在のプルダウンから目的店舗を状態へ反映する。 */
 function saveSelectedDestination() {
-  const destinations = state.selectedFacility?.destinations ?? [];
+  const destinations = getFacilityDestinations();
   state.selectedDestination = destinations.find(
     (destination) => destination.id === destinationSelect.value,
   ) ?? null;
@@ -1928,6 +1986,7 @@ async function checkAutomaticProximitySearch() {
 /** 選択施設に応じて登録済みレイアウトまたはデモ区画を準備する。 */
 function prepareSpaces(facility) {
   const layout = getFacilityLayout(facility);
+  if (getOperatingStatus(facility, facility===state.selectedFacility?state.selectedDestination:null)?.closed) return {layout, spaces:[], entrance:null, isSimulation:false, isLive:false};
   if (layout) {
     const live = window.ParkingLiveStatus?.snapshot(facility.id)?.published === true;
     let spaces = window.ParkingLiveStatus?.apply(
@@ -1937,7 +1996,7 @@ function prepareSpaces(facility) {
       // 編集画面で仮設定した空きや録画結果を、現在の空きとして案内しない。
       spaces = spaces.map(space => ({ ...space, isOccupied: true, occupancyStatus: "unknown" }));
     }
-    return { layout, spaces, entrance: getGuideEntrance(layout, facility), isSimulation: false, isLive: live };
+    return { layout, spaces:window.ParkingOperations?.shared(spaces) ?? spaces, entrance: getGuideEntrance(layout, facility), isSimulation: false, isLive: live };
   }
 
   return {
@@ -1980,6 +2039,9 @@ function summarizeOccupancy(spaces, simulation = false, live = false) {
   return { available, total, unknown, level, simulation, live };
 }
 function getFacilityOccupancy(facility) {
+  if (getOperatingStatus(facility,null)?.closed) {
+    return {level:"closed", available:0, total:0, unknown:0};
+  }
   const prepared = prepareSpaces(facility);
   return { ...summarizeOccupancy(prepared.spaces, prepared.isSimulation, prepared.isLive),
     recordedExperiment: facility?.isRecordedExperiment === true };
@@ -1988,12 +2050,12 @@ function getOccupancyLabel(occupancy) {
   const source = occupancy.live ? ui("カメラ確認", "Camera verified")
     : occupancy.recordedExperiment ? ui("録画実験・現在未確認", "Recorded experiment · not live")
     : occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
-  const label = {full:ui("満車", "Full"),busy:ui("混雑", "Busy"),open:ui("空きあり", "Spaces available"),unknown:ui("空き状況未確認", "Availability unknown")}[occupancy.level];
-  return `${label} · ${source}${occupancy.level !== "unknown" ? ui(` · 空き${occupancy.available}区画`, ` · ${occupancy.available} free spaces`) : ""}`;
+  const label = {closed:ui("営業時間外・休業", "Closed"),full:ui("満車", "Full"),busy:ui("混雑", "Busy"),open:ui("空きあり", "Spaces available"),unknown:ui("空き状況未確認", "Availability unknown")}[occupancy.level];
+  return `${label} · ${source}${!["unknown", "closed"].includes(occupancy.level) ? ui(` · 空き${occupancy.available}区画`, ` · ${occupancy.available} free spaces`) : ""}`;
 }
 function updateSearchResultNotice() {
   if (!state.searchOutcome) return;
-  const occupancy = { ...summarizeOccupancy(state.currentSpaces, state.resultSimulation, state.resultLive),
+  const occupancy = { ...getFacilityOccupancy(state.selectedFacility),
     recordedExperiment: state.selectedFacility?.isRecordedExperiment === true };
   const chosenIsUnavailable = state.resultLive && state.recommendedSpace
     && state.currentSpaces.some(space => space.uid === state.recommendedSpace.uid && space.isOccupied);
@@ -2006,7 +2068,9 @@ function updateSearchResultNotice() {
   congestionNotice.hidden = occupancy.level !== "busy" || state.searchOutcome !== "found";
   congestionNotice.textContent = ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: only ${occupancy.available} spaces remain.`);
   noSpaceContent.hidden = state.searchOutcome !== "not-found";
-  noSpaceDescription.textContent = occupancy.recordedExperiment && !occupancy.live
+  noSpaceDescription.textContent = occupancy.level === "closed"
+    ? ui("営業時間外または休業中です。別の施設を選んでください。", "This facility is closed. Choose another facility.")
+    : occupancy.recordedExperiment && !occupancy.live
     ? ui("ここは過去録画の研究用施設です。現在の空きが確認できないため、ライブ案内はできません。",
          "This is a recorded research facility. Current spaces cannot be verified for live guidance.")
     : occupancy.level === "full"
@@ -2269,6 +2333,15 @@ function getGuidanceSpeechVoice(voices = getSpeechVoices()) {
     ?? null;
 }
 
+/** OSが公開する品質属性・名称を優先。主観的な評判を品質保証に使わない。 */
+function speechVoiceQuality(voice) {
+  const name=String(voice.name || "");
+  return (/premium|natural|neural|高品質/i.test(name)?300:0)
+    + (/enhanced|拡張/i.test(name)?200:0)
+    + (/samantha|daniel|ting.?ting|yuna|monica/i.test(name)?100:0)
+    + (voice.localService?20:0);
+}
+
 /** 現在の表示言語と音声案内言語に対応する音声を返す。 */
 function getSelectedSpeechVoice(voices = getSpeechVoices()) {
   const locale = getGuidanceSpeechLocale();
@@ -2278,7 +2351,8 @@ function getSelectedSpeechVoice(voices = getSpeechVoices()) {
   if (chosen) return chosen;
   const matching = voices.filter((voice) => String(voice.lang).toLowerCase() === locale.toLowerCase());
   /* iOSの高品質音声が一覧にある場合は、その音声を優先する。音量は名称から推定しない。 */
-  const enhanced = matching.find((voice) => /premium|enhanced|高品質|拡張/i.test(voice.name));
+  const enhanced = [...matching].sort((a,b)=>speechVoiceQuality(b)-speechVoiceQuality(a))
+    .find(voice=>speechVoiceQuality(voice)>=100);
   return enhanced ?? (isEnglish() ? getGuidanceSpeechVoice(voices) : getJapaneseSpeechVoice(voices));
 }
 
@@ -2323,7 +2397,7 @@ function updateVoiceControls() {
     === locale.toLowerCase().split("-")[0]);
   if (voiceSelect) {
     const choices = [{ value: "", label: ui("自動（端末の音声）", "Automatic (device voice)") },
-      ...voices.map((voice) => ({ value: voice.voiceURI, label: `${voice.name} (${voice.lang})` }))];
+      ...voices.map((voice) => ({ value: voice.voiceURI, label: `${voice.name} (${voice.lang})${voice.localService ? ui(" · 端末内", " · On device") : ui(" · 通信利用", " · Online")}` }))];
     voiceSelect.replaceChildren(...choices.map((choice) => {
       const option = document.createElement("option");
       option.value = choice.value;
@@ -2908,7 +2982,7 @@ function localeForSpeechMessage(message) {
 }
 
 /** 音声一覧の読み込みを待ってからGoogle音声を指定して読み上げる。 */
-async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, userGesture = false) {
+async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, userGesture = false, localRetry = false) {
   const initialVoices = getSpeechVoices();
   // iPhoneでは最初の音声をタップ操作内で要求する。音声一覧が未取得でもOS標準音声で開始する。
   const voices = initialVoices.length || userGesture ? initialVoices : await waitForSpeechVoices();
@@ -2919,8 +2993,11 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
   window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(localeForSpeechMessage(message));
-  const voice = getSelectedSpeechVoice(voices);
   const locale = getGuidanceSpeechLocale();
+  const localVoices = [...voices].sort((a,b)=>speechVoiceQuality(b)-speechVoiceQuality(a));
+  const localVoice = localVoices.find(v=>v.localService && String(v.lang).toLowerCase()===locale.toLowerCase())
+    || localVoices.find(v=>v.localService && String(v.lang).split("-")[0]===locale.split("-")[0]);
+  const voice = localRetry || window.navigator?.onLine === false ? localVoice : getSelectedSpeechVoice(voices);
 
   if (isEnglish() && !voice) {
     updateVoiceStatus(
@@ -2942,7 +3019,22 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
   /* Web Speech API の音量上限は 1。端末の再生音量は利用者が調整する。 */
   utterance.volume = getGuidanceSpeechVolume();
 
+  let started = false;
+  const startWatchdog = setTimeout(() => {
+    if (started || requestId !== speechRequestId) return;
+    if (!localRetry && localVoice && localVoice !== voice) {
+      void speakTextWhenVoicesReady(message, requestId, false, true);
+    } else {
+      window.speechSynthesis.cancel();
+      stopSpeechAudioRoute();
+      releasePriorityAudioSession();
+      updateVoiceStatus(ui("音声を開始できません。案内内容：", "Voice did not start. Guidance: ") + message, "error");
+    }
+  }, 6000);
   utterance.addEventListener("start", () => {
+    started = true;
+    clearTimeout(startWatchdog);
+    if (requestId !== speechRequestId) return;
     updateVoiceStatus(
       ui(
         `${voice?.name ?? "ブラウザー標準音声"}で読み上げています。`,
@@ -2952,17 +3044,23 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
     );
   });
   utterance.addEventListener("end", () => {
+    clearTimeout(startWatchdog);
     if (requestId !== speechRequestId) return;
     stopSpeechAudioRoute();
     releasePriorityAudioSession();
     updateVoiceStatus();
   });
-  utterance.addEventListener("error", () => {
+  utterance.addEventListener("error", (event) => {
+    clearTimeout(startWatchdog);
     if (requestId !== speechRequestId) return;
+    if (!localRetry && localVoice && localVoice !== voice && !["canceled", "interrupted", "not-allowed"].includes(event.error)) {
+      void speakTextWhenVoicesReady(message, requestId, false, true);
+      return;
+    }
     stopSpeechAudioRoute();
     releasePriorityAudioSession();
     updateVoiceStatus(
-      ui("音声の再生に失敗しました。", "Voice playback failed."),
+      ui("音声を再生できません。案内内容：", "Voice unavailable. Guidance: ") + message,
       "error",
     );
   });
@@ -2983,15 +3081,20 @@ function getAutomaticGuidanceStartMessage(locale = getGuidanceSpeechLocale()) {
     "ko-KR": `${facility}에 가까워지면 주차 공간 검색을 자동으로 시작합니다. 조작은 안전한 곳에 정차한 후에 해 주세요.`,
     "es-ES": `La búsqueda de una plaza de aparcamiento comenzará automáticamente al acercarse a ${facility}. Utilice los controles solo después de detenerse en un lugar seguro.`,
   };
-  return messages[locale] ?? messages["en-US"];
+  return getClosingAnnouncement(locale) + (messages[locale] ?? messages["en-US"]);
 }
 
 function speakAutomaticGuidanceStartMessage({ userGesture = false } = {}) {
-  return speakText(getAutomaticGuidanceStartMessage(), { userGesture });
+  const spoken=speakText(getAutomaticGuidanceStartMessage(), { userGesture });
+  if(spoken)lastClosingAnnouncementKey=getClosingAnnouncementKey();
+  return spoken;
 }
 
 /** 再探索や手動探索では、実際には検知していない「接近」を読み上げない。 */
 function getCurrentGuidanceMessage(locale = getGuidanceSpeechLocale()) {
+  return getClosingAnnouncement(locale) + getParkingGuidanceMessage(locale);
+}
+function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale()) {
   if (state.searchOutcome === "not-found") {
     const full = summarizeOccupancy(state.currentSpaces, state.resultSimulation).level === "full";
     const fullMessages = {"ja-JP":"とうろくでーたでは、まんしゃです。", "en-US":"The saved data shows a full parking lot. ", "en-GB":"The saved data shows a full car park. ", "zh-CN":"已保存的数据显示停车场已满。", "ko-KR":"저장된 데이터상 주차장이 만차입니다. ", "es-ES":"Los datos guardados indican que el aparcamiento está lleno. "};
@@ -3018,7 +3121,9 @@ function getCurrentGuidanceMessage(locale = getGuidanceSpeechLocale()) {
 
 /** 自動探索、手動探索、再案内で同じ案内文を使う。 */
 function speakCurrentGuidance() {
-  return speakText(getCurrentGuidanceMessage());
+  const spoken=speakText(getCurrentGuidanceMessage());
+  if(spoken)lastClosingAnnouncementKey=getClosingAnnouncementKey();
+  return spoken;
 }
 
 /** 現在設定の音声案内言語で短い試聴を行う。 */
@@ -3221,6 +3326,7 @@ languageButton.addEventListener("click", () => {
 });
 destinationSelect?.addEventListener("change", () => {
   saveSelectedDestination();
+  updateDestinationCards();
   updateWaitingScreen();
 });
 voiceGuideButton?.addEventListener("click", () => {
@@ -3370,8 +3476,7 @@ conditionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   saveSearchConditions();
 
-  if (Array.isArray(state.selectedFacility?.destinations)
-      && state.selectedFacility.destinations.length > 0
+  if (getFacilityDestinations().length > 0
       && !state.selectedDestination) {
     destinationSelect.reportValidity();
     destinationSelect.focus();
@@ -3401,8 +3506,7 @@ conditionForm.addEventListener("submit", async (event) => {
 
 searchNowButton?.addEventListener("click", () => {
   saveSearchConditions();
-  if (Array.isArray(state.selectedFacility?.destinations)
-      && state.selectedFacility.destinations.length > 0
+  if (getFacilityDestinations().length > 0
       && !state.selectedDestination) {
     destinationSelect.reportValidity();
     destinationSelect.focus();
@@ -3470,3 +3574,9 @@ if ("speechSynthesis" in window) {
 initializeFilters();
 window.history.replaceState({ screen: "facility" }, "", "#facility");
 showScreen("facility", { addHistory: false, moveFocus: false });
+
+// 営業時間の境界を越えた一覧を、操作なしでも更新する。
+setInterval(() => { if (state.currentScreen === "facility") renderFacilities(); }, 60000);
+
+// 待機・案内中の時刻変化も確認する。
+setInterval(announceClosingTimeIfNeeded,30000);

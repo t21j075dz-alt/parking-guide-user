@@ -1,0 +1,32 @@
+/* 予約アプリの情報階層を参考にした、余白と明確な選択状態。 */
+:root { --color-primary:#123d83; --color-background:#f1f4f9; --color-border:#cbd4e1; --color-focus:#d99000; }
+body { letter-spacing:.025em; }
+.site-header { background:var(--color-surface); border-bottom:3px solid var(--color-primary); }
+.screen-heading { padding-block:20px 12px; }
+.screen-heading h1 { line-height:1.5; font-weight:750; }
+.step-label { color:var(--color-primary); font-weight:750; letter-spacing:.12em; }
+.facility-filters,.condition-fieldset,.waiting-card,.result-summary,.voice-settings { border:1px solid var(--color-border); border-radius:18px; background:var(--color-surface); }
+.facility-list { gap:12px; }
+.facility-row { border:0; border-radius:16px; overflow:hidden; box-shadow:0 3px 14px rgb(24 45 78 / 6%); }
+.facility-button { min-height:116px; padding:20px; border:1px solid var(--color-border); border-radius:16px; gap:16px; background:var(--color-surface); }
+.facility-button:hover { border-color:var(--color-primary); }
+.facility-name { font-size:1.12rem; line-height:1.6; }
+.facility-hours { display:block; color:var(--color-text); font-size:.9rem; margin-top:7px; }
+.availability-badge { border-radius:12px; min-width:48px; min-height:48px; display:grid; place-items:center; }
+.availability-closed { background:#eef0f3; color:#434b5a; border:1px solid #8792a3; }
+.primary-button,.secondary-button,select { min-height:48px; border-radius:10px; }
+.primary-button { box-shadow:0 3px 8px rgb(18 61 131 / 12%); font-weight:700; }
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible { outline:3px solid #bc7800; outline-offset:3px; }
+.camera-card { background:var(--color-surface); border:1px solid var(--color-border); border-radius:16px; padding:20px; margin-block:20px; }
+.camera-card h2 { margin-top:0; font-size:1.1rem; }
+.camera-card img { width:100%; height:auto; max-height:65vh; object-fit:contain; background:#152138; border-radius:10px; margin-top:12px; }
+.camera-card label { display:flex; align-items:center; gap:12px; }
+.camera-card [role=status] { font-size:.875rem; color:var(--color-muted); }
+.site-footer { margin-top:32px; padding-block:24px; }
+@media(max-width:600px) { .facility-button { padding:16px; } .camera-card { padding:16px; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; animation:none!important; transition:none!important; } }
+
+.destination-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:10px; margin-block:12px; }
+.destination-card { display:flex; flex-direction:column; text-align:left; align-items:flex-start; gap:8px; padding:16px; min-height:110px; background:var(--color-surface); color:var(--color-text); border:1px solid var(--color-border); border-radius:12px; }
+.destination-card[aria-pressed=true] { border:2px solid var(--color-primary); background:var(--color-surface-subtle); }
+.destination-card span,.destination-card small { font-size:.875rem; }

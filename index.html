@@ -22,14 +22,17 @@
     <link rel="stylesheet" href="./map-display.css?v=20261014-interaction">
     <script src="./map-display.js?v=20261014-interaction" defer></script>
     <script src="./location-safety.js" defer></script>
-    <script src="./facilities.js?v=20261028-nikko-test" defer></script>
+    <script src="./facilities.js?v=20261028-production-1" defer></script>
     <script src="./sync-config.js" defer></script>
     <script src="./parking-layouts.js" defer></script>
     <script src="./live-status.js?v=20261027-live" defer></script>
+    <script src="./facility-operations.js" defer></script>
     <script src="./speech-readings.js?v=20261028-nikko-test" defer></script>
-    <script src="./app.js?v=20261028-nikko-test" defer></script>
+    <script src="./app.js?v=20261028-production-1" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
-  </head>
+  <link href="./experience.css" rel="stylesheet">
+<script defer src="./camera-view.js"></script>
+</head>
 
   <body>
 
@@ -198,8 +201,8 @@
         </form>
 
         <p id="facility-empty" class="empty-state" hidden>条件に一致する施設がありません。</p>
-        <p class="availability-key">満：満車 · 混：混雑 · 空：空車 · —：未確認</p>
-        <p class="muted">デモの空き状況は起動時にランダム表示します。「空き状況を更新」で再抽選できます。</p>
+        <p class="availability-key">満：満車 · 混：混雑 · 空：空きあり · 休：営業時間外・休業 · —：未確認</p>
+
         <div id="facility-list" class="facility-list" aria-label="選択できる施設"></div>
       </section>
 
@@ -222,9 +225,11 @@
           <p id="random-guidance-note" class="random-guidance-note" hidden>研究用：空き区画からランダムに案内します。</p>
         </div>
 
+        <section id="facility-camera" class="camera-card" aria-label="現地の写真"><h2>駐車場のカメラ写真</h2><p>現地の様子を、案内開始前に確認できます。</p><label>カメラ<select aria-label="表示するカメラ"></select></label><img hidden alt="駐車場のカメラ写真"><p role="status" aria-live="polite">現在の写真を確認できません</p><button type="button" class="secondary-button">写真を更新</button></section>
         <form id="condition-form">
           <fieldset id="destination-fieldset" class="condition-fieldset destination-fieldset" hidden>
             <legend>目的店舗</legend>
+            <div id="destination-cards" class="destination-cards" aria-label="目的店舗を選択"></div>
             <p class="fieldset-help">この敷地内で行きたい店舗を選択してください。</p>
             <label class="destination-select-label" for="destination-select">
               行き先
@@ -503,7 +508,9 @@
     <!-- 卒業研究の試作であり実運用向けではないことを表示する。 -->
     <footer class="site-footer">
       <p>岡山理科大学 工学部 情報工学科 卒業研究</p>
-      <details class="app-about"><summary>このアプリについて</summary>
+      <details class="app-about"><summary>利用規約・プライバシー・このアプリについて</summary>
+        <p>営業時間は施設の登録情報です。臨時休業や現地の表示を優先してください。デモの空き状況は実際の情報ではありません。</p>
+        <p>公開写真は5分間隔の静止画で、連続映像ではありません。端末の消音、OSの制限、音声の未導入や通信障害により音声が使えない場合は画面の案内をご確認ください。</p>
         <p>卒業研究用の試作です。カメラ連携が公開された施設では、数秒ごとに最新の区画状況を確認します。未公開の施設は保存データ、レイアウト未登録施設はデモを表示します。カメラの更新が途切れた区画は「未確認」とし、空きとして案内しません。実際の駐車可否は現地の表示に従ってください。</p>
         <p>「混」は空き3区画以下、または利用可能な区画の20％以下の場合に表示します。状態不明の区画がある場合は「—」です。</p>
       </details>
