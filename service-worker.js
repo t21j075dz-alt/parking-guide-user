@@ -3,7 +3,7 @@
  * 管理データ・位置情報・外部音声はキャッシュしない。
  * 配信ファイルを変更するときはVERSIONとSHELL_FILESを一緒に更新する。
  */
-const VERSION = "20261028-verified-hours-1";
+const VERSION = "20261028-verified-hours-2";
 // 同じgithub.io上の管理アプリや別のパスのキャッシュを削除しない。
 const CACHE_PREFIX = `parking-guide-user:${self.registration.scope}:`;
 const CACHE_NAME = `${CACHE_PREFIX}${VERSION}`;
@@ -17,7 +17,7 @@ const SHELL_FILES = [
   "./map-display.css?v=20261014-interaction",
   "./map-display.js?v=20261014-interaction",
   "./location-safety.js",
-  "./facilities.js?v=20261028-verified-hours-1",
+  "./facilities.js?v=20261028-verified-hours-2",
   "./sync-config.js",
   "./parking-layouts.js",
   "./live-status.js?v=20261027-live",
