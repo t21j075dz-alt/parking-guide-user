@@ -612,11 +612,11 @@ test('音声調整UIは選択言語の実在音声を表示し、選択を保存
   assert.equal(nodes.get('#voice-rate').value, '0.8');
 });
 
-test('全212施設に独立した日本語読み仮名があり、難読名を正しい読みで保持する', () => {
+test('全213施設に独立した日本語読み仮名があり、難読名を正しい読みで保持する', () => {
   const context = vm.createContext({ window: {} });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../facilities.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../speech-readings.js'), 'utf8'), context);
-  assert.equal(vm.runInContext('Object.keys(window.PARKING_SPEECH_READINGS).length', context), 212);
+  assert.equal(vm.runInContext('Object.keys(window.PARKING_SPEECH_READINGS).length', context), 213);
   assert.equal(vm.runInContext('FACILITY_CATALOG.every(f => /^[ぁ-ゖー、 ]+$/.test(window.PARKING_SPEECH_READINGS[f.id]))', context), true);
   for (const [id, reading] of Object.entries({target_024:'まるなか よしだてん',target_034:'みすたーまっくす はちほんまつてん',target_073:'みちのえき そのぎのしょう',target_098:'まるきょう みなはるてん',target_107:'とらいある みやこのじょうとほくてん',target_111:'はんずまん うすきてん',target_118:'とらいある いずみこがねてん'})) {
     assert.equal(context.window.PARKING_SPEECH_READINGS[id], reading);
