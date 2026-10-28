@@ -125,7 +125,7 @@ const STATIC_JA_EN = Object.freeze({
   "カメラ": "Camera",
   "写真を更新": "Refresh photo",
   "現在の写真を確認できません": "Current photo unavailable",
-  "満：満車 · 混：混雑 · 空：空きあり · 休：営業時間外・休業 · —：未確認": "Full · Busy · Open · Closed · —: unknown",
+  "満：満車 · 混：混雑 · 空：空きあり · 休：休業日 · 閉：開店前・閉店後 · —：未確認": "Full · Busy · Open · Day off · Closed before/after hours · —: unknown",
   "利用規約・プライバシー・このアプリについて": "Terms, privacy and about this app",
   "区画番号や混雑状況を音声で案内します。": "Hear space numbers and availability.",
   "音声・接続の詳細設定": "Voice and connection settings",
@@ -925,7 +925,7 @@ function renderFacilities() {
       action.className = "facility-action facility-availability";
       const badge = document.createElement("span");
       badge.className = `availability-badge availability-${occupancy.level}`;
-      badge.textContent = isEnglish() ? ({closed:"Closed",full:"Full",busy:"Busy",open:"Open",unknown:"—"}[occupancy.level]) : ({closed:"休",full:"満",busy:"混",open:"空",unknown:"—"}[occupancy.level]);
+      badge.textContent = isEnglish() ? ({rest:"Day off",closed:"Closed",full:"Full",busy:"Busy",open:"Open",unknown:"—"}[occupancy.level]) : ({rest:"休",closed:"閉",full:"満",busy:"混",open:"空",unknown:"—"}[occupancy.level]);
       const source = document.createElement("small");
       source.textContent = facility.isRecordedExperiment && !occupancy.live
         ? ui("録画実験・現在未確認", "Recorded experiment") :
@@ -1751,7 +1751,7 @@ function updateDestinationCards() {
     button.setAttribute("aria-pressed",String(state.selectedDestination?.id===destination.id));
     const name=document.createElement("strong");name.textContent=isEnglish()?(destination.nameEn||destination.name):destination.name;
     const hours=document.createElement("span");hours.textContent=status?.hours || ui("営業時間未登録","Hours not provided");
-    const detail=document.createElement("small");detail.textContent=status?.closed?ui("営業時間外・休業","Closed"):status?.preOpening?ui("開店1時間前・案内可能","Opens within one hour · guidance available"):status?.closingSoon?ui("閉店まで1時間以内","Closes within one hour"):status?.unknown?ui("営業時間未確認","Hours unverified"):ui("営業中","Open");
+    const detail=document.createElement("small");detail.textContent=status?.closureKind==="rest"?ui("休：定休日・臨時休業","Day off / temporarily closed"):status?.preOpening?ui("閉：開店前（案内可能）","Closed before opening · early guidance available"):status?.closed?ui("閉：営業時間外","Closed outside opening hours"):status?.closingSoon?ui("閉店まで1時間以内","Closes within one hour"):status?.unknown?ui("営業時間未確認","Hours unverified"):ui("営業中","Open");
     button.append(name,hours,detail);
     button.onclick=()=>{destinationSelect.value=destination.id;saveSelectedDestination();updateDestinationCards();};
     host.append(button);
@@ -2039,8 +2039,13 @@ function summarizeOccupancy(spaces, simulation = false, live = false) {
   return { available, total, unknown, level, simulation, live };
 }
 function getFacilityOccupancy(facility) {
-  if (getOperatingStatus(facility,null)?.closed) {
-    return {level:"closed", available:0, total:0, unknown:0};
+  const operatingStatus=getOperatingStatus(facility,null);
+  if (operatingStatus?.closureKind==="rest") {
+    return {level:"rest", available:0, total:0, unknown:0};
+  }
+  // 開店60分前の案内は可能だが、実際の営業時間前なので施設一覧には「閉」と表示する。
+  if (operatingStatus?.closed || operatingStatus?.preOpening) {
+    return {level:"closed",preOpening:operatingStatus.preOpening===true, available:0, total:0, unknown:0};
   }
   const prepared = prepareSpaces(facility);
   return { ...summarizeOccupancy(prepared.spaces, prepared.isSimulation, prepared.isLive),
@@ -2050,8 +2055,8 @@ function getOccupancyLabel(occupancy) {
   const source = occupancy.live ? ui("カメラ確認", "Camera verified")
     : occupancy.recordedExperiment ? ui("録画実験・現在未確認", "Recorded experiment · not live")
     : occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
-  const label = {closed:ui("営業時間外・休業", "Closed"),full:ui("満車", "Full"),busy:ui("混雑", "Busy"),open:ui("空きあり", "Spaces available"),unknown:ui("空き状況未確認", "Availability unknown")}[occupancy.level];
-  return `${label} · ${source}${!["unknown", "closed"].includes(occupancy.level) ? ui(` · 空き${occupancy.available}区画`, ` · ${occupancy.available} free spaces`) : ""}`;
+  const label = {rest:ui("休業日（休）", "Day off"),closed:occupancy.preOpening?ui("開店前（閉）・案内可能", "Before opening · early guidance available"):ui("営業時間外（閉）", "Closed outside opening hours"),full:ui("満車", "Full"),busy:ui("混雑", "Busy"),open:ui("空きあり", "Spaces available"),unknown:ui("空き状況未確認", "Availability unknown")}[occupancy.level];
+  return `${label} · ${source}${!["unknown", "closed", "rest"].includes(occupancy.level) ? ui(` · 空き${occupancy.available}区画`, ` · ${occupancy.available} free spaces`) : ""}`;
 }
 function updateSearchResultNotice() {
   if (!state.searchOutcome) return;
@@ -2068,8 +2073,12 @@ function updateSearchResultNotice() {
   congestionNotice.hidden = occupancy.level !== "busy" || state.searchOutcome !== "found";
   congestionNotice.textContent = ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: only ${occupancy.available} spaces remain.`);
   noSpaceContent.hidden = state.searchOutcome !== "not-found";
-  noSpaceDescription.textContent = occupancy.level === "closed"
-    ? ui("営業時間外または休業中です。別の施設を選んでください。", "This facility is closed. Choose another facility.")
+  noSpaceDescription.textContent = occupancy.level === "rest"
+    ? ui("本日は定休日・臨時休業です。別の施設を選んでください。", "This facility is closed for the day. Choose another facility.")
+    : occupancy.level === "closed"
+    ? (occupancy.preOpening
+        ? ui("開店前のため「閉」です。開店60分前から案内可能ですが、実際の入庫は現地の表示を優先してください。", "Before opening. Early guidance is available within 60 minutes; follow on-site parking access signs.")
+        : ui("営業時間外のため「閉」です。別の施設を選んでください。", "Outside opening hours. Choose another facility."))
     : occupancy.recordedExperiment && !occupancy.live
     ? ui("ここは過去録画の研究用施設です。現在の空きが確認できないため、ライブ案内はできません。",
          "This is a recorded research facility. Current spaces cannot be verified for live guidance.")
