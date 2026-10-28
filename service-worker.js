@@ -11,7 +11,7 @@ const SHELL_FILES = [
   "./",
   "./index.html",
   "./experience.css",
-  "./facility-operations.js",
+  "./facility-operations.js?v=20261028-verified-hours-2",
   "./camera-view.js",
   "./styles.css?v=20261014-interaction",
   "./map-display.css?v=20261014-interaction",
