@@ -3065,15 +3065,17 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
       // 保存済み部品だけで構築する。1つでも不足するなら従来の全文合成へ戻す。
       // 案内の最中に大量の部品を生成して遅延させない。
       try {
-        const copies = new Map();
-        for (const piece of parts) {
-          if (!copies.has(piece)) {
-            copies.set(piece, await window.ParkingVoiceAudioCache.get(piece, {
-              signal: controller.signal, cachedOnly: true,
-            }));
-          }
-          clips.push(copies.get(piece));
-        }
+        // 重複するエリア名・番号は1回だけ取得し、個々の音声は並列で取り出す。
+        // 再生の順序は元のpartsで維持する（同じ駐車枠を2回案内する仕様）。
+        const unique = [...new Set(parts)];
+        const saved = await Promise.all(unique.map(async piece => [
+          piece,
+          await window.ParkingVoiceAudioCache.get(piece, {
+            signal: controller.signal, cachedOnly: true,
+          }),
+        ]));
+        const copies = new Map(saved);
+        clips.push(...parts.map(piece => copies.get(piece)));
         fromSavedParts = true;
       } catch {
         clips.length = 0;
