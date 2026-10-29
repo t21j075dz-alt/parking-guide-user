@@ -560,6 +560,8 @@ const voiceVolumeInput = document.querySelector("#voice-volume");
 const voiceVolumeLabel = document.querySelector("#voice-volume-label");
 const voicePreviewButton = document.querySelector("#voice-preview-button");
 const voicePrepareButton = document.querySelector("#voice-prepare-button");
+const voicePrepareNamesButton = document.querySelector("#voice-prepare-names-button");
+const voicePrepareCancelButton = document.querySelector("#voice-prepare-cancel-button");
 const voicePrepareStatus = document.querySelector("#voice-prepare-status");
 const voiceOutputModeSelect = document.querySelector("#voice-output-mode");
 const cloudVoiceInput = document.querySelector("#cloud-voice-enabled");
@@ -2666,6 +2668,8 @@ function updateVoiceModeUi() {
   if (voiceOutputModeSelect) voiceOutputModeSelect.value = state.voiceOutputMode;
   // 事前生成は日本語VOICEVOXのみ対応。英語画面では操作を表示しない。
   if (voicePrepareButton) voicePrepareButton.hidden = english;
+  if (voicePrepareNamesButton) voicePrepareNamesButton.hidden = english;
+  if (voicePrepareCancelButton) voicePrepareCancelButton.hidden = english;
   if (voicePrepareStatus) voicePrepareStatus.hidden = english;
   if (cloudVoiceInput) cloudVoiceInput.checked = state.cloudVoiceEnabled;
   updateVoiceControls();
@@ -3026,7 +3030,7 @@ function getAudioFileGain(buffer) {
 }
 
 /** 端末に事前保存された音声を優先し、未保存の場合のみ生成して保存する。 */
-async function playCloudVoiceAudio(message, requestId, isPreview = false) {
+async function playCloudVoiceAudio(message, requestId, isPreview = false, parts = null) {
   const route = activeSpeechAudioRoute;
   if (!route || !route.context.decodeAudioData || !route.context.createBufferSource
       || !window.ParkingVoiceAudioCache) {
@@ -3038,34 +3042,71 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false) {
   pendingCloudVoiceController = controller;
   try {
     setCloudVoiceDiagnostic(ui("保存済みの音声を確認しています。", "Checking saved audio."));
-    const audio = await window.ParkingVoiceAudioCache.get(message, {
-      signal: controller.signal, timeoutMs: isPreview ? 60000 : 45000,
-    });
+    const clips = [];
+    let fromSavedParts = false;
+    if (Array.isArray(parts) && parts.length > 0) {
+      // 保存済み部品だけで構築する。1つでも不足するなら従来の全文合成へ戻す。
+      // 案内の最中に大量の部品を生成して遅延させない。
+      try {
+        const copies = new Map();
+        for (const piece of parts) {
+          if (!copies.has(piece)) {
+            copies.set(piece, await window.ParkingVoiceAudioCache.get(piece, {
+              signal: controller.signal, cachedOnly: true,
+            }));
+          }
+          clips.push(copies.get(piece));
+        }
+        fromSavedParts = true;
+      } catch {
+        clips.length = 0;
+      }
+    }
+    if (!clips.length) {
+      clips.push(await window.ParkingVoiceAudioCache.get(message, {
+        signal: controller.signal, timeoutMs: isPreview ? 60000 : 45000,
+      }));
+    }
     if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return true;
-    const buffer = await route.context.decodeAudioData(audio.bytes);
+    // 全部準備できてから連続再生する。欠損時に文章が途中で途切れるのを防ぐ。
+    const buffers = [];
+    for (const clip of clips) {
+      buffers.push(await route.context.decodeAudioData(clip.bytes.slice(0)));
+    }
     if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return true;
     if (route.context.state && route.context.state !== "running") {
       throw new Error("Audio playback requires a user gesture");
     }
-    const source = route.context.createBufferSource();
-    route.voiceSource = source;
-    source.buffer = buffer;
-    source.playbackRate?.setValueAtTime(getGuidanceSpeechRate(), route.context.currentTime);
-    const level = route.context.createGain();
-    level.gain.setValueAtTime(getAudioFileGain(buffer) * getGuidanceSpeechVolume(), route.context.currentTime);
-    source.connect(level);
-    level.connect(route.context.destination);
-    source.addEventListener("ended", () => {
-      if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return;
-      stopSpeechAudioRoute();
-      releasePriorityAudioSession();
-      updateVoiceStatus();
-    }, { once: true });
+    const rate = getGuidanceSpeechRate();
+    route.voiceSources = [];
+    let cursor = route.context.currentTime + 0.03;
+    buffers.forEach((buffer, index) => {
+      const source = route.context.createBufferSource();
+      source.buffer = buffer;
+      source.playbackRate?.setValueAtTime(rate, route.context.currentTime);
+      const level = route.context.createGain();
+      level.gain.setValueAtTime(getAudioFileGain(buffer) * getGuidanceSpeechVolume(), route.context.currentTime);
+      source.connect(level);
+      level.connect(route.context.destination);
+      route.voiceSources.push(source);
+      route.voiceSource = source;
+      if (index === buffers.length - 1) {
+        source.addEventListener("ended", () => {
+          if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return;
+          stopSpeechAudioRoute();
+          releasePriorityAudioSession();
+          updateVoiceStatus();
+        }, { once: true });
+      }
+      source.start(cursor);
+      cursor += buffer.duration / rate + (fromSavedParts ? 0.035 : 0);
+    });
     configureVoiceAudioSession();
-    source.start();
-    setCloudVoiceDiagnostic(audio.source === "saved"
-      ? ui("保存済み音声を再生しています（通信不要）。", "Playing saved audio (no network required).")
-      : ui("音声を生成して端末に保存しました。", "Generated and saved the audio on this device."));
+    setCloudVoiceDiagnostic(fromSavedParts
+      ? ui("事前生成した音声部品を組み立てて再生しています。", "Playing assembled prepared voice clips.")
+      : clips[0]?.source === "saved"
+        ? ui("保存済み音声を再生しています（通信不要）。", "Playing saved audio (no network required).")
+        : ui("未保存の文章を生成しました。事前保存すると次回から部品を使えます。", "Generated missing full guidance; prepare clips for assembled playback."));
     updateVoiceStatus(ui("VOICEVOXの音声ファイルを再生しています。", "Playing VOICEVOX audio."), "active");
     return true;
   } catch (error) {
@@ -3080,9 +3121,12 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false) {
 }
 
 /** Web Speech APIで無料読み上げを行う。 */
-function speakText(message, { preview = false, userGesture = false } = {}) {
+function speakText(message, { preview = false, userGesture = false, parts = null } = {}) {
   if (!message) return false;
-  if (getGuidanceSpeechLocale() === "ja-JP" && typeof normalizeJapaneseSpeech === "function") message = normalizeJapaneseSpeech(message);
+  if (getGuidanceSpeechLocale() === "ja-JP" && typeof normalizeJapaneseSpeech === "function") {
+    message = normalizeJapaneseSpeech(message);
+    if (parts) parts = parts.map(value => normalizeJapaneseSpeech(value));
+  }
 
   /* 日本語の音声ファイル方式は本人が選んだ場合にのみ外部へ文章を送信する。 */
   const tryAudioFile = state.cloudVoiceEnabled
@@ -3094,7 +3138,7 @@ function speakText(message, { preview = false, userGesture = false } = {}) {
     prepareSpeechAudioRoute(true);
     const requestId = ++speechRequestId;
     window.speechSynthesis?.cancel?.();
-    void playCloudVoiceAudio(message, requestId, preview).then((played) => {
+    void playCloudVoiceAudio(message, requestId, preview, parts).then((played) => {
       if (played || requestId !== speechRequestId) return;
       stopSpeechAudioRoute();
       releasePriorityAudioSession();
