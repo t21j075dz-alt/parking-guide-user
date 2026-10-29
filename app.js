@@ -299,7 +299,7 @@ const STATIC_JA_EN = Object.freeze({
   "日本語は端末の利用可能な音声を使い、Google日本語がある場合は優先します。English表示では英語・中国語・韓国語・スペイン語を選べます。":
     "Japanese uses an available device voice, preferring Google Japanese if installed. English view offers other languages.",
   "日本語 / 端末音声": "Japanese / Device voice",
-  "日本語 / 外部音声（実験）": "Japanese / External voice (experimental)",
+  "日本語 / 保存済み音声＋端末音声": "Japanese / Prepared + device voice",
   "音声案内言語": "Voice guidance language",
   "音声を試す": "Test voice",
   "音声ファイル方式を試す（外部音声合成）": "Try audio-file voice (external synthesis)",
@@ -2437,7 +2437,7 @@ function getSpeechVoices() {
  * Chromeでは音声一覧が初回表示直後に空のことがあるため、
  * voiceschanged または短い再試行で音声一覧の準備を待つ。
  */
-async function waitForSpeechVoices(timeoutMs = 15000) {
+async function waitForSpeechVoices(timeoutMs = 1800) {
   const initial = getSpeechVoices();
   if (initial.length) return initial;
 
@@ -2528,11 +2528,14 @@ function getGuidanceSpeechVoice(voices = getSpeechVoices()) {
 
 /** OSが公開する品質属性・名称を優先。主観的な評判を品質保証に使わない。 */
 function speechVoiceQuality(voice) {
-  const name=String(voice.name || "");
-  return (/premium|natural|neural|高品質/i.test(name)?300:0)
-    + (/enhanced|拡張/i.test(name)?200:0)
-    + (/samantha|daniel|ting.?ting|yuna|monica/i.test(name)?100:0)
-    + (voice.localService?20:0);
+  const name = String(voice.name || "");
+  // 利用可能な音声のみ選ぶ。Google音声をOSに無いのに指定することはできない。
+  // 高品質ローカルは遅延を小さくしやすく、Google名の音声は存在すれば優先候補にする。
+  return (voice.localService ? 250 : 0)
+    + (/premium|natural|neural|高品質/i.test(name) ? 300 : 0)
+    + (/enhanced|拡張/i.test(name) ? 240 : 0)
+    + (/google/i.test(name) ? 320 : 0)
+    + (/samantha|daniel|ting.?ting|yuna|monica/i.test(name) ? 50 : 0);
 }
 
 /** 現在の表示言語と音声案内言語に対応する音声を返す。 */
@@ -2542,11 +2545,14 @@ function getSelectedSpeechVoice(voices = getSpeechVoices()) {
   const chosen = voices.find((voice) => voice.voiceURI === uri
     && String(voice.lang).toLowerCase().split("-")[0] === locale.toLowerCase().split("-")[0]);
   if (chosen) return chosen;
-  const matching = voices.filter((voice) => String(voice.lang).toLowerCase() === locale.toLowerCase());
-  /* iOSの高品質音声が一覧にある場合は、その音声を優先する。音量は名称から推定しない。 */
-  const enhanced = [...matching].sort((a,b)=>speechVoiceQuality(b)-speechVoiceQuality(a))
-    .find(voice=>speechVoiceQuality(voice)>=100);
-  return enhanced ?? (isEnglish() ? getGuidanceSpeechVoice(voices) : getJapaneseSpeechVoice(voices));
+  const language = locale.toLowerCase().split("-")[0];
+  const matching = voices.filter(voice => String(voice.lang || "").toLowerCase().split("-")[0] === language);
+  // 端末内の高品質音声 > 同じ言語のGoogle音声 > 端末標準音声。
+  // 同一言語の別地域を選ぶ場合は優先度を下げ、アクセントの違いを抑える。
+  const ranked = matching.sort((a, b) =>
+    (speechVoiceQuality(b) + (String(b.lang).toLowerCase() === locale.toLowerCase() ? 150 : 0))
+    - (speechVoiceQuality(a) + (String(a.lang).toLowerCase() === locale.toLowerCase() ? 150 : 0)));
+  return ranked[0] ?? null;
 }
 
 /** 読み上げに使用するBCP 47言語タグを返す。 */
@@ -2598,7 +2604,8 @@ function updateVoiceControls() {
       return option;
     }));
     voiceSelect.value = voices.some((voice) => voice.voiceURI === profile.voiceURI) ? profile.voiceURI : "";
-    voiceSelect.disabled = state.cloudVoiceEnabled && locale === "ja-JP";
+    // VOICEVOX混雑時も端末音声を選択しておけるよう常時操作可能にする。
+    voiceSelect.disabled = false;
   }
   if (voiceRateSelect) voiceRateSelect.value = String(getGuidanceSpeechRate());
   if (voiceVolumeInput) voiceVolumeInput.value = String(Math.round(getGuidanceSpeechVolume() * 100));
@@ -2669,7 +2676,7 @@ function updateVoiceModeUi() {
     voiceModeLabel.textContent = english
       ? ui("音声案内言語", "Voice guidance language")
       : state.cloudVoiceEnabled
-        ? ui("日本語 / 外部音声（実験）", "Japanese / External voice (experimental)")
+        ? ui("日本語 / 保存済み音声＋端末音声", "Japanese / Prepared + device voice")
         : ui("日本語 / 端末音声", "Japanese / Device voice");
   }
 
@@ -2715,8 +2722,8 @@ function updateVoiceStatus(message = "", stateName = "") {
     voiceStatus.textContent = message;
   } else if (state.cloudVoiceEnabled && getGuidanceSpeechLocale() === "ja-JP") {
     voiceStatus.textContent = ui(
-      "使用音声: VOICEVOX:春日部つむぎ（保存済み音声はオフラインでも再生可能）",
-      "Voice: VOICEVOX Kasukabe Tsumugi (saved clips work offline)",
+      "音声: 保存済みVOICEVOXを優先し、未保存分は端末の音声を使用します。",
+      "Voice: saved VOICEVOX clips first; device speech for missing clips.",
     );
   } else {
     const voice = getSelectedSpeechVoice();
@@ -3058,23 +3065,26 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
       // 保存済み部品だけで構築する。1つでも不足するなら従来の全文合成へ戻す。
       // 案内の最中に大量の部品を生成して遅延させない。
       try {
-        const copies = new Map();
-        for (const piece of parts) {
-          if (!copies.has(piece)) {
-            copies.set(piece, await window.ParkingVoiceAudioCache.get(piece, {
-              signal: controller.signal, cachedOnly: true,
-            }));
-          }
-          clips.push(copies.get(piece));
-        }
+        // 重複するエリア名・番号は1回だけ取得し、個々の音声は並列で取り出す。
+        // 再生の順序は元のpartsで維持する（同じ駐車枠を2回案内する仕様）。
+        const unique = [...new Set(parts)];
+        const saved = await Promise.all(unique.map(async piece => [
+          piece,
+          await window.ParkingVoiceAudioCache.get(piece, {
+            signal: controller.signal, cachedOnly: true,
+          }),
+        ]));
+        const copies = new Map(saved);
+        clips.push(...parts.map(piece => copies.get(piece)));
         fromSavedParts = true;
       } catch {
         clips.length = 0;
       }
     }
     if (!clips.length) {
+      // 走行中の案内で外部TTS生成を待たない。端末に未保存ならすぐ端末音声へ。
       clips.push(await window.ParkingVoiceAudioCache.get(message, {
-        signal: controller.signal, timeoutMs: isPreview ? 60000 : 45000,
+        signal: controller.signal, cachedOnly: true,
       }));
     }
     if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return true;
@@ -3121,8 +3131,20 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
     return true;
   } catch (error) {
     if (requestId === speechRequestId) {
-      setCloudVoiceDiagnostic(ui("保存音声を利用できません（", "Saved audio unavailable (")
-        + describeCloudVoiceError(error) + ui("）。端末音声に切り替えます。", "). Switching to device speech."), true);
+      const cooldown = window.ParkingVoiceAudioCache?.status?.().cooldownSeconds || 0;
+      if (cooldown) {
+        setCloudVoiceDiagnostic(ui(
+          "音声生成サービスが混雑しています。保存済み音声は使用でき、未保存分は端末音声で案内します。次回の生成は約"
+            + Math.ceil(cooldown / 60) + "分後から試せます。",
+          "The external service is busy. Saved clips still work; missing clips use device speech. Retry generation in about "
+            + Math.ceil(cooldown / 60) + " minutes.",
+        ), true);
+      } else {
+        setCloudVoiceDiagnostic(ui(
+          "音声部品が未保存のため、端末の音声で案内します。事前保存は停車中に実行してください。",
+          "Audio not prepared; using device speech. Save voice clips while parked.",
+        ), false);
+      }
     }
     return false;
   } finally {
@@ -3435,6 +3457,16 @@ async function prepareVoicePieces(allFacilityNames = false) {
     return;
   }
   if (voicePreparationController) return;
+  const cooldown = window.ParkingVoiceAudioCache?.status?.().cooldownSeconds || 0;
+  if (cooldown > 0) {
+    voicePrepareStatus.textContent = ui(
+      "外部サービスが混雑中です。大量生成を停止しています。約"
+        + Math.ceil(cooldown / 60) + "分後に再試行できます。保存済み音声は引き続き使用できます。",
+      "External service is rate-limited. Batch generation is paused. Retry in about "
+        + Math.ceil(cooldown / 60) + " minutes. Saved clips still work.",
+    );
+    return;
+  }
   const facility = state.selectedFacility;
   const controller = new AbortController();
   voicePreparationController = controller;
@@ -3466,7 +3498,7 @@ async function prepareVoicePieces(allFacilityNames = false) {
     const unique = [...new Set(items.filter(Boolean).map(normalize))];
     const result = await window.ParkingVoiceAudioCache.prepare(unique, progress => {
       voicePrepareStatus.textContent = ui(
-        "保存中：" + progress.done + "/" + progress.total + " 件（失敗 " + progress.failed + " 件）。",
+        "保存準備：" + progress.done + "/" + progress.total + " 件（次回へ " + (progress.deferred || 0) + " 件、失敗 " + progress.failed + " 件）。",
         "Saving " + progress.done + "/" + progress.total + " (failed " + progress.failed + ").",
       );
     }, controller.signal);
@@ -3476,10 +3508,10 @@ async function prepareVoicePieces(allFacilityNames = false) {
       : ui(
           "準備結果：" + done + "/" + result.total + " 件。新規 " + result.created
           + " 件、保存済み " + result.saved + " 件、失敗 " + result.failed
-          + " 件。失敗分は同じボタンから再試行できます。",
+          + " 件、未処理 " + (result.deferred || 0) + " 件。未処理は同じボタンから次の8件を生成できます。",
           "Result: " + done + "/" + result.total + ". New " + result.created
           + ", saved " + result.saved + ", failed " + result.failed
-          + ". Retry failures with the same button.",
+          + ", deferred " + (result.deferred || 0) + ". Run again to prepare up to 8 more clips.",
         );
   } catch (error) {
     voicePrepareStatus.textContent = ui(

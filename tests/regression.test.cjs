@@ -418,7 +418,7 @@ test('保存済み日本語音声をWeb Audioへ流し、通常の端末読み�
   assert.equal(context.navigator.audioSession.type, 'ambient');
 });
 
-test('外部VOICEVOX接続エラーが画面に出て、端末の音声へ戻る', async () => {
+test('音声部品が未保存なら端末音声へすぐ切り替える', async () => {
   const { run, context, nodes } = app();
   let fallbackCalls = 0;
   context.navigator = { audioSession: { type: 'ambient' } };
@@ -441,7 +441,7 @@ test('外部VOICEVOX接続エラーが画面に出て、端末の音声へ戻る
   run('state.cloudVoiceEnabled = true');
   assert.equal(run("speakText('診断音声', {preview: true})"), true);
   await new Promise((resolve) => setImmediate(resolve));
-  assert.match(nodes.get('#cloud-voice-diagnostic').textContent, /429/);
+  assert.match(nodes.get('#cloud-voice-diagnostic').textContent, /未保存|混雑|端末音声/);
   assert.equal(fallbackCalls, 1);
 });
 
