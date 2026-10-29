@@ -2113,7 +2113,10 @@ function prepareSpaces(facility) {
  */
 function beginLiveUpdates(facility) {
   // 自宅の実地実験中は未公開でも公開状態を定期確認する。
-  if ((!state.resultLive && facility.id !== PRIVATE_TEST_FACILITY_ID)
+  // 動画実演も公開OFF→ONの切替をユーザー画面に反映する。
+  // 現在の自宅駐車場とは別施設なので、録画を実ライブとは表示しない。
+  if ((!state.resultLive && facility.id !== PRIVATE_TEST_FACILITY_ID
+       && facility.id !== VIDEO_REPLAY_FACILITY_ID)
       || !window.ParkingLiveStatus) return;
   window.ParkingLiveStatus.watch(facility.id, () => {
     if (state.currentScreen !== "result" || state.selectedFacility !== facility) return;
