@@ -3284,6 +3284,7 @@ function speakPreparedScript(id, values = {}, options = {}) {
   return script ? speakText(script.text, { ...options, parts: script.parts }) : false;
 }
 function startScript() {
+  if (!window.ParkingVoiceGuideScripts || !state.selectedFacility) return null;
   const facility = getFacilitySpokenName("ja-JP") || "目的施設";
   const destination = state.selectedDestination?.nameReading || state.selectedDestination?.name;
   const level = getFacilityOccupancy(state.selectedFacility).level;
