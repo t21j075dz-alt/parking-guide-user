@@ -2360,6 +2360,11 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
         renderFacilities();
         beginLiveUpdates(facility);
         updateParkingArrivalPanel();
+        if (!state.voiceEnabled) {
+          const script = getGuidanceSpeechLocale() === "ja-JP" ? parkingScript() : null;
+          publishGuidanceTranscript(script?.text || getCurrentGuidanceMessage(),
+            ui("音声案内OFF・文章で確認", "Voice off – read guidance"));
+        }
         if (state.voiceEnabled) speakCurrentGuidance();
         resolve({ facility: facility.name, spaceId: null, priority, spaceType: state.requestedSpaceType });
         return;
@@ -2401,7 +2406,11 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       state.lastSearchWasAuto = autoTriggered;
       state.lastSearchWasRetry = fromRetry;
 
-      if (state.voiceEnabled) {
+      if (!state.voiceEnabled) {
+        const script = getGuidanceSpeechLocale() === "ja-JP" ? parkingScript() : null;
+        publishGuidanceTranscript(script?.text || getCurrentGuidanceMessage(),
+          ui("音声案内OFF・文章で確認", "Voice off – read guidance"));
+      } else {
         speakCurrentGuidance();
       }
 
@@ -3185,7 +3194,8 @@ function speakDeviceAssembledParts(message, parts, requestId) {
     const chunk = chunks[index];
     const utterance = new SpeechSynthesisUtterance(localeForSpeechMessage(chunk));
     utterance.lang = locale;
-    utterance.voice = usedLocalFallback ? (localVoice || selectedVoice) : (selectedVoice || localVoice);
+    const selected = usedLocalFallback ? (localVoice || selectedVoice) : (selectedVoice || localVoice);
+    if (selected) utterance.voice = selected;
     utterance.rate = getGuidanceSpeechRate();
     utterance.pitch = 1;
     utterance.volume = getGuidanceSpeechVolume();
@@ -3193,6 +3203,7 @@ function speakDeviceAssembledParts(message, parts, requestId) {
     const watchdog = setTimeout(() => {
       if (started || settled || requestId !== speechRequestId) return;
       if (!usedLocalFallback && localVoice && localVoice !== selectedVoice) {
+        settled = true;
         usedLocalFallback = true;
         speech.cancel();
         advance();
@@ -3231,7 +3242,6 @@ function speakDeviceAssembledParts(message, parts, requestId) {
       if (!usedLocalFallback && localVoice && localVoice !== selectedVoice
           && !["canceled", "interrupted", "not-allowed"].includes(event.error)) {
         usedLocalFallback = true;
-        settled = false;
         advance();
       } else {
         stopSpeechAudioRoute();
@@ -3242,6 +3252,8 @@ function speakDeviceAssembledParts(message, parts, requestId) {
     try { speech.speak(utterance); }
     catch {
       clearTimeout(watchdog);
+      stopSpeechAudioRoute();
+      releasePriorityAudioSession();
       updateVoiceStatus(ui("端末音声を開始できません。画面の案内をご確認ください。", "Device speech failed to start."), "error");
     }
   }
@@ -3827,6 +3839,17 @@ voiceGuideButton?.addEventListener("click", () => {
   speakCurrentGuidance();
 });
 voicePreviewButton?.addEventListener("click", previewSelectedVoice);
+document.querySelectorAll?.(".guidance-audio-replay").forEach(button => {
+  button.addEventListener("click", () => {
+    if (window.parkingSafety && !window.parkingSafety.guardOperation()) return;
+    if (!state.voiceEnabled) {
+      publishGuidanceTranscript("", ui("音声案内がOFFです。設定を有効にしてください。", "Enable voice guidance in settings."));
+      return;
+    }
+    if (state.currentScreen === "waiting") speakAutomaticGuidanceStartMessage({ userGesture: true });
+    else if (state.currentScreen === "result") speakCurrentGuidance();
+  });
+});
 voicePrepareButton?.addEventListener("click", () => { void prepareSelectedFacilityVoice(); });
 voicePrepareNamesButton?.addEventListener("click", () => { void prepareVoicePieces(true); });
 voicePrepareCancelButton?.addEventListener("click", () => voicePreparationController?.abort());
@@ -3992,6 +4015,10 @@ conditionForm.addEventListener("submit", async (event) => {
   updateWaitingScreen();
   updateProximityStatus();
   showScreen("waiting");
+  const waitScript = getGuidanceSpeechLocale() === "ja-JP" ? startScript() : null;
+  publishGuidanceTranscript(waitScript?.text || getAutomaticGuidanceStartMessage(),
+    state.voiceEnabled ? ui("目的地への接近を待機中", "Waiting for arrival at destination")
+      : ui("音声案内OFF・文章で確認", "Voice off – read guidance"));
   const requestId = state.searchRequestId;
   if (state.voiceEnabled) {
     speakAutomaticGuidanceStartMessage({ userGesture: true });
