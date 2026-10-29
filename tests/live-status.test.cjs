@@ -58,3 +58,65 @@ test("自宅のライブ実験施設は未公開時に古い空き表示を使�
   assert.equal(result.isOccupied, true);
   assert.equal(result.liveCheckedAt, null);
 });
+
+
+test("録画実演の駐車中・停車中・出庫中を専用ソースから読める", async () => {
+  const sourceRows = ["parking_in", "stopped", "exiting", "available"].map(phase => ({
+    space_uid: "s", status: phase === "available" ? "available" : "occupied",
+    source: "recorded_video_demo", occupancy_phase: phase,
+    checked_at: new Date().toISOString(),
+  }));
+  let active = 0;
+  const mockWindow = {
+    PARKING_REMOTE_CONFIG: {
+      enabled: true, supabaseUrl: "https://example.supabase.co",
+      publishableKey: "public-example-key"
+    },
+    addEventListener() {},
+  };
+  const sandbox = {
+    window: mockWindow, document: { hidden: false },
+    setInterval() {}, clearInterval() {},
+    AbortSignal: { timeout() { return undefined; } },
+    fetch: async url => ({
+      ok: true, json: async () => String(url).includes("visibility")
+        ? [{ facility_id: "home-video-demo-001" }] : [sourceRows[active]],
+    }),
+  };
+  vm.runInNewContext(source, sandbox);
+  const client = mockWindow.ParkingLiveStatus;
+  for (const phase of ["parking_in","stopped","exiting","available"]) {
+    await client.refresh("home-video-demo-001");
+    const result = client.apply("home-video-demo-001", [space])[0];
+    assert.equal(result.occupancyPhase, phase);
+    assert.equal(result.isOccupied, phase !== "available");
+    active += 1;
+  }
+});
+
+test("録画実演に実カメラの行や古い判定を混ぜない", async () => {
+  const mockWindow = {
+    PARKING_REMOTE_CONFIG: {
+      enabled: true, supabaseUrl: "https://example.supabase.co",
+      publishableKey: "public-example-key"
+    },
+    addEventListener() {},
+  };
+  let row = {space_uid:"s", status:"available",source:"yolo",
+             occupancy_phase:"available",checked_at:new Date().toISOString()};
+  const sandbox = {
+    window: mockWindow, document: { hidden: false },
+    setInterval() {}, clearInterval() {},
+    AbortSignal: { timeout() { return undefined; } },
+    fetch: async url => ({ok:true,json: async () =>
+      String(url).includes("visibility") ? [{facility_id:"home-video-demo-001"}] : [row]}),
+  };
+  vm.runInNewContext(source, sandbox);
+  const client = mockWindow.ParkingLiveStatus;
+  await client.refresh("home-video-demo-001");
+  assert.equal(client.apply("home-video-demo-001", [space])[0].occupancyStatus,"unknown");
+  row = {space_uid:"s",status:"available",source:"recorded_video_demo",
+         occupancy_phase:"available",checked_at:new Date(Date.now()-30000).toISOString()};
+  await client.refresh("home-video-demo-001");
+  assert.equal(client.apply("home-video-demo-001", [space])[0].occupancyPhase,null);
+});
