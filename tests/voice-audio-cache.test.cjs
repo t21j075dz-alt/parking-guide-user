@@ -25,7 +25,7 @@ function createAudioHarness() {
   const navigator = {};
   Object.defineProperty(navigator, "onLine", { get: () => online });
   const context = vm.createContext({
-    window: { location: { href: "https://example.test/parking-guide-user/#facility" }, crypto: webcrypto },
+    window: { caches: {}, location: { href: "https://example.test/parking-guide-user/#facility" }, crypto: webcrypto },
     navigator, caches: { async open() { return cache; } },
     fetch: async (url) => {
       calls++;
