@@ -665,7 +665,11 @@ function updateParkingArrivalPanel() {
   }
   if (check.occupiedSince === null) check.occupiedSince = now;
   check.hitCount += 1;
+  const wasConfirmed = check.confirmed;
   check.confirmed = check.hitCount >= 2 && now - check.occupiedSince >= 2000;
+  if (!wasConfirmed && check.confirmed && getGuidanceSpeechLocale() === "ja-JP") {
+    speakPreparedScript("arrival_detected");
+  }
   parkingArrivalStatus.textContent = check.confirmed
     ? ui(
         "カメラが案内先への駐車を検知しました。自分の車であることを停車後に確認してください。",
@@ -678,8 +682,10 @@ function updateParkingArrivalPanel() {
 parkingArrivalConfirm?.addEventListener("click", () => {
   if (!state.arrivalCheck?.confirmed || parkingArrivalConfirm.disabled) return;
   if (window.parkingSafety && !window.parkingSafety.guardOperation()) return;
-  // The camera confirms occupancy, not the user's identity.
+  // YOLOは車両占有だけを確認。利用者の操作で駐車完了を確定する。
+  const announce = state.voiceEnabled && getGuidanceSpeechLocale() === "ja-JP";
   endGuidance();
+  if (announce) speakPreparedScript("parking_completed", {}, { userGesture: true });
 });
 
 /* =========================================================
@@ -2282,7 +2288,7 @@ function getNoSpaceGuidanceMessage(locale = getGuidanceSpeechLocale()) {
 
 /** 空き区画検索を実行する。 */
 async function runSpaceSearch(priorityOverride = null, options = {}) {
-  const { autoTriggered = false, skipSafetyGuard = false, refreshSimulation = false } = options;
+  const { autoTriggered = false, skipSafetyGuard = false, refreshSimulation = false, fromRetry = false } = options;
   // 通信を待つ前に依頼元を固定し、戻る操作・施設変更・再検索で無効化する。
   const requestId = ++state.searchRequestId;
   const facility = state.selectedFacility;
@@ -2349,6 +2355,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       if (!state.recommendedSpace) {
         state.searchOutcome = "not-found";
         state.lastSearchWasAuto = autoTriggered;
+        state.lastSearchWasRetry = fromRetry;
         updateSearchResultNotice();
         renderFacilities();
         beginLiveUpdates(facility);
@@ -2392,6 +2399,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       beginLiveUpdates(facility);
       updateParkingArrivalPanel();
       state.lastSearchWasAuto = autoTriggered;
+      state.lastSearchWasRetry = fromRetry;
 
       if (state.voiceEnabled) {
         speakCurrentGuidance();
@@ -2876,7 +2884,9 @@ function stopSpeechAudioRoute() {
   const route = activeSpeechAudioRoute;
   activeSpeechAudioRoute = null;
   if (!route) return;
-  try { route.voiceSource?.stop(); } catch { /* すでに終了した音声を無視する。 */ }
+  for (const source of route.voiceSources || (route.voiceSource ? [route.voiceSource] : [])) {
+    try { source.stop(); } catch { /* 終了済みの音声。 */ }
+  }
   try { route.oscillator.stop(); } catch { /* 停止済みなら無視する。 */ }
   try { void Promise.resolve(route.context.close()).catch(() => {}); }
   catch { /* ブラウザー側の終了失敗は案内終了を妨げない。 */ }
@@ -3254,6 +3264,54 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
   window.speechSynthesis.speak(utterance);
 }
 
+/** PDF台本の固定音声と店舗名・駐車枠番号を組み立てる。 */
+function makePreparedScript(id, values = {}) {
+  const bank = window.ParkingVoiceGuideScripts;
+  if (!bank) return null;
+  const result = bank.build(id, values);
+  const prefixes = [];
+  if (getOperatingStatus()?.closingSoon && id !== "closing_soon")
+    prefixes.push(...bank.build("closing_soon").parts);
+  if (state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID &&
+      ["space_found", "space_none", "retry_found", "retry_none"].includes(id))
+    prefixes.unshift(...bank.build("recorded_demo").parts);
+  const parts = [...prefixes, ...result.parts].map(x => x.text);
+  return { parts, text: parts.join("") };
+}
+function speakPreparedScript(id, values = {}, options = {}) {
+  if (!state.voiceEnabled) return false;
+  const script = makePreparedScript(id, values);
+  return script ? speakText(script.text, { ...options, parts: script.parts }) : false;
+}
+function startScript() {
+  const facility = getFacilitySpokenName("ja-JP") || "目的施設";
+  const destination = state.selectedDestination?.nameReading || state.selectedDestination?.name;
+  const level = getFacilityOccupancy(state.selectedFacility).level;
+  const occupancy = {
+    open:"比較的空いています",busy:"混雑しています",
+    full:"満車と判定されています", unknown:"空き状況を確認できていません",
+    closed:"営業時間外です", rest:"休業しています",
+  }[level] || "空き状況を確認できていません";
+  return destination
+    ? makePreparedScript("start_complex", { "目的施設名":facility, "目的店舗名":destination, "混雑状況":occupancy })
+    : makePreparedScript("start_single", { "目的店舗名":facility, "混雑状況":occupancy });
+}
+function parkingScript() {
+  if (state.searchOutcome === "not-found") {
+    const level = getFacilityOccupancy(state.selectedFacility).level;
+    if (level === "rest" || level === "closed")
+      return makePreparedScript(level === "rest" ? "rest" : "closed_unknown", {
+        "施設名":getFacilitySpokenName("ja-JP") || "目的施設",
+      });
+    if (level === "unknown") return makePreparedScript("recognition_unknown");
+    return makePreparedScript(state.lastSearchWasRetry ? "retry_none" : "space_none");
+  }
+  if (!state.recommendedSpace) return null;
+  return makePreparedScript(state.lastSearchWasRetry ? "retry_found" : "space_found", {
+    "駐車枠":getSpokenSpaceId(state.recommendedSpace, "ja-JP"),
+  });
+}
+
 /** 自動案内開始時の安全メッセージを読み上げる。 */
 function getAutomaticGuidanceStartMessage(locale = getGuidanceSpeechLocale()) {
   const facility = getFacilitySpokenName(locale) || ui("もくてきしせつ", "the destination");
@@ -3269,7 +3327,9 @@ function getAutomaticGuidanceStartMessage(locale = getGuidanceSpeechLocale()) {
 }
 
 function speakAutomaticGuidanceStartMessage({ userGesture = false } = {}) {
-  const spoken=speakText(getAutomaticGuidanceStartMessage(), { userGesture });
+  const script = getGuidanceSpeechLocale() === "ja-JP" ? startScript() : null;
+  const spoken = script ? speakText(script.text, { userGesture, parts:script.parts })
+    : speakText(getAutomaticGuidanceStartMessage(), { userGesture });
   if(spoken)lastClosingAnnouncementKey=getClosingAnnouncementKey();
   return spoken;
 }
@@ -3317,7 +3377,8 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale(), options =
 
 /** 自動探索、手動探索、再案内で同じ案内文を使う。 */
 function speakCurrentGuidance() {
-  const spoken=speakText(getCurrentGuidanceMessage());
+  const script = getGuidanceSpeechLocale() === "ja-JP" ? parkingScript() : null;
+  const spoken = script ? speakText(script.text, { parts:script.parts }) : speakText(getCurrentGuidanceMessage());
   if(spoken)lastClosingAnnouncementKey=getClosingAnnouncementKey();
   return spoken;
 }
@@ -3770,14 +3831,18 @@ searchNowButton?.addEventListener("click", () => {
 
 retryButton.addEventListener("click", () => {
   state.searchSequence += 1;
-  void runSpaceSearch(null, { refreshSimulation: true });
+  void runSpaceSearch(null, { refreshSimulation: true, fromRetry: true });
 });
 
-endGuidanceButton?.addEventListener("click", endGuidance);
+endGuidanceButton?.addEventListener("click", () => {
+  const announce = state.voiceEnabled && getGuidanceSpeechLocale() === "ja-JP";
+  endGuidance();
+  if (announce) speakPreparedScript("guidance_ended", {}, { userGesture: true });
+});
 document.querySelector("#no-space-voice")?.addEventListener("click", speakCurrentGuidance);
 document.querySelector("#no-space-retry")?.addEventListener("click", () => {
   state.searchSequence += 1;
-  void runSpaceSearch(null, { refreshSimulation: true });
+  void runSpaceSearch(null, { refreshSimulation: true, fromRetry: true });
 });
 document.querySelector("#no-space-other")?.addEventListener("click", endGuidance);
 
