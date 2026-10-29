@@ -28,7 +28,7 @@
     <script src="./live-status.js?v=20261027-live" defer></script>
     <script src="./facility-operations.js?v=20261028-closed-rest-1" defer></script>
     <script src="./speech-readings.js?v=20261028-nikko-test" defer></script>
-    <script src="./app.js?v=20261028-closed-rest-1" defer></script>
+    <script src="./app.js?v=20261029-parking-target-1" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
   <link href="./experience.css" rel="stylesheet">
 <script defer src="./camera-view.js"></script>
@@ -433,6 +433,22 @@
         </div>
 
         <div id="search-status" class="search-status" role="status" aria-live="polite"></div>
+
+        <!-- 自宅カメラ実験: 希望区画を指定して駐車検知を待つ。
+             個人識別はできないため、本人確認後に案内を終了する。 -->
+        <section id="parking-target-panel" class="parking-target-panel" hidden aria-labelledby="parking-target-heading">
+          <h2 id="parking-target-heading">希望する駐車区画へ行きたい</h2>
+          <p>カメラが区画の使用を確認します。ほかの車との区別はできないため、最後に本人が確認してください。</p>
+          <label for="parking-target-select">希望する駐車区画</label>
+          <select id="parking-target-select" aria-label="希望する駐車区画"></select>
+          <div class="button-group">
+            <button class="primary-button" id="parking-target-register" type="button">この区画に行きたい・登録</button>
+            <button class="secondary-button" id="parking-target-cancel" type="button" hidden>登録を取り消す</button>
+          </div>
+          <p id="parking-target-status" role="status" aria-live="polite">区画を選んで登録してください。</p>
+          <button class="primary-button full-width" id="parking-target-confirm" type="button" hidden disabled>自分の車が駐車したことを確認して終了</button>
+          <p class="muted">研究用の試験機能です。空き未確認の区画を空きとして保証しません。運転中は操作しないでください。</p>
+        </section>
         <p id="congestion-notice" class="congestion-notice" role="status" hidden></p>
         <section id="no-space-content" class="no-space-card" hidden aria-labelledby="no-space-title">
           <span class="no-space-symbol" aria-hidden="true">—</span>
