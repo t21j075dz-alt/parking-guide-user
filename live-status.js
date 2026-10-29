@@ -52,7 +52,7 @@ window.ParkingLiveStatus = (() => {
         return result;
       }
       const rows = await requestJson(
-        `${config.url}/rest/v1/parking_live_status?facility_id=eq.${id}&select=space_uid,status,confidence,checked_at`,
+        `${config.url}/rest/v1/parking_live_status?facility_id=eq.${id}&select=space_uid,status,confidence,source,checked_at`,
         config.key,
       );
       if (!Array.isArray(rows)) throw new Error("Unexpected response");
@@ -91,7 +91,9 @@ window.ParkingLiveStatus = (() => {
       const checkedAt = Date.parse(row?.checked_at || "");
       const fresh = Number.isFinite(checkedAt) && checkedAt <= now + 5000
         && now - checkedAt <= STALE_MS && now - checkedAt >= -5000;
-      const status = fresh && ["available", "occupied", "blocked", "unknown"].includes(row.status)
+      const correctSource = facilityId !== "home-video-demo-001"
+        || row?.source === "recorded_video_demo";
+      const status = fresh && correctSource && ["available", "occupied", "blocked", "unknown"].includes(row.status)
         ? row.status : "unknown";
       return { ...space, occupancyStatus: status, isOccupied: status !== "available", liveCheckedAt: fresh ? row.checked_at : null };
     });
