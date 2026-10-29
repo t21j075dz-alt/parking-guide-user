@@ -3082,7 +3082,8 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
       }
     }
     if (!clips.length) {
-      // 走行中の案内で外部TTS生成を待たない。端末に未保存ならすぐ端末音声へ。
+      // 保存済み全文も念のため再利用。未保存なら通信せず端末音声へ。
+      // 原則は部品の組み立て再生であり、読み上げのために新規生成しない。
       clips.push(await window.ParkingVoiceAudioCache.get(message, {
         signal: controller.signal, cachedOnly: true,
       }));
@@ -3122,6 +3123,9 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
       cursor += buffer.duration / rate + (fromSavedParts && /[。！？]$/.test(parts[index]) ? 0.07 : 0);
     });
     configureVoiceAudioSession();
+    publishGuidanceTranscript("", fromSavedParts
+      ? ui("保存済みの音声部品を再生中", "Playing saved audio components")
+      : ui("保存済み音声を再生中", "Playing saved audio"));
     setCloudVoiceDiagnostic(fromSavedParts
       ? ui("事前生成した音声部品を組み立てて再生しています。", "Playing assembled prepared voice clips.")
       : clips[0]?.source === "saved"
@@ -3131,20 +3135,11 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
     return true;
   } catch (error) {
     if (requestId === speechRequestId) {
-      const cooldown = window.ParkingVoiceAudioCache?.status?.().cooldownSeconds || 0;
-      if (cooldown) {
-        setCloudVoiceDiagnostic(ui(
-          "音声生成サービスが混雑しています。保存済み音声は使用でき、未保存分は端末音声で案内します。次回の生成は約"
-            + Math.ceil(cooldown / 60) + "分後から試せます。",
-          "The external service is busy. Saved clips still work; missing clips use device speech. Retry generation in about "
-            + Math.ceil(cooldown / 60) + " minutes.",
-        ), true);
-      } else {
-        setCloudVoiceDiagnostic(ui(
-          "音声部品が未保存のため、端末の音声で案内します。事前保存は停車中に実行してください。",
-          "Audio not prepared; using device speech. Save voice clips while parked.",
-        ), false);
-      }
+      // 部品未保存は正常な状態。赤いエラーとして扱わない。
+      setCloudVoiceDiagnostic(ui(
+        "音声部品がまだ保存されていないため、端末音声で続きを読み上げます。",
+        "Some audio clips are not saved. Continuing with the device voice.",
+      ), false);
     }
     return false;
   } finally {
@@ -3152,9 +3147,114 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
   }
 }
 
+/** 再生中の画面と音声を同じ案内内容へ揃える。 */
+let lastGuidanceTranscript = "";
+let lastGuidanceMode = "";
+function publishGuidanceTranscript(message, mode = "") {
+  if (message) lastGuidanceTranscript = message;
+  if (mode) lastGuidanceMode = mode;
+  for (const node of document.querySelectorAll?.(".guidance-audio-message") || []) {
+    node.textContent = lastGuidanceTranscript || ui("案内開始後、ここに読み上げ内容を表示します。", "The spoken guidance appears here.");
+  }
+  for (const node of document.querySelectorAll?.(".guidance-audio-mode") || []) {
+    node.textContent = lastGuidanceMode || ui("音声案内は待機中です。", "Voice guidance is ready.");
+  }
+}
+
+/**
+ * 固定文・店舗名・区画番号を組み立てた文章を、
+ * 端末の同一音声で「意味のある文」ごとに順番に再生する。
+ * 1部品ごとに音声合成しないため不自然な声の切れ目を減らす。
+ * 外部のtts.questへは一切アクセスしない。
+ */
+function speakDeviceAssembledParts(message, parts, requestId) {
+  const speech = window.speechSynthesis;
+  if (!speech || !window.SpeechSynthesisUtterance) return false;
+  const chunks = window.ParkingVoiceAssembler?.sentences(parts)
+    || [message];
+  if (!chunks.length) return false;
+  const locale = getGuidanceSpeechLocale();
+  const candidates = getSpeechVoices();
+  const selectedVoice = getSelectedSpeechVoice(candidates);
+  const localVoice = [...candidates].sort((a,b)=>speechVoiceQuality(b)-speechVoiceQuality(a))
+    .find(v => v.localService && String(v.lang || "").toLowerCase().split("-")[0] === locale.toLowerCase().split("-")[0]);
+  let index = 0, usedLocalFallback = false;
+  // SpeechSynthesisは手動cancelしても遅れてend/errorを発生させるため、requestIdで検証。
+  function advance() {
+    if (requestId !== speechRequestId || index >= chunks.length) return;
+    const chunk = chunks[index];
+    const utterance = new SpeechSynthesisUtterance(localeForSpeechMessage(chunk));
+    utterance.lang = locale;
+    utterance.voice = usedLocalFallback ? (localVoice || selectedVoice) : (selectedVoice || localVoice);
+    utterance.rate = getGuidanceSpeechRate();
+    utterance.pitch = 1;
+    utterance.volume = getGuidanceSpeechVolume();
+    let started = false, settled = false;
+    const watchdog = setTimeout(() => {
+      if (started || settled || requestId !== speechRequestId) return;
+      if (!usedLocalFallback && localVoice && localVoice !== selectedVoice) {
+        usedLocalFallback = true;
+        speech.cancel();
+        advance();
+      } else {
+        speech.cancel();
+        stopSpeechAudioRoute();
+        releasePriorityAudioSession();
+        updateVoiceStatus(ui("端末の音声が開始できません。画面の案内文をご確認ください。", "Device speech did not start. Follow the visible text."), "error");
+      }
+    }, 5000);
+    utterance.addEventListener("start", () => {
+      started = true;
+      clearTimeout(watchdog);
+      if (requestId !== speechRequestId) return;
+      publishGuidanceTranscript("", ui("音声で案内中（固定文と名称を組み立て）", "Speaking assembled guidance"));
+      updateVoiceStatus(ui("端末の音声で案内しています。", "Speaking with device voice."), "active");
+    });
+    utterance.addEventListener("end", () => {
+      clearTimeout(watchdog);
+      if (settled || requestId !== speechRequestId) return;
+      settled = true;
+      index += 1;
+      if (index < chunks.length) {
+        advance();
+      } else {
+        stopSpeechAudioRoute();
+        releasePriorityAudioSession();
+        updateVoiceStatus();
+        publishGuidanceTranscript("", ui("案内の読み上げが完了しました。", "Guidance announcement finished."));
+      }
+    });
+    utterance.addEventListener("error", event => {
+      clearTimeout(watchdog);
+      if (settled || requestId !== speechRequestId) return;
+      settled = true;
+      if (!usedLocalFallback && localVoice && localVoice !== selectedVoice
+          && !["canceled", "interrupted", "not-allowed"].includes(event.error)) {
+        usedLocalFallback = true;
+        settled = false;
+        advance();
+      } else {
+        stopSpeechAudioRoute();
+        releasePriorityAudioSession();
+        updateVoiceStatus(ui("端末の音声が中断されました。画面の案内をご確認ください。", "Device speech was interrupted. Follow the visible text."), "error");
+      }
+    });
+    try { speech.speak(utterance); }
+    catch {
+      clearTimeout(watchdog);
+      updateVoiceStatus(ui("端末音声を開始できません。画面の案内をご確認ください。", "Device speech failed to start."), "error");
+    }
+  }
+  configureVoiceAudioSession();
+  speech.cancel();
+  advance();
+  return true;
+}
+
 /** Web Speech APIで無料読み上げを行う。 */
 function speakText(message, { preview = false, userGesture = false, parts = null } = {}) {
   if (!message) return false;
+  if (!preview) publishGuidanceTranscript(message, ui("読み上げの準備中", "Preparing guidance"));
   if (getGuidanceSpeechLocale() === "ja-JP" && typeof normalizeJapaneseSpeech === "function") {
     message = normalizeJapaneseSpeech(message);
     if (parts) parts = parts.map(value => normalizeJapaneseSpeech(value));
@@ -3174,22 +3274,29 @@ function speakText(message, { preview = false, userGesture = false, parts = null
       if (played || requestId !== speechRequestId) return;
       stopSpeechAudioRoute();
       releasePriorityAudioSession();
-      updateVoiceStatus(ui(
-        "外部音声合成を利用できなかったため、端末の読み上げへ切り替えます。",
-        "External synthesis is unavailable. Falling back to device speech.",
-      ), "error");
       if ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window) {
-        void speakTextWhenVoicesReady(message, requestId);
+        updateVoiceStatus(ui("音声を端末で再生しています。", "Playing guidance with device speech."), "active");
+        if (parts?.length) speakDeviceAssembledParts(message, parts, requestId);
+        else void speakTextWhenVoicesReady(message, requestId);
+      } else {
+        updateVoiceStatus(ui(
+          "このブラウザーで音声を再生できません。画面の案内文をご確認ください。",
+          "This browser cannot play speech. Follow the visible guidance text.",
+        ), "error");
       }
     });
     return true;
   }
 
   if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return false;
-  /* 通常のブラウザー音声は Web Audio へ接続できず別経路で出力される。 */
+  /* 保存部品がなくてもPDF台本から組み立て、端末の声で一文ずつ再生。 */
   cancelSpeech();
   prepareSpeechAudioRoute();
-  void speakTextWhenVoicesReady(message, undefined, userGesture);
+  if (parts?.length) {
+    speakDeviceAssembledParts(message, parts, ++speechRequestId);
+  } else {
+    void speakTextWhenVoicesReady(message, undefined, userGesture);
+  }
   return true;
 }
 
