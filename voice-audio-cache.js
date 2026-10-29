@@ -102,18 +102,20 @@
     if (options.cachedOnly) throw new Error("Audio clip is not prepared");
     if (navigator.onLine === false) throw new Error("Audio not saved and device is offline");
     const bytes = await synthesize(message, options);
+    let persisted = false;
     if (cache && key) {
       try {
         await cache.put(key, new Response(bytes.slice(0), {
           headers: { "Content-Type": "audio/mpeg" },
         }));
+        persisted = true;
         const keys = await cache.keys();
         if (keys.length > MAX_FILES) {
           await Promise.all(keys.slice(0, keys.length - MAX_FILES).map(k => cache.delete(k)));
         }
       } catch { /* 保存できないブラウザーでも今回の再生は続行する。 */ }
     }
-    return { bytes, source: "created" };
+    return { bytes, source: "created", persisted };
   }
 
   async function prepare(messages, onProgress = () => {}, signal = null) {
@@ -124,7 +126,8 @@
       try {
         const audio = await get(message, { signal });
         if (audio.source === "saved") saved += 1;
-        else created += 1;
+        else if (audio.persisted) created += 1;
+        else failed += 1;
       } catch (error) {
         failed += 1;
         if (signal?.aborted || /HTTP 429/.test(String(error?.message))) {
