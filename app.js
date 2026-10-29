@@ -559,6 +559,8 @@ const voiceRateSelect = document.querySelector("#voice-rate");
 const voiceVolumeInput = document.querySelector("#voice-volume");
 const voiceVolumeLabel = document.querySelector("#voice-volume-label");
 const voicePreviewButton = document.querySelector("#voice-preview-button");
+const voicePrepareButton = document.querySelector("#voice-prepare-button");
+const voicePrepareStatus = document.querySelector("#voice-prepare-status");
 const voiceOutputModeSelect = document.querySelector("#voice-output-mode");
 const cloudVoiceInput = document.querySelector("#cloud-voice-enabled");
 const cloudVoiceDiagnostic = document.querySelector("#cloud-voice-diagnostic");
@@ -2698,8 +2700,8 @@ function updateVoiceStatus(message = "", stateName = "") {
     voiceStatus.textContent = message;
   } else if (state.cloudVoiceEnabled && getGuidanceSpeechLocale() === "ja-JP") {
     voiceStatus.textContent = ui(
-      "使用音声: VOICEVOX:春日部つむぎ（外部音声ファイル方式、通信必須）",
-      "Voice: VOICEVOX Kasukabe Tsumugi (external audio file, requires internet)",
+      "使用音声: VOICEVOX:春日部つむぎ（保存済み音声はオフラインでも再生可能）",
+      "Voice: VOICEVOX Kasukabe Tsumugi (saved clips work offline)",
     );
   } else {
     const voice = getSelectedSpeechVoice();
@@ -3020,65 +3022,28 @@ function getAudioFileGain(buffer) {
   return peak > 0 ? Math.min(3, 0.9 / peak) : 1;
 }
 
-/** デコードした案内音声をテスト音と同じ AudioContext から再生する。 */
+/** 端末に事前保存された音声を優先し、未保存の場合のみ生成して保存する。 */
 async function playCloudVoiceAudio(message, requestId, isPreview = false) {
   const route = activeSpeechAudioRoute;
-  if (!route || !route.context.decodeAudioData
-      || !route.context.createBufferSource || typeof fetch !== "function") {
-    setCloudVoiceDiagnostic(ui(
-      "失敗：この環境はWeb Audioで音声ファイルを再生できません。",
-      "Failed: Web Audio file playback unavailable.",
-    ), true);
+  if (!route || !route.context.decodeAudioData || !route.context.createBufferSource
+      || !window.ParkingVoiceAudioCache) {
+    setCloudVoiceDiagnostic(ui("保存音声の再生機能が利用できません。", "Saved audio playback is unavailable."), true);
     return false;
   }
-
   const controller = new AbortController();
   pendingCloudVoiceController?.abort();
   pendingCloudVoiceController = controller;
-  const timeoutId = setTimeout(() => controller.abort(), isPreview ? 30000 : 15000);
   try {
-    setCloudVoiceDiagnostic(ui(
-      "接続中：VOICEVOXへリクエストしています。",
-      "Connecting: Requesting VOICEVOX audio.",
-    ));
-    updateVoiceStatus(ui(
-      "音声データを作成しています。通信状態によっては端末音声へ切り替わります。",
-      "Generating audio. Device speech will be used if the connection fails.",
-    ), "active");
-    const endpoint = "https://api.tts.quest/v3/voicevox/synthesis"
-      + "?speaker=8&text=" + encodeURIComponent(message);
-    const response = await fetch(endpoint, { signal: controller.signal });
-    if (!response.ok) throw new Error("VOICEVOX API HTTP " + response.status);
-    const output = await response.json();
-    if (!output?.success || !isTrustedVoiceAudioUrl(output.mp3DownloadUrl)
-        || !isTrustedVoiceAudioUrl(output.audioStatusUrl)) throw new Error("Invalid audio response");
-
-    setCloudVoiceDiagnostic(ui(
-      "接続成功：音声データが生成されるのを待っています。",
-      "Connected: Waiting for audio generation.",
-    ));
-    let ready = false;
-    for (let i = 0; i < (isPreview ? 32 : 16); i += 1) {
-      if (requestId !== speechRequestId) return true;
-      const statusResponse = await fetch(output.audioStatusUrl, { signal: controller.signal });
-      if (!statusResponse.ok) throw new Error("Audio status unavailable");
-      const status = await statusResponse.json();
-      if (status.isAudioError) throw new Error("Audio generation failed");
-      if (status.isAudioReady) { ready = true; break; }
-      await new Promise((resolve) => setTimeout(resolve, 750));
-    }
-    if (!ready) throw new Error("Audio generation is taking too long");
-
-    const fileResponse = await fetch(output.mp3DownloadUrl, { signal: controller.signal });
-    if (!fileResponse.ok) throw new Error("Audio download failed");
-    const bytes = await fileResponse.arrayBuffer();
+    setCloudVoiceDiagnostic(ui("保存済みの音声を確認しています。", "Checking saved audio."));
+    const audio = await window.ParkingVoiceAudioCache.get(message, {
+      signal: controller.signal, timeoutMs: isPreview ? 60000 : 45000,
+    });
     if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return true;
-    const buffer = await route.context.decodeAudioData(bytes);
+    const buffer = await route.context.decodeAudioData(audio.bytes);
     if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return true;
     if (route.context.state && route.context.state !== "running") {
       throw new Error("Audio playback requires a user gesture");
     }
-
     const source = route.context.createBufferSource();
     route.voiceSource = source;
     source.buffer = buffer;
@@ -3095,27 +3060,18 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false) {
     }, { once: true });
     configureVoiceAudioSession();
     source.start();
-    setCloudVoiceDiagnostic(ui(
-      "成功：生成された日本語音声をWeb Audioで再生しています。",
-      "Success: Playing generated Japanese speech via Web Audio.",
-    ));
-    updateVoiceStatus(ui(
-      "VOICEVOXの音声ファイルを再生しています。",
-      "Playing an audio file generated with VOICEVOX.",
-    ), "active");
+    setCloudVoiceDiagnostic(audio.source === "saved"
+      ? ui("保存済み音声を再生しています（通信不要）。", "Playing saved audio (no network required).")
+      : ui("音声を生成して端末に保存しました。", "Generated and saved the audio on this device."));
+    updateVoiceStatus(ui("VOICEVOXの音声ファイルを再生しています。", "Playing VOICEVOX audio."), "active");
     return true;
   } catch (error) {
     if (requestId === speechRequestId) {
-      setCloudVoiceDiagnostic(ui(
-        "失敗：VOICEVOX音声を利用できません（",
-        "Failed: VOICEVOX audio is unavailable (",
-      ) + describeCloudVoiceError(error) + ui(
-        "）。端末音声へ戻りました。", "). Fell back to device voice.",
-      ), true);
+      setCloudVoiceDiagnostic(ui("保存音声を利用できません（", "Saved audio unavailable (")
+        + describeCloudVoiceError(error) + ui("）。端末音声に切り替えます。", "). Switching to device speech."), true);
     }
     return false;
   } finally {
-    clearTimeout(timeoutId);
     if (pendingCloudVoiceController === controller) pendingCloudVoiceController = null;
   }
 }
@@ -3275,7 +3231,7 @@ function speakAutomaticGuidanceStartMessage({ userGesture = false } = {}) {
 function getCurrentGuidanceMessage(locale = getGuidanceSpeechLocale()) {
   return getClosingAnnouncement(locale) + getParkingGuidanceMessage(locale);
 }
-function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale()) {
+function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale(), options = {}) {
   // すべての案内言語で「録画の実演」であることを先に伝える。
   // 音声だけ聞く利用者にも実際の空き案内と誤解させない。
   const replayWarnings = {
@@ -3288,25 +3244,25 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale()) {
   };
   const replayNotice = state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID
     ? (replayWarnings[locale] || replayWarnings["en-US"]) : "";
-  if (state.searchOutcome === "not-found") {
+  if (state.searchOutcome === "not-found" && !options.space) {
     const full = summarizeOccupancy(state.currentSpaces, state.resultSimulation).level === "full";
     const fullMessages = {"ja-JP":"とうろくでーたでは、まんしゃです。", "en-US":"The saved data shows a full parking lot. ", "en-GB":"The saved data shows a full car park. ", "zh-CN":"已保存的数据显示停车场已满。", "ko-KR":"저장된 데이터상 주차장이 만차입니다. ", "es-ES":"Los datos guardados indican que el aparcamiento está lleno. "};
     return replayNotice + (full ? fullMessages[locale] ?? fullMessages["en-US"] : "") + getNoSpaceGuidanceMessage(locale);
   }
-  if (!state.recommendedSpace) return "";
-  const number = getSpokenSpaceId(state.recommendedSpace, locale);
+  if (!state.recommendedSpace && !options.space) return "";
+  const number = getSpokenSpaceId(options.space ?? state.recommendedSpace, locale);
   const facility = getFacilitySpokenName(locale);
-  const occupancy = summarizeOccupancy(state.currentSpaces, state.resultSimulation);
+  const occupancy = summarizeOccupancy(options.spaces ?? state.currentSpaces, options.simulation ?? state.resultSimulation);
   const crowded = occupancy.level === "busy";
   const remaining = typeof japaneseNumber === "function" ? japaneseNumber(occupancy.available) : occupancy.available;
-  const approaching = state.lastSearchWasAuto && facility;
+  const approaching = (options.autoTriggered ?? state.lastSearchWasAuto) && facility;
   const messages = {
-    "ja-JP": `${approaching ? `${facility}にせっきんしました。` : facility ? `${facility}のごあんないです。` : ""}${crowded ? `こんざつしています。あきは、のこり${remaining}くかくです。` : ""}ごあんないするくかくは、${number}ばんです。しゅういのあんぜんと、げんちのひょうじをかくにんしてください。くかくがみつからないばあいは、こうどうでまつことなく、あんぜんにつうかしてください。`,
-    "en-US": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is number ${number}. Check your surroundings and on-site signs before parking. If no space can be found, do not queue on the public road; safely continue past the entrance.`,
-    "en-GB": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is number ${number}. Check your surroundings and on-site signs before parking. If no space can be found, do not queue on the public road; safely continue past the entrance.`,
-    "zh-CN": `${approaching ? `已接近${facility}。` : facility ? `为您提供${facility}的停车位指引。` : ""}推荐的停车位是${number}号。请确认周围安全及现场标识后停车。若找不到车位，请勿在公共道路排队等候，确认安全后继续通过。`,
-    "ko-KR": `${approaching ? `${facility}에 가까워졌습니다. ` : facility ? `${facility}의 주차 공간을 안내합니다. ` : ""}안내할 주차 공간은 ${number}번입니다. 주변의 안전과 현장 표지판을 확인한 후 주차해 주세요. 주차 공간이 없으면 공공 도로에서 기다리지 말고 안전하게 통과해 주세요.`,
-    "es-ES": `${approaching ? `Se está acercando a ${facility}. ` : facility ? `Guía de aparcamiento para ${facility}. ` : ""}La plaza recomendada es la número ${number}. Compruebe la seguridad de su entorno y las señales antes de aparcar. Si no encuentra una plaza, no espere en la vía pública; continúe de forma segura.`,
+    "ja-JP": `${approaching ? `${facility}にせっきんしました。` : facility ? `${facility}のごあんないです。` : ""}${crowded ? `こんざつしています。あきは、のこり${remaining}くかくです。` : ""}ごあんないするくかくは、${number}ばんです。くりかえします。${number}ばんです。しゅういのあんぜんと、げんちのひょうじをかくにんしてください。くかくがみつからないばあいは、こうどうでまつことなく、あんぜんにつうかしてください。`,
+    "en-US": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is number ${number}. I repeat, number ${number}. Check your surroundings and on-site signs before parking. If no space can be found, do not queue on the public road; safely continue past the entrance.`,
+    "en-GB": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is number ${number}. I repeat, number ${number}. Check your surroundings and on-site signs before parking. If no space can be found, do not queue on the public road; safely continue past the entrance.`,
+    "zh-CN": `${approaching ? `已接近${facility}。` : facility ? `为您提供${facility}的停车位指引。` : ""}推荐的停车位是${number}号。重复一遍，${number}号。请确认周围安全及现场标识后停车。若找不到车位，请勿在公共道路排队等候，确认安全后继续通过。`,
+    "ko-KR": `${approaching ? `${facility}에 가까워졌습니다. ` : facility ? `${facility}의 주차 공간을 안내합니다. ` : ""}안내할 주차 공간은 ${number}번입니다. 다시 말씀드립니다. ${number}번입니다. 주변의 안전과 현장 표지판을 확인한 후 주차해 주세요. 주차 공간이 없으면 공공 도로에서 기다리지 말고 안전하게 통과해 주세요.`,
+    "es-ES": `${approaching ? `Se está acercando a ${facility}. ` : facility ? `Guía de aparcamiento para ${facility}. ` : ""}La plaza recomendada es la número ${number}. Repito, número ${number}. Compruebe la seguridad de su entorno y las señales antes de aparcar. Si no encuentra una plaza, no espere en la vía pública; continúe de forma segura.`,
   };
   const crowdMessages = {"en-US": `The parking lot is busy. Only ${occupancy.available} spaces remain. `, "en-GB": `The car park is busy. Only ${occupancy.available} spaces remain. `, "zh-CN": `停车场拥挤，仅剩${occupancy.available}个空车位。`, "ko-KR": `주차장이 혼잡합니다. 빈 공간은 ${occupancy.available}개입니다. `, "es-ES": `El aparcamiento está concurrido. Solo quedan ${occupancy.available} plazas. `};
   return replayNotice + (crowded && locale !== "ja-JP" ? crowdMessages[locale] ?? crowdMessages["en-US"] : "") + (messages[locale] ?? messages["en-US"]);
@@ -3320,8 +3276,7 @@ function speakCurrentGuidance() {
 }
 
 /** 現在設定の音声案内言語で短い試聴を行う。 */
-function previewSelectedVoice() {
-  const locale = getGuidanceSpeechLocale();
+function getVoicePreviewMessage(locale = getGuidanceSpeechLocale()) {
   const messages = {
     "ja-JP": "おんせいのてすとです。ちゅうしゃくかく、びー、ごばんです。",
     "en-US": "Voice output test. Parking space number five. Please change the playback mode while parked if you cannot hear this.",
@@ -3331,10 +3286,62 @@ function previewSelectedVoice() {
     "es-ES": "Prueba de guía por voz. Plaza de aparcamiento número cinco.",
   };
 
-  speakText(messages[locale] ?? messages["en-US"], { preview: true });
+  return messages[locale] ?? messages["en-US"];
 }
 
-/** Web Speech APIの利用可否を反映する。 */
+/** 試聴も通常案内と同じ経路で再生する。 */
+function previewSelectedVoice() {
+  speakText(getVoicePreviewMessage(), { preview: true });
+}
+
+/** 停車中に選択施設の音声を生成・保存する。外部への送信は明示同意後のみ。 */
+async function prepareSelectedFacilityVoice() {
+  if (!voicePrepareButton || !voicePrepareStatus) return;
+  if (!state.cloudVoiceEnabled || getGuidanceSpeechLocale() !== "ja-JP") {
+    voicePrepareStatus.textContent = ui("日本語の音声ファイル方式を有効にしてください。", "Enable Japanese audio-file mode.");
+    return;
+  }
+  const facility = state.selectedFacility;
+  if (!facility) {
+    voicePrepareStatus.textContent = ui("先に施設を選択してください。", "Select a facility first.");
+    return;
+  }
+  voicePrepareButton.disabled = true;
+  voicePrepareStatus.textContent = ui("音声を準備しています…", "Preparing audio…");
+  try {
+    await loadRemoteParkingLayouts();
+    if (state.selectedFacility !== facility) return;
+    const prepared = prepareSpaces(facility);
+    const messages = [getAutomaticGuidanceStartMessage("ja-JP"),
+      getNoSpaceGuidanceMessage("ja-JP"), getVoicePreviewMessage("ja-JP")];
+    if (state.searchOutcome) messages.push(getCurrentGuidanceMessage("ja-JP"));
+    const matching = prepared.spaces.filter(s => !s.isOccupied && s.spaceType === state.requestedSpaceType).slice(0, 4);
+    for (const space of matching) {
+      for (const autoTriggered of [true, false]) {
+        messages.push(getClosingAnnouncement("ja-JP") + getParkingGuidanceMessage("ja-JP", {
+          space, autoTriggered, spaces: prepared.spaces, simulation: prepared.isSimulation,
+        }));
+      }
+    }
+    const normalized = messages.map(s => typeof normalizeJapaneseSpeech === "function"
+      ? normalizeJapaneseSpeech(s) : s);
+    const results = await window.ParkingVoiceAudioCache.prepare(normalized, p => {
+      voicePrepareStatus.textContent = ui(
+        "保存準備：" + p.done + " / " + p.total + " 件（失敗 " + p.failed + " 件）",
+        "Saving " + p.done + " / " + p.total + " (failed: " + p.failed + ")",
+      );
+    });
+    voicePrepareStatus.textContent = ui(
+      "保存完了。新規 " + results.created + " 件、保存済み " + results.saved + " 件、失敗 " + results.failed + " 件。",
+      "Finished: " + results.created + " new, " + results.saved + " existing, " + results.failed + " failed.",
+    );
+  } catch {
+    voicePrepareStatus.textContent = ui("保存に失敗しました。通信状況をご確認ください。", "Preparation failed. Check your connection.");
+  } finally {
+    voicePrepareButton.disabled = false;
+  }
+}
+
 function updateVoiceAvailability() {
   const supported =
     "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
@@ -3528,6 +3535,7 @@ voiceGuideButton?.addEventListener("click", () => {
   speakCurrentGuidance();
 });
 voicePreviewButton?.addEventListener("click", previewSelectedVoice);
+voicePrepareButton?.addEventListener("click", () => { void prepareSelectedFacilityVoice(); });
 [voiceSelect, voiceRateSelect, voiceVolumeInput].forEach((control) => {
   control?.addEventListener("change", () => {
     cancelSpeech();
