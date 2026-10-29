@@ -498,7 +498,7 @@ const state = {
   resultSimulation: false,
   resultLive: false,
   recommendedSpace: null,
-  parkingIntent: null, // この端末の研究用「行きたい」登録。車の個人識別はしない。
+  arrivalCheck: null, // 既存の案内先とカメラの検知結果を対応付ける。
   currentSpaces: [],
   currentLayout: null,
   guideEntrance: null,
@@ -581,162 +581,76 @@ const updatedTime = document.querySelector("#updated-time");
 const voiceGuideButton = document.querySelector("#voice-guide-button");
 const retryButton = document.querySelector("#retry-button");
 const endGuidanceButton = document.querySelector("#end-guidance-button");
-const parkingTargetPanel = document.querySelector("#parking-target-panel");
-const parkingTargetSelect = document.querySelector("#parking-target-select");
-const parkingTargetRegister = document.querySelector("#parking-target-register");
-const parkingTargetCancel = document.querySelector("#parking-target-cancel");
-const parkingTargetStatus = document.querySelector("#parking-target-status");
-const parkingTargetConfirm = document.querySelector("#parking-target-confirm");
+const parkingArrivalPanel = document.querySelector("#parking-arrival-panel");
+const parkingArrivalStatus = document.querySelector("#parking-arrival-status");
+const parkingArrivalConfirm = document.querySelector("#parking-arrival-confirm");
 
 /* =========================================================
-   研究用「この区画に行きたい」→ カメラ占有確認 → 本人の完了確認
-   個人の車とカメラ上の車は同一と断定できない。
-   ================================================ */
-const PARKING_INTENT_KEY = "parkingGuideResearchParkingIntentV1";
-
-function persistParkingIntent() {
-  try {
-    if (state.parkingIntent) {
-      localStorage.setItem(PARKING_INTENT_KEY, JSON.stringify({
-        facilityId: state.parkingIntent.facilityId,
-        uid: state.parkingIntent.uid,
-        createdAt: state.parkingIntent.createdAt,
-      }));
-    } else {
-      localStorage.removeItem(PARKING_INTENT_KEY);
-    }
-  } catch {
-    // 保存拒否でも現在開いている画面での実験は続けられる。
-  }
+   既存の案内先への駐車をカメラで確認する。
+   新たな区画登録や区画変更は行わない。
+   個人の車かは識別できないため、最後は本人確認が必要。
+   ========================================================= */
+function startArrivalCheck(facility, space, live) {
+  state.arrivalCheck = (live && facility?.id === PRIVATE_TEST_FACILITY_ID && space?.uid)
+    ? { facilityId: facility.id, uid: space.uid, startedAt: Date.now(),
+        occupiedSince: null, hitCount: 0, confirmed: false }
+    : null;
+  updateParkingArrivalPanel();
 }
 
-function recoverParkingIntent() {
-  if (state.parkingIntent) return;
-  try {
-    const saved = JSON.parse(localStorage.getItem(PARKING_INTENT_KEY) || "null");
-    if (saved?.facilityId === PRIVATE_TEST_FACILITY_ID
-        && typeof saved.uid === "string"
-        && Date.now() - Number(saved.createdAt) >= 0
-        && Date.now() - Number(saved.createdAt) < 30 * 60 * 1000) {
-      state.parkingIntent = { ...saved, detectedAt: null, hitCount: 0 };
-    } else if (saved) {
-      localStorage.removeItem(PARKING_INTENT_KEY);
-    }
-  } catch {
-    // 壊れた保存値は案内に使用しない。
+function updateParkingArrivalPanel() {
+  if (!parkingArrivalPanel) return;
+  const check = state.arrivalCheck;
+  const visible = state.currentScreen === "result"
+    && state.resultLive
+    && state.searchOutcome === "found"
+    && check?.uid === state.recommendedSpace?.uid
+    && check.facilityId === state.selectedFacility?.id;
+  parkingArrivalPanel.hidden = !visible;
+  if (!visible) return;
+  parkingArrivalConfirm.disabled = !check.confirmed;
+  const info = window.ParkingLiveStatus?.snapshot(check.facilityId);
+  if (!info?.published || info.error) {
+    parkingArrivalStatus.textContent = ui(
+      "カメラの最新情報を取得できません。案内終了は自動判定できません。",
+      "Camera status is unavailable. Parking cannot be verified.",
+    );
+    check.confirmed = false;
+    parkingArrivalConfirm.disabled = true;
+    return;
   }
+  const row = info.rows?.get(check.uid);
+  const timestamp = Date.parse(row?.checked_at || "");
+  const now = Date.now();
+  const fresh = Number.isFinite(timestamp) && timestamp <= now + 5000
+    && now - timestamp <= 20000;
+  if (!fresh || row?.status !== "occupied" || timestamp <= check.startedAt) {
+    check.occupiedSince = null;
+    check.hitCount = 0;
+    check.confirmed = false;
+    parkingArrivalStatus.textContent = ui(
+      "案内先の駐車をカメラで確認しています。停車するまで操作しないでください。",
+      "Waiting for camera confirmation at your assigned space.",
+    );
+    parkingArrivalConfirm.disabled = true;
+    return;
+  }
+  if (check.occupiedSince === null) check.occupiedSince = now;
+  check.hitCount += 1;
+  check.confirmed = check.hitCount >= 2 && now - check.occupiedSince >= 2000;
+  parkingArrivalStatus.textContent = check.confirmed
+    ? ui(
+        "カメラが案内先への駐車を検知しました。自分の車であることを停車後に確認してください。",
+        "A car was detected in your assigned space. Confirm it is your car after parking.",
+      )
+    : ui("駐車を検出しました。続けて確認しています…", "Parking detected; checking again…");
+  parkingArrivalConfirm.disabled = !check.confirmed;
 }
 
-function updateParkingTargetPanel() {
-  if (!parkingTargetPanel) return;
-  const home = state.selectedFacility?.id === PRIVATE_TEST_FACILITY_ID;
-  parkingTargetPanel.hidden = !home || state.currentScreen !== "result";
-  if (!home || parkingTargetPanel.hidden) return;
-  recoverParkingIntent();
-  const prior = parkingTargetSelect.value;
-  const list = state.currentSpaces.filter(item => item?.uid);
-  parkingTargetSelect.replaceChildren(...list.map(space => {
-    const description = space.sourceObject?.name || space.id || space.uid;
-    const availability = space.occupancyStatus === "available" && !space.isOccupied
-      ? ui("空きを確認", "Available")
-      : ui("空き未確認", "Not confirmed available");
-    return new Option(description + " / " + availability, space.uid);
-  }));
-  const intent = state.parkingIntent?.facilityId === PRIVATE_TEST_FACILITY_ID
-    ? state.parkingIntent : null;
-  const target = list.find(item => item.uid === intent?.uid);
-  parkingTargetSelect.value = (target?.uid || list.find(item => item.uid === prior)?.uid
-                               || list[0]?.uid || "");
-  parkingTargetSelect.disabled = Boolean(intent);
-  parkingTargetRegister.hidden = Boolean(intent);
-  parkingTargetCancel.hidden = !intent;
-  parkingTargetConfirm.hidden = !intent;
-  parkingTargetConfirm.disabled = true;
-  if (!intent) {
-    parkingTargetStatus.textContent = ui(
-      "希望区画を選んで「行きたい」を登録してください。空き未確認の場合は実際の空車を保証しません。",
-      "Choose a space. Unverified spaces are not guaranteed to be free.",
-    );
-    return;
-  }
-  const info = window.ParkingLiveStatus?.snapshot(PRIVATE_TEST_FACILITY_ID);
-  if (!info?.published) {
-    parkingTargetStatus.textContent = ui(
-      "希望区画を登録しました。この端末では受付済みです。カメラ状況は非公開のため、管理アプリから公開を許可してください。",
-      "Registered on this device. Enable camera-status sharing in the admin app to continue.",
-    );
-    intent.hitCount = 0;
-    intent.detectedAt = null;
-    return;
-  }
-  const row = info.rows?.get(intent.uid);
-  const stamp = Date.parse(row?.checked_at || "");
-  const fresh = Number.isFinite(stamp) && stamp <= Date.now() + 5000
-    && Date.now() - stamp <= 20000;
-  if (!fresh || row?.status !== "occupied") {
-    intent.hitCount = 0;
-    intent.detectedAt = null;
-    parkingTargetStatus.textContent = ui(
-      "希望区画を監視中です。まだ駐車を確認できません。運転中は画面操作をしないでください。",
-      "Watching the selected space. Parking is not yet confirmed.",
-    );
-    return;
-  }
-  if (!intent.detectedAt) intent.detectedAt = Date.now();
-  intent.hitCount += 1;
-  const confirmed = intent.hitCount >= 2 && Date.now() - intent.detectedAt >= 2000;
-  parkingTargetStatus.textContent = confirmed
-    ? ui("カメラが指定区画への駐車を検知しました。自分の車であることを停車後に確認してください。",
-         "The camera detected a car in the selected space. Confirm it is your car after stopping.")
-    : ui("駐車候補を検出しました。連続して確認しています…",
-         "A vehicle was detected. Checking a second observation…");
-  parkingTargetConfirm.disabled = !confirmed;
-}
-
-function registerParkingTarget() {
-  if (state.selectedFacility?.id !== PRIVATE_TEST_FACILITY_ID) return;
+parkingArrivalConfirm?.addEventListener("click", () => {
+  if (!state.arrivalCheck?.confirmed || parkingArrivalConfirm.disabled) return;
   if (window.parkingSafety && !window.parkingSafety.guardOperation()) return;
-  const uid = parkingTargetSelect.value;
-  const chosen = state.currentSpaces.find(space => space.uid === uid);
-  if (!chosen) return;
-  state.parkingIntent = {
-    facilityId: PRIVATE_TEST_FACILITY_ID, uid, createdAt: Date.now(),
-    detectedAt: null, hitCount: 0,
-  };
-  persistParkingIntent();
-  // Target the requested stall on the map without falsely changing its
-  // occupied/unknown status. This can be tested even when no free stall exists.
-  state.recommendedSpace = chosen;
-  spaceNumber.textContent = chosen.id || chosen.sourceObject?.name || chosen.uid;
-  priorityBadge.textContent = ui("研究用・希望区画の指定", "Research: selected space");
-  spaceDescription.textContent = chosen.isOccupied
-    ? ui("空きが確認できていません。進入する前に必ず現地を確認してください。",
-         "Availability is not confirmed. Check on site before entering.")
-    : ui("空きを確認できました。現地の安全確認を優先してください。",
-         "Available now; follow on-site safety signs.");
-  updatedTime.textContent = new Date().toLocaleTimeString();
-  renderParkingMap(state.currentSpaces, chosen, state.currentLayout);
-  state.searchOutcome = "found";
-  resultContent.hidden = false;
-  noSpaceContent.hidden = true;
-  updateSearchResultNotice();
-  updateParkingTargetPanel();
-  beginLiveUpdates(state.selectedFacility);
-}
-
-parkingTargetRegister?.addEventListener("click", registerParkingTarget);
-parkingTargetCancel?.addEventListener("click", () => {
-  state.parkingIntent = null;
-  persistParkingIntent();
-  updateParkingTargetPanel();
-  updateSearchResultNotice();
-});
-parkingTargetConfirm?.addEventListener("click", () => {
-  if (!state.parkingIntent || parkingTargetConfirm.disabled) return;
-  if (window.parkingSafety && !window.parkingSafety.guardOperation()) return;
-  // Camera confirms occupied; user confirms identity of their own car.
-  state.parkingIntent = null;
-  persistParkingIntent();
+  // The camera confirms occupancy, not the user's identity.
   endGuidance();
 });
 
@@ -2184,7 +2098,7 @@ function beginLiveUpdates(facility) {
       renderParkingMap(state.currentSpaces, state.recommendedSpace, state.currentLayout);
     }
     updateSearchResultNotice();
-    updateParkingTargetPanel();
+    updateParkingArrivalPanel();
     renderFacilities();
   });
 }
@@ -2224,11 +2138,10 @@ function updateSearchResultNotice() {
   if (!state.searchOutcome) return;
   const occupancy = { ...getFacilityOccupancy(state.selectedFacility),
     recordedExperiment: state.selectedFacility?.isRecordedExperiment === true };
-  if (state.parkingIntent && state.selectedFacility?.id === PRIVATE_TEST_FACILITY_ID
-      && state.parkingIntent.facilityId === PRIVATE_TEST_FACILITY_ID) {
+  if (state.arrivalCheck?.confirmed && state.arrivalCheck.uid === state.recommendedSpace?.uid) {
     searchStatus.textContent = ui(
-      "希望区画の駐車確認を待っています。車を識別できないため、最後に本人の確認が必要です。",
-      "Waiting for a camera check at the chosen space. Please confirm it is your car.",
+      "案内先で駐車を検知しました。停車後に自分の車か確認して案内を終了してください。",
+      "Parking detected at your assigned space. Confirm your own car to finish guidance.",
     );
     return;
   }
@@ -2334,7 +2247,6 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       state.currentLayout = prepared.layout;
       state.currentSpaces = prepared.spaces;
       state.guideEntrance = prepared.entrance;
-      updateParkingTargetPanel();
       const useRandomGuidance = !state.resultLive && RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id);
       state.recommendedSpace = selectRecommendedSpace(
         prepared.spaces,
@@ -2342,6 +2254,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
         state.requestedSpaceType,
         useRandomGuidance,
       );
+      startArrivalCheck(facility, state.recommendedSpace, state.resultLive);
 
       if (!state.recommendedSpace) {
         state.searchOutcome = "not-found";
@@ -2349,7 +2262,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
         updateSearchResultNotice();
         renderFacilities();
         beginLiveUpdates(facility);
-        updateParkingTargetPanel();
+        updateParkingArrivalPanel();
         if (state.voiceEnabled) speakCurrentGuidance();
         resolve({ facility: facility.name, spaceId: null, priority, spaceType: state.requestedSpaceType });
         return;
@@ -2387,7 +2300,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       updateSearchResultNotice();
       renderFacilities();
       beginLiveUpdates(facility);
-      updateParkingTargetPanel();
+      updateParkingArrivalPanel();
       state.lastSearchWasAuto = autoTriggered;
 
       if (state.voiceEnabled) {
@@ -3455,8 +3368,7 @@ function resetApplication() {
   state.proximitySearchRunning = false;
   state.pendingPrivateTestCalibration = false;
   state.recommendedSpace = null;
-  state.parkingIntent = null;
-  persistParkingIntent();
+  state.arrivalCheck = null;
   state.searchOutcome = null;
   state.resultLive = false;
   state.currentSpaces = [];
@@ -3483,11 +3395,7 @@ facilityList.addEventListener("click", (event) => {
   }
 
   state.selectedFacility = facility;
-  recoverParkingIntent();
-  if (facility.id !== PRIVATE_TEST_FACILITY_ID) {
-    state.parkingIntent = null;
-    persistParkingIntent();
-  }
+  state.arrivalCheck = null;
   state.pendingPrivateTestCalibration = false;
   state.searchOutcome = null;
   state.resultLive = false;
