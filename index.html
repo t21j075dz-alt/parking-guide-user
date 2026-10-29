@@ -317,15 +317,19 @@
               <button class="secondary-button" id="voice-output-test-button" type="button">接続先のテスト音</button>
               <label class="voice-option" for="cloud-voice-enabled">
                 <input type="checkbox" id="cloud-voice-enabled">
-                <span>音声ファイル方式を試す（外部音声合成）</span>
+                <span>保存済み音声を優先（未保存なら端末音声）</span>
               </label>
-              <p class="voice-status">オンにすると固定文・施設名・店舗名・駐車枠をそれぞれ外部サービス tts.quest で音声生成し端末内に保存できます。保存した音声部品を順番に再生します。未保存の場合は全文生成または端末音声へ切り替わります。生成ボタンは停車中に操作してください。</p>
+              <p class="voice-status">保存済みのVOICEVOX音声を優先し、未保存ならすぐに端末音声で案内します。走行中に外部音声生成を待ちません。生成サービスの混雑時も端末音声を利用できます。事前保存は停車中に行ってください。</p>
               <p class="voice-status">VOICEVOX:春日部つむぎ（外部サービス tts.quest に接続）</p>
               <p id="cloud-voice-diagnostic" class="voice-status" role="status" aria-live="polite">接続診断：テスト後に表示します。</p>
-        <button class="secondary-button" id="voice-prepare-button" type="button">選択施設の案内文・駐車枠を事前保存</button>
+        <details class="technical-help" id="voice-preparation-details">
+          <summary>音声を事前保存（任意・停車中のみ）</summary>
+          <p class="voice-status">生成サービスの制限を避けるため、1回あたり新規8件まで保存します。未処理が残る場合は、後から同じ操作を繰り返せます。保存済みの音声は再生成しません。</p>
+          <button class="secondary-button" id="voice-prepare-button" type="button">選択施設の案内文・駐車枠を事前保存</button>
         <button class="secondary-button" id="voice-prepare-names-button" type="button">全施設・店舗名を事前保存</button>
         <button class="secondary-button" id="voice-prepare-cancel-button" type="button" hidden>生成を中止</button>
         <p id="voice-prepare-status" class="voice-status" role="status" aria-live="polite">停車中に保存してください。「全施設・店舗名」は登録済みの施設・複合施設内店舗を順次保存します。初回は通信が必要です。途中で中止しても保存済み音声は残ります。</p>
+        </details>
               <p class="voice-status" id="voice-output-status" role="status" aria-live="polite"></p>
               <details class="technical-help"><summary>音が聞こえないとき</summary>
                 <p>停車中に「音声を試す」で確認し、再生中に端末・車載機の音量を調整してください。WebアプリからBluetooth・CarPlayの出力先は変更できません。</p>
@@ -358,6 +362,7 @@
             </fieldset>
 
             <div class="voice-adjustments">
+              <p class="voice-status">英語・中国語・韓国語・スペイン語も、端末で利用できる高品質音声やGoogle音声を優先します。利用可能な声は端末・ブラウザーによって異なります。iPhone（iOS 27）では「設定」→「アクセシビリティ」→「リーダーと読み上げ」で声を追加できます。</p>
               <label for="voice-select">読み上げ音声</label>
               <select id="voice-select"><option value="">自動（端末の音声）</option></select>
               <label for="voice-rate">読み上げ速度</label>
