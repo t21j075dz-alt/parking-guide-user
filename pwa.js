@@ -45,8 +45,8 @@
         : label("基本画面の保存を準備しています。初回は通信できる状態で開いてください。", "Preparing offline storage. Open the app online the first time.");
     offlineStatus.hidden = navigator.onLine !== false;
     offlineStatus.textContent = label(
-      "オフラインです。最新の管理データは取得できません。同梱データ・取得済みデータまたは研究用シミュレーションを表示します。外部音声は利用できません。",
-      "You are offline. The latest managed data cannot be fetched. Bundled or previously loaded data, or research simulations, will be shown. External speech is unavailable.",
+      "オフラインです。最新の管理データは取得できません。同梱データ・取得済みデータまたは研究用シミュレーションを表示します。保存済みの音声ファイルは再生できますが、未保存の音声は生成できません。",
+      "You are offline. The latest managed data cannot be fetched. Bundled or previously loaded data, or research simulations, will be shown. Previously saved audio files can play, but new audio cannot be generated.",
     );
     updatePanel.hidden = !registration?.waiting || reloadRequested;
     updateStatus.textContent = label("新しいバージョンがあります。停車中に更新してください。", "An update is available. Update while parked.");
