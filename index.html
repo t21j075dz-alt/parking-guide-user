@@ -17,7 +17,7 @@
     >
     <title>駐車場空き区画案内｜卒業研究</title>
     <!-- 利用者画面の共通スタイル。管理画面とは別リポジトリで管理する。 -->
-    <link rel="stylesheet" href="./styles.css?v=20261029-existing-guidance-1">
+    <link rel="stylesheet" href="./styles.css?v=20261030-modular-voice-1">
     <!-- 安全確認 → 施設データ → 同期設定 → レイアウト → 画面制御の順で読み込む。 -->
     <link rel="stylesheet" href="./map-display.css?v=20261029-phase-demo-2">
     <script src="./map-display.js?v=20261014-interaction" defer></script>
@@ -29,8 +29,9 @@
     <script src="./facility-operations.js?v=20261028-closed-rest-1" defer></script>
     <script src="./speech-readings.js?v=20261028-nikko-test" defer></script>
     <script src="./voice-guide-scripts.js?v=20261029-assembled-voice-1" defer></script>
+  <script src="./voice-guide-playback.js?v=20261030-modular-voice-1" defer></script>
   <script src="./voice-audio-cache.js?v=20261030-voice-recovery-1" defer></script>
-  <script src="./app.js?v=20261030-voice-recovery-1" defer></script>
+  <script src="./app.js?v=20261030-modular-voice-1" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
   <link href="./experience.css" rel="stylesheet">
 <script defer src="./camera-view.js"></script>
@@ -317,9 +318,9 @@
               <button class="secondary-button" id="voice-output-test-button" type="button">接続先のテスト音</button>
               <label class="voice-option" for="cloud-voice-enabled">
                 <input type="checkbox" id="cloud-voice-enabled">
-                <span>保存済み音声を優先（未保存なら端末音声）</span>
+                <span>保存済み部品を組み立てて再生（ない場合は端末音声）</span>
               </label>
-              <p class="voice-status">保存済みのVOICEVOX音声を優先し、未保存ならすぐに端末音声で案内します。走行中に外部音声生成を待ちません。生成サービスの混雑時も端末音声を利用できます。事前保存は停車中に行ってください。</p>
+              <p class="voice-status">共通の案内文・店舗名・駐車枠番号を組み合わせ、保存済みなら音声ファイルで再生します。まだ保存されていない場合も同じ文章を端末で読み上げます。外部サービスのエラーで案内が止まることは避ける設計です。</p>
               <p class="voice-status">VOICEVOX:春日部つむぎ（外部サービス tts.quest に接続）</p>
               <p id="cloud-voice-diagnostic" class="voice-status" role="status" aria-live="polite">接続診断：テスト後に表示します。</p>
         <details class="technical-help" id="voice-preparation-details">
@@ -430,6 +431,14 @@
           </p>
         </section>
 
+        <section class="guidance-audio-card" aria-label="音声案内と読み上げ内容">
+          <div class="guidance-audio-heading">
+            <strong>音声案内</strong>
+            <span class="guidance-audio-mode" role="status" aria-live="polite">案内待機中</span>
+          </div>
+          <p class="guidance-audio-message">音声案内を開始すると、ここに読み上げ内容が表示されます。</p>
+          <button class="secondary-button guidance-audio-replay" type="button">安全な場所で案内を聞き直す</button>
+        </section>
         <div class="safety-note waiting-safety" role="note">
           <p>運転中の操作は控え、音声案内をご利用ください。</p>
         </div>
@@ -445,6 +454,14 @@
 
         <div id="search-status" class="search-status" role="status" aria-live="polite"></div>
 
+        <section class="guidance-audio-card" aria-label="音声案内と読み上げ内容">
+          <div class="guidance-audio-heading">
+            <strong>音声案内</strong>
+            <span class="guidance-audio-mode" role="status" aria-live="polite">案内待機中</span>
+          </div>
+          <p class="guidance-audio-message">音声案内を開始すると、ここに読み上げ内容が表示されます。</p>
+          <button class="secondary-button guidance-audio-replay" type="button">安全な場所で案内を聞き直す</button>
+        </section>
         <p id="congestion-notice" class="congestion-notice" role="status" hidden></p>
         <section id="no-space-content" class="no-space-card" hidden aria-labelledby="no-space-title">
           <span class="no-space-symbol" aria-hidden="true">—</span>
@@ -453,9 +470,9 @@
           <p class="pass-through">公道で順番待ちをせず、周囲の安全を確認してそのまま通過してください。</p>
           <p>別の駐車場をご利用ください。</p>
           <div class="button-group">
-            <button class="primary-button" id="no-space-voice" type="button">音声で案内</button>
+            <button class="primary-button" id="no-space-voice" type="button">案内をもう一度聞く</button>
             <button class="secondary-button" id="no-space-other" type="button">別の施設を選ぶ</button>
-            <button class="secondary-button" id="no-space-retry" type="button">空き状況を更新</button>
+            <button class="secondary-button" id="no-space-retry" type="button">再探索</button>
           </div>
         </section>
         <div id="result-content" hidden>
@@ -463,7 +480,7 @@
           <section id="parking-arrival-panel" class="parking-arrival-panel" hidden aria-labelledby="parking-arrival-heading">
             <h2 id="parking-arrival-heading">カメラによる駐車確認</h2>
             <p id="parking-arrival-status" role="status" aria-live="polite">案内先の駐車を確認しています。</p>
-            <button class="primary-button full-width" id="parking-arrival-confirm" type="button" disabled>自分の車の駐車を確認して案内終了</button>
+            <button class="primary-button full-width" id="parking-arrival-confirm" type="button" disabled>駐車完了</button>
             <p class="muted">車両の持ち主はカメラだけでは特定できません。安全に停車してから操作してください。</p>
           </section>
           <section class="result-summary" aria-labelledby="space-number">
@@ -496,8 +513,8 @@
           </section>
 
           <div class="button-group result-actions">
-            <button class="primary-button" id="voice-guide-button" type="button">音声で案内</button>
-            <button class="secondary-button" id="retry-button" type="button">空き状況を更新</button>
+            <button class="primary-button" id="voice-guide-button" type="button">案内をもう一度聞く</button>
+            <button class="secondary-button" id="retry-button" type="button">再探索</button>
             <button class="secondary-button" id="end-guidance-button" type="button">案内を終了</button>
           </div>
         </div>

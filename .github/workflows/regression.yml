@@ -12,6 +12,6 @@ jobs:
         with:
           node-version: '22'
       - name: Check JavaScript syntax
-        run: node --check app.js && node --check voice-guide-scripts.js && node --check voice-audio-cache.js && node --check live-status.js && node --check recorded-demo.js
+        run: node --check app.js && node --check voice-guide-scripts.js && node --check voice-guide-playback.js && node --check voice-audio-cache.js && node --check live-status.js && node --check recorded-demo.js
       - name: Run user-app tests
         run: node --test tests/*.test.cjs

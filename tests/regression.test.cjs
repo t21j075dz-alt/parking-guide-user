@@ -965,3 +965,54 @@ test("組み立て方式では保存済みの施設名・固定文を順番に�
   assert.ok(starts[0] < starts[1] && starts[1] < starts[2]);
   run("cancelSpeech()");
 });
+
+
+test("未保存の組み立て音声は外部APIを呼ばずに同じ案内文を端末音声で再生する", async () => {
+  const {run,context}=app();
+  vm.runInContext(fs.readFileSync(path.join(__dirname,"../voice-guide-playback.js"),"utf8"),context);
+  let externalCalls=0;
+  context.fetch=async()=>{ externalCalls+=1; throw new Error("external TTS must not be called"); };
+  context.navigator={audioSession:{type:"ambient"}, onLine:false};
+  const utterances=[];
+  class Speech {
+    constructor(text) { this.text=text; this.handlers={}; }
+    addEventListener(name,fn) {this.handlers[name]=fn;}
+  }
+  context.SpeechSynthesisUtterance=Speech;
+  context.window.SpeechSynthesisUtterance=Speech;
+  context.window.speechSynthesis.getVoices=()=>[
+    {name:"Google 日本語",lang:"ja-JP",localService:true,voiceURI:"voice:test"},
+  ];
+  context.window.speechSynthesis.cancel=()=>{};
+  context.window.speechSynthesis.speak=u=>{
+    utterances.push(u.text);
+    Promise.resolve().then(()=>{u.handlers.start?.();u.handlers.end?.();});
+  };
+  context.window.AudioContext=class {
+    constructor(){this.destination={};this.currentTime=0;this.state="running";}
+    createOscillator(){return {frequency:{setValueAtTime(){}},connect(){},start(){},stop(){}};}
+    createGain(){return {gain:{setValueAtTime(){}},connect(){}};}
+    createBufferSource(){return {connect(){},start(){},stop(){},addEventListener(){}};}
+    decodeAudioData(){return Promise.resolve({duration:1});}
+    resume(){return Promise.resolve();}
+    close(){return Promise.resolve();}
+  };
+  context.window.ParkingVoiceAudioCache={
+    async get(_message,options){
+      assert.equal(options.cachedOnly,true);
+      throw new Error("Audio clip is not prepared");
+    },
+  };
+  run("state.cloudVoiceEnabled=true;state.voiceEnabled=true;");
+  const intro="まもなく目的地です。ご希望の駐車枠をご案内します。";
+  const space="Aエリアの12番です。";
+  const caution="現地の標識や係員の案内を優先し、駐車場内は徐行してください。";
+  const message=intro+"繰り返します。"+space+space+caution+caution+caution;
+  const parts=[intro,"繰り返します。",space,space,caution,caution,caution];
+  assert.equal(run("speakText("+JSON.stringify(message)+",{parts:"+JSON.stringify(parts)+"})"),true);
+  for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));
+  const expected=run("normalizeJapaneseSpeech("+JSON.stringify(message)+")");
+  assert.equal(utterances.join(""),expected);
+  assert.equal(externalCalls,0);
+  assert.ok(utterances.length>=2,"chunked sentence assembly");
+});
