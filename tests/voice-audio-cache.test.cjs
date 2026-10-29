@@ -7,9 +7,10 @@ const { webcrypto } = require("node:crypto");
 
 const source = fs.readFileSync(path.join(__dirname, "../voice-audio-cache.js"), "utf8");
 
-function createAudioHarness() {
+function createAudioHarness({ rateLimited = false } = {}) {
   const entries = new Map();
   let calls = 0;
+  const storageValues = new Map();
   let online = true;
   const fakeBytes = new Uint8Array(512).fill(23).buffer;
   const cache = {
@@ -25,10 +26,12 @@ function createAudioHarness() {
   const navigator = {};
   Object.defineProperty(navigator, "onLine", { get: () => online });
   const context = vm.createContext({
+    localStorage: { getItem(key) { return storageValues.get(key) ?? null; }, setItem(key, value) { storageValues.set(key, value); } },
     window: { caches: {}, location: { href: "https://example.test/parking-guide-user/#facility" }, crypto: webcrypto },
     navigator, caches: { async open() { return cache; } },
     fetch: async (url) => {
       calls++;
+      if (url.includes("/synthesis?") && rateLimited) return { ok: false, status: 429 };
       if (url.includes("/synthesis?")) return {
         ok: true, async json() { return { success: true,
           mp3DownloadUrl: "https://audio1.tts.quest/v1/data/abc123/audio.mp3",
@@ -43,7 +46,7 @@ function createAudioHarness() {
   });
   vm.runInContext(source, context);
   return { api: context.window.ParkingVoiceAudioCache, entries,
-    getCalls: () => calls, setOnline: v => { online = v; } };
+    getCalls: () => calls, setOnline: v => { online = v; }, setRateLimited: v => { rateLimited = v; } };
 }
 
 test("first request generates audio once, then replays the saved file offline", async () => {
@@ -79,4 +82,35 @@ test("preparing repeated messages generates each clip only once", async () => {
   const second = await h.api.prepare(["発話一", "発話二"]);
   assert.equal(second.saved, 2);
   assert.equal(h.getCalls(), 6);
+});
+
+
+test("HTTP 429 starts a cooldown and prevents repeated third-party synthesis requests", async () => {
+  const h = createAudioHarness({ rateLimited: true });
+  await assert.rejects(h.api.get("未保存"), /429/);
+  const afterFailure = h.getCalls();
+  assert.equal(afterFailure, 1);
+  assert.equal(h.api.status().blocked, true);
+  assert.ok(h.api.status().cooldownSeconds > 0);
+  await assert.rejects(h.api.get("別の未保存"), /429/);
+  assert.equal(h.getCalls(), afterFailure, "429中は生成要求を送信しない");
+});
+
+test("a cached voice file remains available during HTTP 429 cooldown", async () => {
+  const h = createAudioHarness();
+  assert.equal((await h.api.get("保存済み音声")).source, "created");
+  h.setRateLimited(true);
+  await assert.rejects(h.api.get("新規音声"), /429/);
+  const calls = h.getCalls();
+  assert.equal((await h.api.get("保存済み音声", { cachedOnly: true })).source, "saved");
+  assert.equal(h.getCalls(), calls);
+});
+
+test("a batch stops after rate limiting and reports its failed count", async () => {
+  const h = createAudioHarness({ rateLimited: true });
+  const results = await h.api.prepare(["音声1", "音声2", "音声3"]);
+  assert.equal(results.failed, 1);
+  assert.equal(results.created, 0);
+  assert.equal(h.getCalls(), 1);
+  assert.ok(results.cooldownSeconds > 0);
 });
