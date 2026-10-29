@@ -42,8 +42,31 @@ const DEMO_FACILITY = Object.freeze({
   isDemo: true,
 });
 
+// 録画動画をYOLOで解析しながら案内する研究実演施設。
+// 実際の「自宅テスト用」とは別IDなので、現地の現在の空き情報を書き換えない。
+const VIDEO_REPLAY_FACILITY_ID = "home-video-demo-001";
+const VIDEO_REPLAY_FACILITY = Object.freeze({
+  id: VIDEO_REPLAY_FACILITY_ID,
+  name: "自宅駐車場（録画YOLO実演）",
+  displayName: "自宅駐車場（録画YOLO実演）",
+  prefecture: "岡山県",
+  municipality: "岡山市（実験地点は現在地）",
+  address: "現在地（録画実演用・実際の現在の空き情報ではありません）",
+  category: "experiment",
+  locationVerified: false,
+  coordinateSource: "端末の現在地を実験用として利用。自宅の住所は公開しない",
+  operatingStatus: "active",
+  layoutId: VIDEO_REPLAY_FACILITY_ID,
+  isDemo: false,
+  isPrivateTest: true,
+  requiresLocalCalibration: true,
+  isRecordedExperiment: true,
+  researchSpaceCount: 6,
+  statusNote: "過去の録画をYOLOが逐次解析する実演。実際の現在の空きではありません",
+});
+
 // sampleRole は研究上の分類に使用し、一覧の表示条件にはしない。
-const FACILITIES = Object.freeze([DEMO_FACILITY, ...FACILITY_CATALOG]);
+const FACILITIES = Object.freeze([DEMO_FACILITY, VIDEO_REPLAY_FACILITY, ...FACILITY_CATALOG]);
 
 const CATEGORY_LABELS = Object.freeze({
   supermarket: "スーパー・食品店",
@@ -1001,7 +1024,9 @@ function renderFacilities() {
       badge.className = `availability-badge availability-${occupancy.level}`;
       badge.textContent = isEnglish() ? ({rest:"Day off",closed:"Closed",full:"Full",busy:"Busy",open:"Open",unknown:"—"}[occupancy.level]) : ({rest:"休",closed:"閉",full:"満",busy:"混",open:"空",unknown:"—"}[occupancy.level]);
       const source = document.createElement("small");
-      source.textContent = facility.isRecordedExperiment && !occupancy.live
+      source.textContent = facility.id === VIDEO_REPLAY_FACILITY_ID
+        ? ui("録画YOLO実演・現在の空きではありません", "Recorded YOLO demo · not current") :
+        facility.isRecordedExperiment && !occupancy.live
         ? ui("録画実験・現在未確認", "Recorded experiment") :
         occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
       action.append(badge, source);
@@ -2129,7 +2154,10 @@ function getFacilityOccupancy(facility) {
     recordedExperiment: facility?.isRecordedExperiment === true };
 }
 function getOccupancyLabel(occupancy) {
-  const source = occupancy.live ? ui("カメラ確認", "Camera verified")
+  const source = state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID
+    ? ui("録画映像を逐次YOLO判定・実際の空きではありません",
+         "Recorded YOLO replay · not current availability")
+    : occupancy.live ? ui("カメラ確認", "Camera verified")
     : occupancy.recordedExperiment ? ui("録画実験・現在未確認", "Recorded experiment · not live")
     : occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
   const label = {rest:ui("休業日（休）", "Day off"),closed:occupancy.preOpening?ui("開店前（閉）・案内可能", "Before opening · early guidance available"):ui("営業時間外（閉）", "Closed outside opening hours"),full:ui("満車", "Full"),busy:ui("混雑", "Busy"),open:ui("空きあり", "Spaces available"),unknown:ui("空き状況未確認", "Availability unknown")}[occupancy.level];
@@ -2161,8 +2189,16 @@ function updateSearchResultNotice() {
         ? ui("カメラとの通信を確認できません。最新の空きを案内できません。", "Cannot reach the camera status service. Live availability is unverified.")
         : (state.searchOutcome === "not-found" ? ui("駐車場全体：", "Entire parking lot: ") : "")
           + getOccupancyLabel(occupancy)
-          + (state.resultLive ? ui("（数秒ごとに更新・現地優先）", " (updates every few seconds; follow on-site signs)")
-            : ui("（実際の空き情報ではありません）", " (not live availability)")));
+          + (state.resultLive && state.selectedFacility?.id !== VIDEO_REPLAY_FACILITY_ID
+              ? ui("（数秒ごとに更新・現地優先）", " (updates every few seconds; follow on-site signs)")
+              : ui("（実際の空き情報ではありません）", " (not live availability)")));
+  if (state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID) {
+    // ここは結果・案内画面でも常に「録画再生中」と明示する。
+    searchStatus.textContent = ui(
+      "【録画YOLO実演・現在の駐車場ではありません】",
+      "[Recorded YOLO demo — not current parking conditions] "
+    ) + " " + searchStatus.textContent;
+  }
   congestionNotice.hidden = occupancy.level !== "busy" || state.searchOutcome !== "found";
   congestionNotice.textContent = ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: only ${occupancy.available} spaces remain.`);
   noSpaceContent.hidden = state.searchOutcome !== "not-found";
@@ -3230,7 +3266,7 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale()) {
   const remaining = typeof japaneseNumber === "function" ? japaneseNumber(occupancy.available) : occupancy.available;
   const approaching = state.lastSearchWasAuto && facility;
   const messages = {
-    "ja-JP": `${approaching ? `${facility}にせっきんしました。` : facility ? `${facility}のごあんないです。` : ""}${crowded ? `こんざつしています。あきは、のこり${remaining}くかくです。` : ""}ごあんないするくかくは、${number}ばんです。しゅういのあんぜんと、げんちのひょうじをかくにんしてください。くかくがみつからないばあいは、こうどうでまつことなく、あんぜんにつうかしてください。`,
+    "ja-JP": `${state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID ? "これはろくがえいぞうによるけんきゅうじつえんです。げんざいのあきじょうきょうではありません。" : ""}${approaching ? `${facility}にせっきんしました。` : facility ? `${facility}のごあんないです。` : ""}${crowded ? `こんざつしています。あきは、のこり${remaining}くかくです。` : ""}ごあんないするくかくは、${number}ばんです。しゅういのあんぜんと、げんちのひょうじをかくにんしてください。くかくがみつからないばあいは、こうどうでまつことなく、あんぜんにつうかしてください。`,
     "en-US": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is number ${number}. Check your surroundings and on-site signs before parking. If no space can be found, do not queue on the public road; safely continue past the entrance.`,
     "en-GB": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is number ${number}. Check your surroundings and on-site signs before parking. If no space can be found, do not queue on the public road; safely continue past the entrance.`,
     "zh-CN": `${approaching ? `已接近${facility}。` : facility ? `为您提供${facility}的停车位指引。` : ""}推荐的停车位是${number}号。请确认周围安全及现场标识后停车。若找不到车位，请勿在公共道路排队等候，确认安全后继续通过。`,
