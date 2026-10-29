@@ -380,7 +380,7 @@ test('音声ファイル方式は初期状態では無効で、同意前に外�
   assert.equal(run("isTrustedVoiceAudioUrl('https://audio2.tts.quest.evil.test/v1/data/a12b3c/audio.mp3')"), false);
 });
 
-test('同意後は日本語案内をWeb Audioへ流し、通常の端末読み上げを使わない', async () => {
+test('保存済み日本語音声をWeb Audioへ流し、通常の端末読み上げを使わない', async () => {
   const { run, context } = app();
   let synthesisCalls = 0;
   let voiceAudio = null;
@@ -404,18 +404,8 @@ test('同意後は日本語案内をWeb Audioへ流し、通常の端末読み�
     resume() { return Promise.resolve(); }
     close() { return Promise.resolve(); }
   };
-  context.fetch = async (url) => {
-    if (url.startsWith('https://api.tts.quest/')) {
-      submittedText = new URL(url).searchParams.get('text');
-      return { ok: true, json: async () => ({
-        success: true,
-        audioStatusUrl: 'https://audio2.tts.quest/v1/data/a12b3c/status.json',
-        mp3DownloadUrl: 'https://audio2.tts.quest/v1/data/a12b3c/audio.mp3',
-      }) };
-    }
-    if (url.endsWith('status.json')) return { ok: true, json: async () => ({ isAudioReady: true }) };
-    if (url.endsWith('audio.mp3')) return { ok: true, arrayBuffer: async () => new ArrayBuffer(4) };
-    throw new Error('unexpected URL ' + url);
+  context.window.ParkingVoiceAudioCache = {
+    async get(text) { submittedText = text; return { bytes: new ArrayBuffer(4), source: "saved" }; },
   };
   run('state.cloudVoiceEnabled = true');
   assert.equal(run("speakText('駐車区画、5番です。')"), true);
@@ -447,7 +437,7 @@ test('外部VOICEVOX接続エラーが画面に出て、端末の音声へ戻る
     resume() { return Promise.resolve(); }
     close() { return Promise.resolve(); }
   };
-  context.fetch = async () => ({ ok: false, status: 429 });
+  context.window.ParkingVoiceAudioCache = { async get() { throw new Error('VOICEVOX API HTTP 429'); } };
   run('state.cloudVoiceEnabled = true');
   assert.equal(run("speakText('診断音声', {preview: true})"), true);
   await new Promise((resolve) => setImmediate(resolve));
