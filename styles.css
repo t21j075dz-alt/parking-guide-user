@@ -2257,3 +2257,20 @@ html[data-theme="dark"] .parking-map.parking-map--layout {
   outline: 3px dashed #b7411d;
   outline-offset: 2px;
 }
+
+/* 研究用: 希望区画の指定と、カメラ判定→本人確認の完了導線。 */
+.parking-target-panel {
+  margin: 1rem 0;
+  padding: clamp(1rem, 3vw, 1.3rem);
+  border: 1px solid var(--border-color, #b7c6d5);
+  border-radius: .9rem;
+  background: var(--surface, #f7fafc);
+  display: grid;
+  gap: .8rem;
+}
+.parking-target-panel[hidden] { display: none !important; }
+.parking-target-panel h2 { font-size: 1.1rem; margin: 0; }
+.parking-target-panel p { margin: 0; line-height: 1.7; }
+.parking-target-panel select { width: 100%; min-height: 2.8rem; font-size: 1rem; }
+.parking-target-panel button { min-height: 2.8rem; }
+#parking-target-status { font-weight: 600; }
