@@ -11,6 +11,20 @@
   const SPEAKER = 8;
   const MAX_FILES = 750; // 全施設名・案内の固定文・駐車枠番号を保持できるよう拡張
   const MAX_BYTES = 8 * 1024 * 1024;
+  const MAX_NEW_PER_BATCH = 8; // 大量一括生成による429を避ける
+  const COOLDOWN_MS = 30 * 60 * 1000;
+  const COOLDOWN_STORAGE_KEY = "parkingVoiceQuestBlockedUntilV1";
+  let blockedUntil = 0;
+  let lastSynthesisStarted = 0;
+  let synthesisInFlight = null;
+  try { blockedUntil = Math.max(0, Number(localStorage.getItem(COOLDOWN_STORAGE_KEY)) || 0); } catch {}
+  function cooldownSeconds() { return Math.ceil(Math.max(0, blockedUntil - Date.now()) / 1000); }
+  function markRateLimited() {
+    blockedUntil = Date.now() + COOLDOWN_MS;
+    try { localStorage.setItem(COOLDOWN_STORAGE_KEY, String(blockedUntil)); } catch {}
+  }
+  function status() { return { cooldownSeconds: cooldownSeconds(), blocked: cooldownSeconds() > 0 }; }
+
   const SCOPE = new URL("./", window.location.href);
 
   function trustedAudioUrl(value) {
@@ -56,10 +70,36 @@
     if (signal?.aborted) controller.abort();
     else signal?.addEventListener("abort", abort, { once: true });
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    if (cooldownSeconds()) {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      throw new Error("VOICEVOX HTTP 429 cooldown");
+    }
+    // 複数のボタン・タブ操作でも短時間に連続生成しない。
+    // 保存済み音声の再生ではこの待機は発生しない。
+    const ahead = synthesisInFlight;
+    const work = (async () => {
+      if (ahead) await ahead.catch(() => {});
+      if (cooldownSeconds()) throw new Error("VOICEVOX HTTP 429 cooldown");
+      const remaining = Math.max(0, lastSynthesisStarted + 2000 - Date.now());
+      if (remaining > 0) await pause(remaining, controller.signal);
+      if (cooldownSeconds()) throw new Error("VOICEVOX HTTP 429 cooldown");
+      lastSynthesisStarted = Date.now();
+    })();
+    synthesisInFlight = work;
+    try {
+      await work;
+    } finally {
+      if (synthesisInFlight === work) synthesisInFlight = null;
+    }
     try {
       const endpoint = "https://api.tts.quest/v3/voicevox/synthesis?speaker="
         + SPEAKER + "&text=" + encodeURIComponent(message);
       const response = await fetch(endpoint, { signal: controller.signal });
+      if (response.status === 429) {
+        markRateLimited();
+        throw new Error("VOICEVOX API HTTP 429");
+      }
       if (!response.ok) throw new Error("VOICEVOX API HTTP " + response.status);
       const output = await response.json();
       if (!output?.success || !trustedAudioUrl(output.mp3DownloadUrl)
@@ -100,6 +140,7 @@
       } catch { /* 保存済みファイルが壊れていても通常生成へ進む。 */ }
     }
     if (options.cachedOnly) throw new Error("Audio clip is not prepared");
+    if (cooldownSeconds()) throw new Error("VOICEVOX HTTP 429 cooldown");
     if (navigator.onLine === false) throw new Error("Audio not saved and device is offline");
     const bytes = await synthesize(message, options);
     let persisted = false;
@@ -120,9 +161,21 @@
 
   async function prepare(messages, onProgress = () => {}, signal = null) {
     const unique = [...new Set(messages.filter(v => typeof v === "string" && v.trim()))];
-    let saved = 0, created = 0, failed = 0;
+    let saved = 0, created = 0, failed = 0, deferred = 0;
     for (const message of unique) {
       if (signal?.aborted) break;
+      // まず保存の有無だけ確認。新規生成は最大8件で明示操作を区切る。
+      let cached;
+      try { cached = await get(message, { signal, cachedOnly: true }); } catch {}
+      if (cached) {
+        saved += 1;
+        onProgress({ total: unique.length, done: saved + created + failed, saved, created, failed, deferred });
+        continue;
+      }
+      if (created >= MAX_NEW_PER_BATCH || cooldownSeconds()) {
+        deferred += 1;
+        continue;
+      }
       try {
         const audio = await get(message, { signal });
         if (audio.source === "saved") saved += 1;
@@ -131,15 +184,15 @@
       } catch (error) {
         failed += 1;
         if (signal?.aborted || /HTTP 429/.test(String(error?.message))) {
-          onProgress({ total: unique.length, done: saved + created + failed, saved, created, failed, error: String(error?.message || "") });
+          onProgress({ total: unique.length, done: saved + created + failed, saved, created, failed, deferred, error: String(error?.message || "") });
           break;
         }
       }
       onProgress({ total: unique.length, done: saved + created + failed,
-        saved, created, failed });
+        saved, created, failed, deferred });
       if (navigator.onLine === false) break;
     }
-    return { total: unique.length, saved, created, failed };
+    return { total: unique.length, saved, created, failed, deferred, cooldownSeconds: cooldownSeconds() };
   }
 
   async function count() {
@@ -148,5 +201,5 @@
     try { return (await cache.keys()).length; } catch { return null; }
   }
 
-  window.ParkingVoiceAudioCache = Object.freeze({ get, prepare, count });
+  window.ParkingVoiceAudioCache = Object.freeze({ get, prepare, count, status });
 })();
