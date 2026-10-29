@@ -1010,7 +1010,7 @@ test("未保存の組み立て音声は外部APIを呼ばずに同じ案内文�
   const message=intro+"繰り返します。"+space+space+caution+caution+caution;
   const parts=[intro,"繰り返します。",space,space,caution,caution,caution];
   assert.equal(run("speakText("+JSON.stringify(message)+",{parts:"+JSON.stringify(parts)+"})"),true);
-  for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));
+  await new Promise(resolve=>setTimeout(resolve, 2600));
   const expected=run("normalizeJapaneseSpeech("+JSON.stringify(message)+")");
   assert.equal(utterances.join(""),expected);
   assert.equal(externalCalls,0);

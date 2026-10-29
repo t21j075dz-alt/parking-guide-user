@@ -139,6 +139,41 @@
         if (stored) return { bytes: await stored.arrayBuffer(), source: "saved" };
       } catch { /* 保存済みファイルが壊れていても通常生成へ進む。 */ }
     }
+    // 管理者が登録時に作成した店舗名音声をSupabase Storageから取得する。
+    // 音声ファイルの生成はここでは一切行わない（429やAPI遅延に影響されない）。
+    if (options.remote === true && navigator.onLine !== false && key) {
+      try {
+        const base = window.PARKING_REMOTE_CONFIG?.supabaseUrl;
+        if (window.PARKING_REMOTE_CONFIG?.enabled === true && /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(base || "")) {
+          const hash = key.match(/\/([0-9a-f]{64})\.mp3$/)?.[1];
+          if (hash) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 2600);
+            const onAbort = () => controller.abort();
+            options.signal?.addEventListener?.("abort", onAbort, { once: true });
+            try {
+              const response = await fetch(base + "/storage/v1/object/public/parking-voice/ja-JP/" + hash + ".mp3", {
+                signal: controller.signal, cache: "force-cache",
+              });
+              if (response.ok && Number(response.headers.get("content-length") || "0") <= MAX_BYTES) {
+                const bytes = await response.arrayBuffer();
+                if (bytes.byteLength >= 200 && bytes.byteLength <= MAX_BYTES) {
+                  if (cache) {
+                    try { await cache.put(key, new Response(bytes.slice(0), {
+                      headers: { "Content-Type": "audio/mpeg" },
+                    })); } catch {}
+                  }
+                  return { bytes, source: "shared" };
+                }
+              }
+            } finally {
+              clearTimeout(timer);
+              options.signal?.removeEventListener?.("abort", onAbort);
+            }
+          }
+        }
+      } catch { /* クラウド音声が未生成・取得失敗でも端末音声へ切り替える。 */ }
+    }
     if (options.cachedOnly) throw new Error("Audio clip is not prepared");
     if (cooldownSeconds()) throw new Error("VOICEVOX HTTP 429 cooldown");
     if (navigator.onLine === false) throw new Error("Audio not saved and device is offline");

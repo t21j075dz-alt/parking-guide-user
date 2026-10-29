@@ -7,7 +7,7 @@ const { webcrypto } = require("node:crypto");
 
 const source = fs.readFileSync(path.join(__dirname, "../voice-audio-cache.js"), "utf8");
 
-function createAudioHarness({ rateLimited = false } = {}) {
+function createAudioHarness({ rateLimited = false, remoteEnabled = false } = {}) {
   const entries = new Map();
   let calls = 0;
   const storageValues = new Map();
@@ -27,10 +27,14 @@ function createAudioHarness({ rateLimited = false } = {}) {
   Object.defineProperty(navigator, "onLine", { get: () => online });
   const context = vm.createContext({
     localStorage: { getItem(key) { return storageValues.get(key) ?? null; }, setItem(key, value) { storageValues.set(key, value); } },
-    window: { caches: {}, location: { href: "https://example.test/parking-guide-user/#facility" }, crypto: webcrypto },
+    window: { caches: {},
+      PARKING_REMOTE_CONFIG: remoteEnabled ? { enabled:true, supabaseUrl:"https://gahoqlpuufqjqpyaaykt.supabase.co" } : {},
+      location: { href: "https://example.test/parking-guide-user/#facility" }, crypto: webcrypto },
     navigator, caches: { async open() { return cache; } },
     fetch: async (url) => {
       calls++;
+      if (url.includes("/storage/v1/object/public/parking-voice/ja-JP/"))
+        return { ok: true, headers: {get: () => "512"}, arrayBuffer: async () => fakeBytes.slice(0) };
       if (url.includes("/synthesis?") && rateLimited) return { ok: false, status: 429 };
       if (url.includes("/synthesis?")) return {
         ok: true, async json() { return { success: true,
@@ -113,4 +117,16 @@ test("a batch stops after rate limiting and reports its failed count", async () 
   assert.equal(results.created, 0);
   assert.equal(h.getCalls(), 1);
   assert.ok(results.cooldownSeconds > 0);
+});
+
+
+test("cloud prepared store names download once, then play from local cache offline", async () => {
+  const h = createAudioHarness({ remoteEnabled: true });
+  const first = await h.api.get("らむー おかやまてん", { cachedOnly:true, remote:true });
+  assert.equal(first.source, "shared");
+  assert.equal(h.getCalls(), 1, "only one Supabase Storage fetch");
+  h.setOnline(false);
+  const second = await h.api.get("らむー おかやまてん", { cachedOnly:true, remote:true });
+  assert.equal(second.source, "saved");
+  assert.equal(h.getCalls(), 1, "offline replay must not use network");
 });
