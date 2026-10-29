@@ -3109,7 +3109,7 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
         }, { once: true });
       }
       source.start(cursor);
-      cursor += buffer.duration / rate + (fromSavedParts ? 0.035 : 0);
+      cursor += buffer.duration / rate + (fromSavedParts && /[。！？]$/.test(parts[index]) ? 0.07 : 0);
     });
     configureVoiceAudioSession();
     setCloudVoiceDiagnostic(fromSavedParts
