@@ -1006,10 +1006,9 @@ test("未保存の組み立て音声は外部APIを呼ばずに同じ案内文�
   run("state.cloudVoiceEnabled=true;state.voiceEnabled=true;");
   const intro="まもなく目的地です。ご希望の駐車枠をご案内します。";
   const space="Aエリアの12番です。";
-  const message=intro+"繰り返します。"+space+space+
-    "現地の標識や係員の案内を優先し、駐車場内は徐行してください。";
-  const parts=[intro,"繰り返します。",space,space,
-    "現地の標識や係員の案内を優先し、駐車場内は徐行してください。"];
+  const caution="現地の標識や係員の案内を優先し、駐車場内は徐行してください。";
+  const message=intro+"繰り返します。"+space+space+caution+caution+caution;
+  const parts=[intro,"繰り返します。",space,space,caution,caution,caution];
   assert.equal(run("speakText("+JSON.stringify(message)+",{parts:"+JSON.stringify(parts)+"})"),true);
   for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));
   const expected=run("normalizeJapaneseSpeech("+JSON.stringify(message)+")");
