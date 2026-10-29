@@ -3187,8 +3187,8 @@ function publishGuidanceTranscript(message, mode = "") {
 function speakDeviceAssembledParts(message, parts, requestId) {
   const speech = window.speechSynthesis;
   if (!speech || !window.SpeechSynthesisUtterance) return false;
-  const chunks = window.ParkingVoiceAssembler?.sentences(parts)
-    || [message];
+  const chunks = window.ParkingVoiceAssembler?.segments?.(parts)
+    || [{ text: message, pauseAfterMs: 0 }];
   if (!chunks.length) return false;
   const locale = getGuidanceSpeechLocale();
   const candidates = getSpeechVoices();
@@ -3200,7 +3200,7 @@ function speakDeviceAssembledParts(message, parts, requestId) {
   function advance() {
     if (requestId !== speechRequestId || index >= chunks.length) return;
     const chunk = chunks[index];
-    const utterance = new SpeechSynthesisUtterance(localeForSpeechMessage(chunk));
+    const utterance = new SpeechSynthesisUtterance(localeForSpeechMessage(chunk.text));
     utterance.lang = locale;
     const selected = usedLocalFallback ? (localVoice || selectedVoice) : (selectedVoice || localVoice);
     if (selected) utterance.voice = selected;
@@ -3235,7 +3235,8 @@ function speakDeviceAssembledParts(message, parts, requestId) {
       settled = true;
       index += 1;
       if (index < chunks.length) {
-        advance();
+        // 文意が切れる位置だけに短い間を作り、番号を繰り返す前は長めに区切る。
+        setTimeout(() => { if (requestId === speechRequestId) advance(); }, chunk.pauseAfterMs);
       } else {
         stopSpeechAudioRoute();
         releasePriorityAudioSession();
