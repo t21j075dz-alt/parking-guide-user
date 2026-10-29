@@ -3257,10 +3257,22 @@ function getCurrentGuidanceMessage(locale = getGuidanceSpeechLocale()) {
   return getClosingAnnouncement(locale) + getParkingGuidanceMessage(locale);
 }
 function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale()) {
+  // すべての案内言語で「録画の実演」であることを先に伝える。
+  // 音声だけ聞く利用者にも実際の空き案内と誤解させない。
+  const replayWarnings = {
+    "ja-JP": "これはろくがえいぞうによるけんきゅうじつえんです。げんざいのあきじょうきょうではありません。",
+    "en-US": "This is a demonstration using recorded footage, not current parking availability. ",
+    "en-GB": "This is a demonstration using recorded footage, not current parking availability. ",
+    "zh-CN": "这是过去录像的研究演示，不代表目前的停车位状态。",
+    "ko-KR": "이것은 녹화 영상을 이용한 연구 시연입니다. 현재 주차 상황이 아닙니다. ",
+    "es-ES": "Esta es una demostración con una grabación, no la disponibilidad actual del aparcamiento. ",
+  };
+  const replayNotice = state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID
+    ? (replayWarnings[locale] || replayWarnings["en-US"]) : "";
   if (state.searchOutcome === "not-found") {
     const full = summarizeOccupancy(state.currentSpaces, state.resultSimulation).level === "full";
     const fullMessages = {"ja-JP":"とうろくでーたでは、まんしゃです。", "en-US":"The saved data shows a full parking lot. ", "en-GB":"The saved data shows a full car park. ", "zh-CN":"已保存的数据显示停车场已满。", "ko-KR":"저장된 데이터상 주차장이 만차입니다. ", "es-ES":"Los datos guardados indican que el aparcamiento está lleno. "};
-    return (full ? fullMessages[locale] ?? fullMessages["en-US"] : "") + getNoSpaceGuidanceMessage(locale);
+    return replayNotice + (full ? fullMessages[locale] ?? fullMessages["en-US"] : "") + getNoSpaceGuidanceMessage(locale);
   }
   if (!state.recommendedSpace) return "";
   const number = getSpokenSpaceId(state.recommendedSpace, locale);
@@ -3270,7 +3282,7 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale()) {
   const remaining = typeof japaneseNumber === "function" ? japaneseNumber(occupancy.available) : occupancy.available;
   const approaching = state.lastSearchWasAuto && facility;
   const messages = {
-    "ja-JP": `${state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID ? "これはろくがえいぞうによるけんきゅうじつえんです。げんざいのあきじょうきょうではありません。" : ""}${approaching ? `${facility}にせっきんしました。` : facility ? `${facility}のごあんないです。` : ""}${crowded ? `こんざつしています。あきは、のこり${remaining}くかくです。` : ""}ごあんないするくかくは、${number}ばんです。しゅういのあんぜんと、げんちのひょうじをかくにんしてください。くかくがみつからないばあいは、こうどうでまつことなく、あんぜんにつうかしてください。`,
+    "ja-JP": `${approaching ? `${facility}にせっきんしました。` : facility ? `${facility}のごあんないです。` : ""}${crowded ? `こんざつしています。あきは、のこり${remaining}くかくです。` : ""}ごあんないするくかくは、${number}ばんです。しゅういのあんぜんと、げんちのひょうじをかくにんしてください。くかくがみつからないばあいは、こうどうでまつことなく、あんぜんにつうかしてください。`,
     "en-US": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is number ${number}. Check your surroundings and on-site signs before parking. If no space can be found, do not queue on the public road; safely continue past the entrance.`,
     "en-GB": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is number ${number}. Check your surroundings and on-site signs before parking. If no space can be found, do not queue on the public road; safely continue past the entrance.`,
     "zh-CN": `${approaching ? `已接近${facility}。` : facility ? `为您提供${facility}的停车位指引。` : ""}推荐的停车位是${number}号。请确认周围安全及现场标识后停车。若找不到车位，请勿在公共道路排队等候，确认安全后继续通过。`,
@@ -3278,7 +3290,7 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale()) {
     "es-ES": `${approaching ? `Se está acercando a ${facility}. ` : facility ? `Guía de aparcamiento para ${facility}. ` : ""}La plaza recomendada es la número ${number}. Compruebe la seguridad de su entorno y las señales antes de aparcar. Si no encuentra una plaza, no espere en la vía pública; continúe de forma segura.`,
   };
   const crowdMessages = {"en-US": `The parking lot is busy. Only ${occupancy.available} spaces remain. `, "en-GB": `The car park is busy. Only ${occupancy.available} spaces remain. `, "zh-CN": `停车场拥挤，仅剩${occupancy.available}个空车位。`, "ko-KR": `주차장이 혼잡합니다. 빈 공간은 ${occupancy.available}개입니다. `, "es-ES": `El aparcamiento está concurrido. Solo quedan ${occupancy.available} plazas. `};
-  return (crowded && locale !== "ja-JP" ? crowdMessages[locale] ?? crowdMessages["en-US"] : "") + (messages[locale] ?? messages["en-US"]);
+  return replayNotice + (crowded && locale !== "ja-JP" ? crowdMessages[locale] ?? crowdMessages["en-US"] : "") + (messages[locale] ?? messages["en-US"]);
 }
 
 /** 自動探索、手動探索、再案内で同じ案内文を使う。 */
