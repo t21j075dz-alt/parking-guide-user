@@ -299,7 +299,7 @@ const STATIC_JA_EN = Object.freeze({
   "日本語は端末の利用可能な音声を使い、Google日本語がある場合は優先します。English表示では英語・中国語・韓国語・スペイン語を選べます。":
     "Japanese uses an available device voice, preferring Google Japanese if installed. English view offers other languages.",
   "日本語 / 端末音声": "Japanese / Device voice",
-  "日本語 / 外部音声（実験）": "Japanese / External voice (experimental)",
+  "日本語 / 保存済み音声＋端末音声": "Japanese / Prepared + device voice",
   "音声案内言語": "Voice guidance language",
   "音声を試す": "Test voice",
   "音声ファイル方式を試す（外部音声合成）": "Try audio-file voice (external synthesis)",
@@ -2676,7 +2676,7 @@ function updateVoiceModeUi() {
     voiceModeLabel.textContent = english
       ? ui("音声案内言語", "Voice guidance language")
       : state.cloudVoiceEnabled
-        ? ui("日本語 / 外部音声（実験）", "Japanese / External voice (experimental)")
+        ? ui("日本語 / 保存済み音声＋端末音声", "Japanese / Prepared + device voice")
         : ui("日本語 / 端末音声", "Japanese / Device voice");
   }
 
@@ -2722,8 +2722,8 @@ function updateVoiceStatus(message = "", stateName = "") {
     voiceStatus.textContent = message;
   } else if (state.cloudVoiceEnabled && getGuidanceSpeechLocale() === "ja-JP") {
     voiceStatus.textContent = ui(
-      "使用音声: VOICEVOX:春日部つむぎ（保存済み音声はオフラインでも再生可能）",
-      "Voice: VOICEVOX Kasukabe Tsumugi (saved clips work offline)",
+      "音声: 保存済みVOICEVOXを優先し、未保存分は端末の音声を使用します。",
+      "Voice: saved VOICEVOX clips first; device speech for missing clips.",
     );
   } else {
     const voice = getSelectedSpeechVoice();
@@ -3455,6 +3455,16 @@ async function prepareVoicePieces(allFacilityNames = false) {
     return;
   }
   if (voicePreparationController) return;
+  const cooldown = window.ParkingVoiceAudioCache?.status?.().cooldownSeconds || 0;
+  if (cooldown > 0) {
+    voicePrepareStatus.textContent = ui(
+      "外部サービスが混雑中です。大量生成を停止しています。約"
+        + Math.ceil(cooldown / 60) + "分後に再試行できます。保存済み音声は引き続き使用できます。",
+      "External service is rate-limited. Batch generation is paused. Retry in about "
+        + Math.ceil(cooldown / 60) + " minutes. Saved clips still work.",
+    );
+    return;
+  }
   const facility = state.selectedFacility;
   const controller = new AbortController();
   voicePreparationController = controller;
