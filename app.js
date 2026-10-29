@@ -1532,6 +1532,14 @@ function renderRegisteredLayout(layout, recommendedSpace) {
   ));
 
   const visibleSpaceStates = new Map(state.currentSpaces.map(space => [space.uid, space.occupancyStatus]));
+  const videoPhaseLabels = {
+    available: ui("空き", "Available"),
+    parking_in: ui("駐車中", "Parking in"),
+    stopped: ui("停車中", "Stopped"),
+    exiting: ui("出庫中", "Exiting"),
+    unknown: ui("確認中", "Checking"),
+  };
+  const visibleSpacePhases = new Map(state.currentSpaces.map(space => [space.uid, space.occupancyPhase]));
   layout.objects
     .filter((object) => supportedTypes.has(object.objectType))
     .forEach((object) => {
@@ -1619,10 +1627,21 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         item.classList.toggle("is-occupied", isOccupied);
         item.classList.toggle("is-blocked", displayStatus === "blocked");
         item.classList.toggle("is-recommended", isRecommended && !isOccupied);
+        const phase = state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID
+          ? visibleSpacePhases.get(object.uid) : null;
+        if (phase && videoPhaseLabels[phase]) {
+          const phaseTag = document.createElement("span");
+          phaseTag.className = "replay-phase-badge";
+          phaseTag.dataset.phase = phase;
+          phaseTag.textContent = videoPhaseLabels[phase];
+          phaseTag.setAttribute("aria-hidden", "true");
+          item.append(phaseTag);
+          item.dataset.replayPhase = phase;
+        }
         item.setAttribute("role", "listitem");
         item.setAttribute(
           "aria-label",
-          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isRecommended && !isOccupied ? ui("案内先","Destination") : displayStatus === "occupied" ? ui("使用中","Occupied") : displayStatus === "blocked" ? ui("障害物あり","Blocked") : displayStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
+          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${phase && videoPhaseLabels[phase] ? videoPhaseLabels[phase] : isRecommended && !isOccupied ? ui("案内先","Destination") : displayStatus === "occupied" ? ui("使用中","Occupied") : displayStatus === "blocked" ? ui("障害物あり","Blocked") : displayStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
         );
       } else if (object.objectType === "buildingEntrance") {
         mapDisplay.appendEntrance(item,object);
