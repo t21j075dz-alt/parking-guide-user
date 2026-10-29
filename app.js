@@ -2664,6 +2664,9 @@ function updateVoiceModeUi() {
   }
 
   if (voiceOutputModeSelect) voiceOutputModeSelect.value = state.voiceOutputMode;
+  // 事前生成は日本語VOICEVOXのみ対応。英語画面では操作を表示しない。
+  if (voicePrepareButton) voicePrepareButton.hidden = english;
+  if (voicePrepareStatus) voicePrepareStatus.hidden = english;
   if (cloudVoiceInput) cloudVoiceInput.checked = state.cloudVoiceEnabled;
   updateVoiceControls();
   updateVoiceOutputStatus();
@@ -3315,7 +3318,10 @@ async function prepareSelectedFacilityVoice() {
     const messages = [getAutomaticGuidanceStartMessage("ja-JP"),
       getNoSpaceGuidanceMessage("ja-JP"), getVoicePreviewMessage("ja-JP")];
     if (state.searchOutcome) messages.push(getCurrentGuidanceMessage("ja-JP"));
-    const matching = prepared.spaces.filter(s => !s.isOccupied && s.spaceType === state.requestedSpaceType).slice(0, 4);
+    const candidateSpaces = prepared.spaces.filter(s => !s.isOccupied && s.spaceType === state.requestedSpaceType);
+    const selected = ["balanced", "near", "wide"].map(priority =>
+      selectRecommendedSpace(prepared.spaces, priority, state.requestedSpaceType)).filter(Boolean);
+    const matching = [...new Map([...selected, ...candidateSpaces].map(s => [s.uid || s.id, s])).values()].slice(0, 4);
     for (const space of matching) {
       for (const autoTriggered of [true, false]) {
         messages.push(getClosingAnnouncement("ja-JP") + getParkingGuidanceMessage("ja-JP", {
