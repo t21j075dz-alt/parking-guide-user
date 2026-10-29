@@ -52,7 +52,7 @@ window.ParkingLiveStatus = (() => {
         return result;
       }
       const rows = await requestJson(
-        `${config.url}/rest/v1/parking_live_status?facility_id=eq.${id}&select=space_uid,status,confidence,source,checked_at`,
+        `${config.url}/rest/v1/parking_live_status?facility_id=eq.${id}&select=space_uid,status,confidence,source,occupancy_phase,checked_at`,
         config.key,
       );
       if (!Array.isArray(rows)) throw new Error("Unexpected response");
@@ -95,7 +95,15 @@ window.ParkingLiveStatus = (() => {
         || row?.source === "recorded_video_demo";
       const status = fresh && correctSource && ["available", "occupied", "blocked", "unknown"].includes(row.status)
         ? row.status : "unknown";
-      return { ...space, occupancyStatus: status, isOccupied: status !== "available", liveCheckedAt: fresh ? row.checked_at : null };
+      const phaseByStatus = {
+        available: ["available"], occupied: ["parking_in", "stopped", "exiting"],
+        unknown: ["unknown"],
+      };
+      const phase = facilityId === "home-video-demo-001"
+        && (phaseByStatus[status] || []).includes(row?.occupancy_phase)
+        && fresh && correctSource ? row.occupancy_phase : null;
+      return { ...space, occupancyStatus: status, occupancyPhase: phase,
+        isOccupied: status !== "available", liveCheckedAt: fresh ? row.checked_at : null };
     });
   }
 
