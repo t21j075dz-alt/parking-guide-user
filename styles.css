@@ -2273,3 +2273,34 @@ html[data-theme="dark"] .parking-map.parking-map--layout {
 .parking-arrival-panel p { margin: 0; line-height: 1.7; }
 .parking-arrival-panel button { min-height: 2.8rem; }
 #parking-target-status { font-weight: 600; }
+
+/* 2026-10-30 音声案内と画面を同じ内容にする。
+   長い台本は文章で確認でき、不要なアラートを強調しない。 */
+.guidance-audio-card {
+  margin: 16px 0;
+  border: 1px solid var(--border-color, #66717c);
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--panel-background, rgba(104, 127, 153, .07));
+}
+.guidance-audio-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.guidance-audio-mode {
+  font-size: .9rem;
+  font-weight: 600;
+  opacity: .85;
+}
+.guidance-audio-message {
+  margin: 10px 0 12px;
+  font-size: 1rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  max-height: 12.5em;
+  overflow-y: auto;
+}
+.guidance-audio-replay { width: 100%; min-height: 44px; }
