@@ -2151,10 +2151,11 @@ function getFacilityOccupancy(facility) {
   }
   const prepared = prepareSpaces(facility);
   return { ...summarizeOccupancy(prepared.spaces, prepared.isSimulation, prepared.isLive),
-    recordedExperiment: facility?.isRecordedExperiment === true };
+    recordedExperiment: facility?.isRecordedExperiment === true,
+    videoDemo: facility?.id === VIDEO_REPLAY_FACILITY_ID };
 }
 function getOccupancyLabel(occupancy) {
-  const source = state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID
+  const source = occupancy.videoDemo
     ? ui("録画映像を逐次YOLO判定・実際の空きではありません",
          "Recorded YOLO replay · not current availability")
     : occupancy.live ? ui("カメラ確認", "Camera verified")
