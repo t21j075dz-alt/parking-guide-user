@@ -2531,10 +2531,10 @@ function speechVoiceQuality(voice) {
   const name = String(voice.name || "");
   // 利用可能な音声のみ選ぶ。Google音声をOSに無いのに指定することはできない。
   // 高品質ローカルは遅延を小さくしやすく、Google名の音声は存在すれば優先候補にする。
-  return (voice.localService ? 300 : 0)
-    + (/premium|natural|neural|高品質/i.test(name) ? 200 : 0)
-    + (/enhanced|拡張/i.test(name) ? 160 : 0)
-    + (/google/i.test(name) ? 100 : 0)
+  return (voice.localService ? 250 : 0)
+    + (/premium|natural|neural|高品質/i.test(name) ? 300 : 0)
+    + (/enhanced|拡張/i.test(name) ? 240 : 0)
+    + (/google/i.test(name) ? 320 : 0)
     + (/samantha|daniel|ting.?ting|yuna|monica/i.test(name) ? 50 : 0);
 }
 
