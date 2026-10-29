@@ -9,7 +9,7 @@
 (() => {
   const CACHE_NAME = "parking-guide-user:voice-audio:v1:speaker8";
   const SPEAKER = 8;
-  const MAX_FILES = 80;
+  const MAX_FILES = 750; // 全施設名・案内の固定文・駐車枠番号を保持できるよう拡張
   const MAX_BYTES = 8 * 1024 * 1024;
   const SCOPE = new URL("./", window.location.href);
 
@@ -99,32 +99,41 @@
         if (stored) return { bytes: await stored.arrayBuffer(), source: "saved" };
       } catch { /* 保存済みファイルが壊れていても通常生成へ進む。 */ }
     }
+    if (options.cachedOnly) throw new Error("Audio clip is not prepared");
     if (navigator.onLine === false) throw new Error("Audio not saved and device is offline");
     const bytes = await synthesize(message, options);
+    let persisted = false;
     if (cache && key) {
       try {
         await cache.put(key, new Response(bytes.slice(0), {
           headers: { "Content-Type": "audio/mpeg" },
         }));
+        persisted = true;
         const keys = await cache.keys();
         if (keys.length > MAX_FILES) {
           await Promise.all(keys.slice(0, keys.length - MAX_FILES).map(k => cache.delete(k)));
         }
       } catch { /* 保存できないブラウザーでも今回の再生は続行する。 */ }
     }
-    return { bytes, source: "created" };
+    return { bytes, source: "created", persisted };
   }
 
-  async function prepare(messages, onProgress = () => {}) {
+  async function prepare(messages, onProgress = () => {}, signal = null) {
     const unique = [...new Set(messages.filter(v => typeof v === "string" && v.trim()))];
     let saved = 0, created = 0, failed = 0;
     for (const message of unique) {
+      if (signal?.aborted) break;
       try {
-        const audio = await get(message);
+        const audio = await get(message, { signal });
         if (audio.source === "saved") saved += 1;
-        else created += 1;
-      } catch {
+        else if (audio.persisted) created += 1;
+        else failed += 1;
+      } catch (error) {
         failed += 1;
+        if (signal?.aborted || /HTTP 429/.test(String(error?.message))) {
+          onProgress({ total: unique.length, done: saved + created + failed, saved, created, failed, error: String(error?.message || "") });
+          break;
+        }
       }
       onProgress({ total: unique.length, done: saved + created + failed,
         saved, created, failed });

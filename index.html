@@ -28,8 +28,9 @@
     <script src="./live-status.js?v=20261029-phase-demo-2" defer></script>
     <script src="./facility-operations.js?v=20261028-closed-rest-1" defer></script>
     <script src="./speech-readings.js?v=20261028-nikko-test" defer></script>
-    <script src="./voice-audio-cache.js?v=20261029-prepared-voice-1" defer></script>
-  <script src="./app.js?v=20261029-prepared-voice-1" defer></script>
+    <script src="./voice-guide-scripts.js?v=20261029-assembled-voice-1" defer></script>
+  <script src="./voice-audio-cache.js?v=20261029-assembled-voice-1" defer></script>
+  <script src="./app.js?v=20261029-assembled-voice-1" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
   <link href="./experience.css" rel="stylesheet">
 <script defer src="./camera-view.js"></script>
@@ -318,11 +319,13 @@
                 <input type="checkbox" id="cloud-voice-enabled">
                 <span>音声ファイル方式を試す（外部音声合成）</span>
               </label>
-              <p class="voice-status">オンにすると、日本語案内文を外部サービス tts.quest へ送信して音声を生成し、この端末に保存します。保存済みなら再生成せず再生します。未保存で通信できない場合は端末音声に切り替えます。設定と事前保存は停車中に行ってください。</p>
+              <p class="voice-status">オンにすると固定文・施設名・店舗名・駐車枠をそれぞれ外部サービス tts.quest で音声生成し端末内に保存できます。保存した音声部品を順番に再生します。未保存の場合は全文生成または端末音声へ切り替わります。生成ボタンは停車中に操作してください。</p>
               <p class="voice-status">VOICEVOX:春日部つむぎ（外部サービス tts.quest に接続）</p>
               <p id="cloud-voice-diagnostic" class="voice-status" role="status" aria-live="polite">接続診断：テスト後に表示します。</p>
-        <button class="secondary-button" id="voice-prepare-button" type="button">選択した施設の音声を事前保存</button>
-        <p id="voice-prepare-status" class="voice-status" role="status" aria-live="polite">停車中に保存してください。初回の保存には通信が必要です。保存済み音声はオフラインでも利用できます。</p>
+        <button class="secondary-button" id="voice-prepare-button" type="button">選択施設の案内文・駐車枠を事前保存</button>
+        <button class="secondary-button" id="voice-prepare-names-button" type="button">全施設・店舗名を事前保存</button>
+        <button class="secondary-button" id="voice-prepare-cancel-button" type="button" hidden>生成を中止</button>
+        <p id="voice-prepare-status" class="voice-status" role="status" aria-live="polite">停車中に保存してください。「全施設・店舗名」は登録済みの施設・複合施設内店舗を順次保存します。初回は通信が必要です。途中で中止しても保存済み音声は残ります。</p>
               <p class="voice-status" id="voice-output-status" role="status" aria-live="polite"></p>
               <details class="technical-help"><summary>音が聞こえないとき</summary>
                 <p>停車中に「音声を試す」で確認し、再生中に端末・車載機の音量を調整してください。WebアプリからBluetooth・CarPlayの出力先は変更できません。</p>
