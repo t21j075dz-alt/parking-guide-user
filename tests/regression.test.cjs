@@ -925,3 +925,43 @@ test('待機中の閉店通知は一度だけで、音声OFF・非表示・別�
  run(`document.hidden=false;state.currentScreen='condition'`);assert.equal(run('announceClosingTimeIfNeeded()'),false);
  run(`state.currentScreen='waiting'`);assert.equal(run('announceClosingTimeIfNeeded()'),true);assert.equal(run('closingCalls'),2);
 });
+
+
+test("組み立て方式では保存済みの施設名・固定文を順番に再生し、全文合成を呼ばない", async () => {
+  const { run, context } = app();
+  const starts = [];
+  const requested = [];
+  context.navigator = { audioSession: { type: "ambient" } };
+  context.window.AudioContext = class {
+    constructor() { this.state = "running"; this.currentTime = 0; this.destination = {}; }
+    createOscillator() {
+      return { frequency: { setValueAtTime() {} }, connect() {}, start() {}, stop() {} };
+    }
+    createGain() { return { gain: { setValueAtTime() {} }, connect() {} }; }
+    createBufferSource() {
+      return {
+        playbackRate: { setValueAtTime() {} },
+        connect() {}, addEventListener() {}, stop() {},
+        start(at) { starts.push(at); },
+      };
+    }
+    async decodeAudioData() { return { duration: 0.3 }; }
+    async resume() {}
+    async close() {}
+  };
+  context.window.ParkingVoiceAudioCache = {
+    async get(part, options) {
+      requested.push({ part, cachedOnly: options.cachedOnly === true });
+      return { bytes: new ArrayBuffer(300), source: "saved" };
+    },
+  };
+  run("state.cloudVoiceEnabled = true; state.voiceEnabled = true");
+  assert.equal(run("speakText('A店へご案内します。', {parts:['A店','へ','ご案内します。']})"), true);
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(requested.map(item => item.part), ["A店", "へ", "ご案内します。"]);
+  assert.equal(requested.every(item => item.cachedOnly), true);
+  assert.equal(starts.length, 3);
+  assert.ok(starts[0] < starts[1] && starts[1] < starts[2]);
+  run("cancelSpeech()");
+});
