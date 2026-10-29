@@ -3402,56 +3402,97 @@ function previewSelectedVoice() {
   speakText(getVoicePreviewMessage(), { preview: true });
 }
 
-/** 停車中に選択施設の音声を生成・保存する。外部への送信は明示同意後のみ。 */
-async function prepareSelectedFacilityVoice() {
-  if (!voicePrepareButton || !voicePrepareStatus) return;
+/** 登録された施設と複合施設内の店舗名を事前保存するための一覧。 */
+function catalogVoiceNames(facilityOnly = null) {
+  const facilities = facilityOnly ? [facilityOnly] : FACILITIES;
+  const names = [];
+  for (const facility of facilities) {
+    if (!facility) continue;
+    names.push(facility.nameReading
+      || window.PARKING_SPEECH_READINGS?.[facility.id]
+      || facility.name);
+    // 管理者アプリで登録した複合施設の店舗名も含む。
+    for (const destination of getFacilityDestinations(facility)) {
+      names.push(destination.nameReading || destination.name);
+    }
+  }
+  return names.filter(Boolean);
+}
+
+let voicePreparationController = null;
+async function prepareVoicePieces(allFacilityNames = false) {
+  if (!voicePrepareStatus || !window.ParkingVoiceAudioCache || !window.ParkingVoiceGuideScripts) return;
   if (!state.cloudVoiceEnabled || getGuidanceSpeechLocale() !== "ja-JP") {
-    voicePrepareStatus.textContent = ui("日本語の音声ファイル方式を有効にしてください。", "Enable Japanese audio-file mode.");
+    voicePrepareStatus.textContent = ui(
+      "最初に日本語の音声ファイル方式を有効にしてください。",
+      "Enable Japanese audio-file mode first.",
+    );
     return;
   }
-  const facility = state.selectedFacility;
-  if (!facility) {
+  if (!allFacilityNames && !state.selectedFacility) {
     voicePrepareStatus.textContent = ui("先に施設を選択してください。", "Select a facility first.");
     return;
   }
-  voicePrepareButton.disabled = true;
-  voicePrepareStatus.textContent = ui("音声を準備しています…", "Preparing audio…");
+  if (voicePreparationController) return;
+  const facility = state.selectedFacility;
+  const controller = new AbortController();
+  voicePreparationController = controller;
+  if (voicePrepareButton) voicePrepareButton.disabled = true;
+  if (voicePrepareNamesButton) voicePrepareNamesButton.disabled = true;
+  if (voicePrepareCancelButton) voicePrepareCancelButton.hidden = false;
   try {
+    // 外部音声の生成は、利用者がこのボタンを押した場合にのみ実行する。
     await loadRemoteParkingLayouts();
-    if (state.selectedFacility !== facility) return;
-    const prepared = prepareSpaces(facility);
-    const messages = [getAutomaticGuidanceStartMessage("ja-JP"),
-      getNoSpaceGuidanceMessage("ja-JP"), getVoicePreviewMessage("ja-JP")];
-    if (state.searchOutcome) messages.push(getCurrentGuidanceMessage("ja-JP"));
-    const candidateSpaces = prepared.spaces.filter(s => !s.isOccupied && s.spaceType === state.requestedSpaceType);
-    const selected = ["balanced", "near", "wide"].map(priority =>
-      selectRecommendedSpace(prepared.spaces, priority, state.requestedSpaceType)).filter(Boolean);
-    const matching = [...new Map([...selected, ...candidateSpaces].map(s => [s.uid || s.id, s])).values()].slice(0, 4);
-    for (const space of matching) {
-      for (const autoTriggered of [true, false]) {
-        messages.push(getClosingAnnouncement("ja-JP") + getParkingGuidanceMessage("ja-JP", {
-          space, autoTriggered, spaces: prepared.spaces, simulation: prepared.isSimulation,
-        }));
+    const items = allFacilityNames
+      ? catalogVoiceNames()
+      : [...window.ParkingVoiceGuideScripts.catalogFixed(), ...catalogVoiceNames(facility)];
+    if (!allFacilityNames) {
+      // 既存の管理レイアウトから確認できる全区画番号を準備する。
+      // 現在空いている区画だけに限らず、状態変化・再探索に対応する。
+      const prepared = prepareSpaces(facility);
+      items.push(...prepared.spaces.map(space => getSpokenSpaceId(space, "ja-JP")));
+      // 「空」「混」「満」「休」「閉」「未確認」の差し替え部品。
+      items.push("比較的空いています", "混雑しています", "満車と判定されています",
+        "休業しています", "営業時間外です", "空き状況を確認できていません");
+      // 選択先が複合施設の場合も含めて開始文の部品を先に揃える。
+      if (state.selectedFacility === facility) {
+        const start = startScript();
+        if (start) items.push(...start.parts);
       }
     }
-    const normalized = messages.map(s => typeof normalizeJapaneseSpeech === "function"
-      ? normalizeJapaneseSpeech(s) : s);
-    const results = await window.ParkingVoiceAudioCache.prepare(normalized, p => {
+    const normalize = text => typeof normalizeJapaneseSpeech === "function"
+      ? normalizeJapaneseSpeech(text) : text;
+    const unique = [...new Set(items.filter(Boolean).map(normalize))];
+    const result = await window.ParkingVoiceAudioCache.prepare(unique, progress => {
       voicePrepareStatus.textContent = ui(
-        "保存準備：" + p.done + " / " + p.total + " 件（失敗 " + p.failed + " 件）",
-        "Saving " + p.done + " / " + p.total + " (failed: " + p.failed + ")",
+        "保存中：" + progress.done + "/" + progress.total + " 件（失敗 " + progress.failed + " 件）。",
+        "Saving " + progress.done + "/" + progress.total + " (failed " + progress.failed + ").",
       );
-    });
+    }, controller.signal);
+    const done = result.saved + result.created + result.failed;
+    voicePrepareStatus.textContent = controller.signal.aborted
+      ? ui("事前生成を停止しました。保存済みの音声は残ります。", "Preparation stopped; existing clips remain saved.")
+      : ui(
+          "準備結果：" + done + "/" + result.total + " 件。新規 " + result.created
+          + " 件、保存済み " + result.saved + " 件、失敗 " + result.failed
+          + " 件。失敗分は同じボタンから再試行できます。",
+          "Result: " + done + "/" + result.total + ". New " + result.created
+          + ", saved " + result.saved + ", failed " + result.failed
+          + ". Retry failures with the same button.",
+        );
+  } catch (error) {
     voicePrepareStatus.textContent = ui(
-      "保存完了。新規 " + results.created + " 件、保存済み " + results.saved + " 件、失敗 " + results.failed + " 件。",
-      "Finished: " + results.created + " new, " + results.saved + " existing, " + results.failed + " failed.",
+      "音声を準備できませんでした。通信状況をご確認ください。",
+      "Preparation failed. Check your connection.",
     );
-  } catch {
-    voicePrepareStatus.textContent = ui("保存に失敗しました。通信状況をご確認ください。", "Preparation failed. Check your connection.");
   } finally {
-    voicePrepareButton.disabled = false;
+    if (voicePreparationController === controller) voicePreparationController = null;
+    if (voicePrepareButton) voicePrepareButton.disabled = false;
+    if (voicePrepareNamesButton) voicePrepareNamesButton.disabled = false;
+    if (voicePrepareCancelButton) voicePrepareCancelButton.hidden = true;
   }
 }
+function prepareSelectedFacilityVoice() { return prepareVoicePieces(false); }
 
 function updateVoiceAvailability() {
   const supported =
@@ -3647,6 +3688,8 @@ voiceGuideButton?.addEventListener("click", () => {
 });
 voicePreviewButton?.addEventListener("click", previewSelectedVoice);
 voicePrepareButton?.addEventListener("click", () => { void prepareSelectedFacilityVoice(); });
+voicePrepareNamesButton?.addEventListener("click", () => { void prepareVoicePieces(true); });
+voicePrepareCancelButton?.addEventListener("click", () => voicePreparationController?.abort());
 [voiceSelect, voiceRateSelect, voiceVolumeInput].forEach((control) => {
   control?.addEventListener("change", () => {
     cancelSpeech();
