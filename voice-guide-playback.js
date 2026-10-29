@@ -12,14 +12,15 @@ window.ParkingVoiceAssembler = (() => {
       .filter(v => v.trim().length > 0);
   }
 
-  function sentences(parts, maxChars = 135) {
+  function sentences(parts, maxChars = 78) {
     const text = normalizeParts(parts).join("");
     if (!text) return [];
     const pieces = text.match(/[^。！？.!?]+[。！？.!?]?/g) || [text];
     const result = [];
     let current = "";
     for (const item of pieces) {
-      if (current && current.length + item.length > maxChars) {
+      const importantBoundary = /繰り返します。|くりかえします。|まもなく目的地です。|番です。/.test(item);
+      if (current && (current.length + item.length > maxChars || importantBoundary)) {
         result.push(current); current = "";
       }
       if (item.length <= maxChars) {
@@ -39,6 +40,13 @@ window.ParkingVoiceAssembler = (() => {
     if (current) result.push(current);
     return result.filter(Boolean);
   }
+  function segments(parts) {
+    return sentences(parts).map(text => ({
+      text,
+      pauseAfterMs: /繰り返します。|くりかえします。/.test(text) ? 450
+        : /まもなく目的地です。|番です。/.test(text) ? 280 : 170,
+    }));
+  }
 
-  return Object.freeze({ normalizeParts, sentences });
+  return Object.freeze({ normalizeParts, sentences, segments });
 })();
