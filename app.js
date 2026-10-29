@@ -3056,7 +3056,7 @@ function getAudioFileGain(buffer) {
 }
 
 /** 端末に事前保存された音声を優先し、未保存の場合のみ生成して保存する。 */
-async function playCloudVoiceAudio(message, requestId, isPreview = false, parts = null) {
+async function playCloudVoiceAudio(message, requestId, isPreview = false, parts = null, roles = null) {
   const route = activeSpeechAudioRoute;
   if (!route || !route.context.decodeAudioData || !route.context.createBufferSource
       || !window.ParkingVoiceAudioCache) {
@@ -3077,10 +3077,13 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
         // 重複するエリア名・番号は1回だけ取得し、個々の音声は並列で取り出す。
         // 再生の順序は元のpartsで維持する（同じ駐車枠を2回案内する仕様）。
         const unique = [...new Set(parts)];
+        const nameParts = new Set(parts.filter((piece, index) =>
+          ["目的施設名", "目的店舗名", "施設名", "駐車場名"].includes(roles?.[index])));
         const saved = await Promise.all(unique.map(async piece => [
           piece,
           await window.ParkingVoiceAudioCache.get(piece, {
             signal: controller.signal, cachedOnly: true,
+            remote: nameParts.has(piece),
           }),
         ]));
         const copies = new Map(saved);
@@ -3129,7 +3132,12 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
         }, { once: true });
       }
       source.start(cursor);
-      cursor += buffer.duration / rate + (fromSavedParts && /[。！？]$/.test(parts[index]) ? 0.07 : 0);
+      // 「繰り返します」の後は聞き逃し防止のため長めに区切る。
+      // 名前や番号の前後は途切れないようにする。
+      const segment = parts?.[index] || "";
+      const pause = /繰り返します。|くりかえします。/.test(segment) ? 0.38
+        : /[。！？]$/.test(segment) ? 0.18 : 0;
+      cursor += buffer.duration / rate + (fromSavedParts ? pause : 0);
     });
     configureVoiceAudioSession();
     publishGuidanceTranscript("", fromSavedParts
@@ -3264,7 +3272,7 @@ function speakDeviceAssembledParts(message, parts, requestId) {
 }
 
 /** Web Speech APIで無料読み上げを行う。 */
-function speakText(message, { preview = false, userGesture = false, parts = null } = {}) {
+function speakText(message, { preview = false, userGesture = false, parts = null, roles = null } = {}) {
   if (!message) return false;
   if (!preview) publishGuidanceTranscript(message, ui("読み上げの準備中", "Preparing guidance"));
   if (getGuidanceSpeechLocale() === "ja-JP" && typeof normalizeJapaneseSpeech === "function") {
@@ -3282,7 +3290,7 @@ function speakText(message, { preview = false, userGesture = false, parts = null
     prepareSpeechAudioRoute(true);
     const requestId = ++speechRequestId;
     window.speechSynthesis?.cancel?.();
-    void playCloudVoiceAudio(message, requestId, preview, parts).then((played) => {
+    void playCloudVoiceAudio(message, requestId, preview, parts, roles).then((played) => {
       if (played || requestId !== speechRequestId) return;
       stopSpeechAudioRoute();
       releasePriorityAudioSession();
@@ -3416,13 +3424,15 @@ function makePreparedScript(id, values = {}) {
   if (state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID &&
       ["space_found", "space_none", "retry_found", "retry_none"].includes(id))
     prefixes.unshift(...bank.build("recorded_demo").parts);
-  const parts = [...prefixes, ...result.parts].map(x => x.text);
-  return { parts, text: parts.join("") };
+  const sourceParts = [...prefixes, ...result.parts];
+  const parts = sourceParts.map(x => x.text);
+  const roles = sourceParts.map(x => x.role);
+  return { parts, roles, text: parts.join("") };
 }
 function speakPreparedScript(id, values = {}, options = {}) {
   if (!state.voiceEnabled) return false;
   const script = makePreparedScript(id, values);
-  return script ? speakText(script.text, { ...options, parts: script.parts }) : false;
+  return script ? speakText(script.text, { ...options, parts: script.parts, roles: script.roles }) : false;
 }
 function startScript() {
   if (!window.ParkingVoiceGuideScripts || !state.selectedFacility) return null;
@@ -3470,7 +3480,7 @@ function getAutomaticGuidanceStartMessage(locale = getGuidanceSpeechLocale()) {
 
 function speakAutomaticGuidanceStartMessage({ userGesture = false } = {}) {
   const script = getGuidanceSpeechLocale() === "ja-JP" ? startScript() : null;
-  const spoken = script ? speakText(script.text, { userGesture, parts:script.parts })
+  const spoken = script ? speakText(script.text, { userGesture, parts:script.parts, roles:script.roles })
     : speakText(getAutomaticGuidanceStartMessage(), { userGesture });
   if(spoken)lastClosingAnnouncementKey=getClosingAnnouncementKey();
   return spoken;
@@ -3520,7 +3530,7 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale(), options =
 /** 自動探索、手動探索、再案内で同じ案内文を使う。 */
 function speakCurrentGuidance() {
   const script = getGuidanceSpeechLocale() === "ja-JP" ? parkingScript() : null;
-  const spoken = script ? speakText(script.text, { parts:script.parts }) : speakText(getCurrentGuidanceMessage());
+  const spoken = script ? speakText(script.text, { parts:script.parts, roles:script.roles }) : speakText(getCurrentGuidanceMessage());
   if(spoken)lastClosingAnnouncementKey=getClosingAnnouncementKey();
   return spoken;
 }
