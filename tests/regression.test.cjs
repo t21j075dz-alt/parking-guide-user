@@ -1016,3 +1016,27 @@ test("未保存の組み立て音声は外部APIを呼ばずに同じ案内文�
   assert.equal(externalCalls,0);
   assert.ok(utterances.length>=2,"chunked sentence assembly");
 });
+
+
+test('施設選択時の共通音声先読みは重複を除き3件ずつ取得し、合成APIを呼ばない', async () => {
+  const { run, context } = app();
+  const received = [];
+  context.window.ParkingVoiceAudioCache = {
+    get(message, options) {
+      received.push({ message, options });
+      return Promise.resolve({ source: "saved", bytes: new ArrayBuffer(300) });
+    },
+  };
+  run('state.cloudVoiceEnabled = true; state.selectedFacility = { id: "test", name: "試験店舗" };');
+  run('startScript = () => ({parts:["共通の文。","試験店舗","共通の文。"]});');
+  run('makePreparedScript = id => ({parts:[id, "共通の文。"]});');
+  run('normalizeJapaneseSpeech = value => value;');
+  run("preloadPreparedGuidanceClips()");
+  for (let i = 0; i < 6; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(received.map(x => x.message), [
+    "共通の文。", "試験店舗", "approaching", "retry_started",
+  ]);
+  assert.ok(received.every(x => x.options.cachedOnly === true && x.options.remote === true));
+  run("state.cloudVoiceEnabled = false; preloadPreparedGuidanceClips();");
+  assert.equal(received.length, 4, "無効設定なら先読みしない");
+});
