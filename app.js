@@ -165,6 +165,18 @@ const PRIORITY_LABELS_EN = Object.freeze({
  * 静的HTMLは日本語文言を英訳辞書で置換する。
  */
 const STATIC_JA_EN = Object.freeze({
+  "駐車": "Parked",
+  "案内先の車両を確認": "Confirm vehicle in assigned space",
+  "はい、自分の車です": "Yes, it is my car",
+  "いいえ、別の車です（再探索）": "No, another car (find another space)",
+  "車両の持ち主はカメラだけでは特定できません。安全に停車してから操作してください。": "The camera detects occupancy, not the owner. Answer only after stopping safely.",
+  "YOLOは駐車枠の車両占有を検知しますが、車の持ち主までは判定できません。安全に停車してから選択してください。": "YOLO detects whether a space is occupied, not whose car it is. Answer only after stopping safely.",
+  "駐車完了": "Parked",
+  "駐車位置を記録しました": "Parking location recorded",
+  "駐車した区画番号": "Your parking space number",
+  "この番号と駐車場マップを、出庫するまで確認できます。": "This space number and map will remain available until you depart.",
+  "案内と位置情報の監視は終了しました。出庫時に「出庫してホームへ戻る」を押してください。": "Guidance and location tracking have ended. Tap Departure when you leave.",
+  "出庫してホームへ戻る": "Departure — return home",
   "その他の車種・専用区画": "Other vehicles / dedicated spaces",
   "車種・専用用途を選択": "Choose vehicle or dedicated use",
   "専用・予約区画は現地の利用条件をご確認ください。": "Check eligibility and reservations for dedicated spaces.",
@@ -528,7 +540,7 @@ function privateTestStorageKey(facility) {
 }
 const RANDOM_GUIDANCE_FACILITY_IDS = new Set(["target_021", PRIVATE_TEST_FACILITY_ID]);
 
-const SCREEN_ORDER = Object.freeze(["facility", "condition", "waiting", "result", "voice-test", "voice-test-complete"]);
+const SCREEN_ORDER = Object.freeze(["facility", "condition", "waiting", "result", "parked", "voice-test", "voice-test-complete"]);
 
 const state = {
   currentScreen: "facility",
@@ -556,7 +568,8 @@ const state = {
   resultSimulation: false,
   resultLive: false,
   recommendedSpace: null,
-  arrivalCheck: null, // 既存の案内先とカメラの検知結果を対応付ける。
+  arrivalCheck: null, // 案内中の区画での車両検知を確認する。本人認証とは区別する。
+  parkedSpace: null, // 確認した駐車区画を出庫まで表示する（端末内の今回の案内のみ）。
   currentSpaces: [],
   currentLayout: null,
   guideEntrance: null,
@@ -647,16 +660,26 @@ const endGuidanceButton = document.querySelector("#end-guidance-button");
 const parkingArrivalPanel = document.querySelector("#parking-arrival-panel");
 const parkingArrivalStatus = document.querySelector("#parking-arrival-status");
 const parkingArrivalConfirm = document.querySelector("#parking-arrival-confirm");
+const parkingArrivalOther = document.querySelector("#parking-arrival-other");
+const parkingArrivalActions = document.querySelector("#parking-arrival-actions");
+const parkedSpaceNumber = document.querySelector("#parked-space-number");
+const parkedFacilityName = document.querySelector("#parked-facility-name");
+const parkedMapSlot = document.querySelector("#parked-map-slot");
+const resultMapSlot = document.querySelector("#result-map-slot");
+const parkingMapSection = document.querySelector("#parking-map-section");
+const parkedDepartureButton = document.querySelector("#parked-departure-button");
 
 /* =========================================================
-   既存の案内先への駐車をカメラで確認する。
-   新たな区画登録や区画変更は行わない。
-   個人の車かは識別できないため、最後は本人確認が必要。
+   案内先に車両を検知 → 本人確認 → 駐車中 / 別区画へ再探索
+   YOLOは空き枠の占有のみ判定し、車両の持ち主は認証しない。
+   動画再生・模擬データ・古いカメラ情報では本人確認を発火しない。
    ========================================================= */
 function startArrivalCheck(facility, space, live) {
-  state.arrivalCheck = (live && facility?.id === PRIVATE_TEST_FACILITY_ID && space?.uid)
+  state.arrivalCheck = (live && facility && !facility.isRecordedExperiment
+      && !facility.isVoiceTest && space?.uid)
     ? { facilityId: facility.id, uid: space.uid, startedAt: Date.now(),
-        occupiedSince: null, hitCount: 0, confirmed: false }
+        occupiedSince: null, hitCount: 0, lastCheckedAt: 0,
+        confirmed: false, announced: false }
     : null;
   updateParkingArrivalPanel();
 }
@@ -665,63 +688,133 @@ function updateParkingArrivalPanel() {
   if (!parkingArrivalPanel) return;
   const check = state.arrivalCheck;
   const visible = state.currentScreen === "result"
-    && state.resultLive
-    && state.searchOutcome === "found"
+    && state.resultLive && state.searchOutcome === "found"
     && check?.uid === state.recommendedSpace?.uid
     && check.facilityId === state.selectedFacility?.id;
   parkingArrivalPanel.hidden = !visible;
   if (!visible) return;
-  parkingArrivalConfirm.disabled = !check.confirmed;
+  // 二度の新しいYOLO判定で本人確認を開始した後は、Wi-Fiが一瞬切れても
+  // 「はい／いいえ」を消さない。利用者の判断が終わるまで案内先を維持する。
+  if (check.confirmed) {
+    parkingArrivalStatus.textContent = ui(
+      "案内中の駐車枠で車を検知しました。駐車したのはご自身の車ですか？安全に停車してから選んでください。",
+      "A vehicle was detected in your assigned space. Is it your car? Answer after stopping safely.",
+    );
+    parkingArrivalConfirm.disabled = false;
+    if (parkingArrivalOther) parkingArrivalOther.disabled = false;
+    if (parkingArrivalActions) parkingArrivalActions.hidden = false;
+    return;
+  }
   const info = window.ParkingLiveStatus?.snapshot(check.facilityId);
   if (!info?.published || info.error) {
     parkingArrivalStatus.textContent = ui(
-      "カメラの最新情報を取得できません。案内終了は自動判定できません。",
-      "Camera status is unavailable. Parking cannot be verified.",
+      "最新のカメラ情報を取得できません。車両を識別せず、案内先を確認しています。",
+      "Live camera status is unavailable. We cannot verify parking yet.",
     );
-    check.confirmed = false;
-    parkingArrivalConfirm.disabled = true;
-    return;
-  }
-  const row = info.rows?.get(check.uid);
-  const timestamp = Date.parse(row?.checked_at || "");
-  const now = Date.now();
-  const fresh = Number.isFinite(timestamp) && timestamp <= now + 5000
-    && now - timestamp <= 20000;
-  if (!fresh || row?.status !== "occupied" || timestamp <= check.startedAt) {
     check.occupiedSince = null;
     check.hitCount = 0;
+    check.lastCheckedAt = 0;
     check.confirmed = false;
-    parkingArrivalStatus.textContent = ui(
-      "案内先の駐車をカメラで確認しています。停車するまで操作しないでください。",
-      "Waiting for camera confirmation at your assigned space.",
-    );
-    parkingArrivalConfirm.disabled = true;
-    return;
+  } else {
+    const row = info.rows?.get(check.uid);
+    const timestamp = Date.parse(row?.checked_at || "");
+    const now = Date.now();
+    const fresh = Number.isFinite(timestamp) && timestamp <= now + 5000
+      && now - timestamp <= 20000;
+    if (!fresh || row?.source !== "yolo"
+        || row?.status !== "occupied" || timestamp <= check.startedAt) {
+      // 検知されていなければ次の空き→使用中への変化を待つ。
+      check.occupiedSince = null;
+      check.hitCount = 0;
+      check.lastCheckedAt = 0;
+      check.confirmed = false;
+      parkingArrivalStatus.textContent = ui(
+        "案内中の駐車枠をカメラで確認しています。検知したら、ご自身の車かお尋ねします。",
+        "Monitoring your assigned space. We will ask when a vehicle is detected.",
+      );
+    } else {
+      // 同じ画像や同じ時刻の判定を何度受信しても連続検知に数えない。
+      if (timestamp > check.lastCheckedAt) {
+        if (check.occupiedSince === null) check.occupiedSince = now;
+        check.lastCheckedAt = timestamp;
+        check.hitCount += 1;
+      }
+      const wasConfirmed = check.confirmed;
+      check.confirmed = check.hitCount >= 2 && now - check.occupiedSince >= 2000;
+      if (check.confirmed && !wasConfirmed && !check.announced) {
+        check.announced = true;
+        if (state.voiceEnabled) speakPreparedScript("arrival_detected");
+      }
+      parkingArrivalStatus.textContent = check.confirmed
+        ? ui(
+            "案内中の駐車枠で車を検知しました。駐車したのはご自身の車ですか？安全に停車してから選んでください。",
+            "A vehicle was detected in your assigned space. Is it your car? Answer only after stopping safely.",
+          )
+        : ui("駐車枠の車両を検知しました。続けて確認しています…", "Vehicle detected. Confirming a fresh reading…");
+    }
   }
-  if (check.occupiedSince === null) check.occupiedSince = now;
-  check.hitCount += 1;
-  const wasConfirmed = check.confirmed;
-  check.confirmed = check.hitCount >= 2 && now - check.occupiedSince >= 2000;
-  if (!wasConfirmed && check.confirmed && getGuidanceSpeechLocale() === "ja-JP") {
-    speakPreparedScript("arrival_detected");
-  }
-  parkingArrivalStatus.textContent = check.confirmed
-    ? ui(
-        "カメラが案内先への駐車を検知しました。自分の車であることを停車後に確認してください。",
-        "A car was detected in your assigned space. Confirm it is your car after parking.",
-      )
-    : ui("駐車を検出しました。続けて確認しています…", "Parking detected; checking again…");
   parkingArrivalConfirm.disabled = !check.confirmed;
+  if (parkingArrivalOther) parkingArrivalOther.disabled = !check.confirmed;
+  if (parkingArrivalActions) parkingArrivalActions.hidden = !check.confirmed;
 }
 
-parkingArrivalConfirm?.addEventListener("click", () => {
-  if (!state.arrivalCheck?.confirmed || parkingArrivalConfirm.disabled) return;
-  if (window.parkingSafety && !window.parkingSafety.guardOperation()) return;
-  // YOLOは車両占有だけを確認。利用者の操作で駐車完了を確定する。
-  const announce = state.voiceEnabled && getGuidanceSpeechLocale() === "ja-JP";
+/** YOLO検知と本人の回答が一致した場合だけ、案内を終了して駐車位置を残す。 */
+function confirmOwnParking() {
+  const check = state.arrivalCheck;
+  const space = state.recommendedSpace;
+  if (!check?.confirmed || state.currentScreen !== "result"
+      || state.searchOutcome !== "found" || !space
+      || check.uid !== space.uid || check.facilityId !== state.selectedFacility?.id) return false;
+  if (window.parkingSafety && !window.parkingSafety.guardOperation()) return false;
+  state.parkedSpace = { ...space };
+  state.autoProximityArmed = false;
+  state.proximitySearchRunning = false;
+  state.autoTriggeredFacilityId = null;
+  state.arrivalCheck = null;
+  window.parkingSafety?.stop?.(ui("駐車位置を記録し、案内を終了しました。", "Parking recorded. Guidance ended."));
+  cancelSpeech();
+  if (parkedSpaceNumber) parkedSpaceNumber.textContent = space.id;
+  if (parkedFacilityName) parkedFacilityName.textContent = getFacilityDisplayName(state.selectedFacility);
+  showScreen("parked");
+  // 同じマップを専用画面へ移すため、位置・縮尺や建物入口が保持される。
+  if (parkedMapSlot && parkingMapSection) parkedMapSlot.append(parkingMapSection);
+  renderParkingMap(state.currentSpaces, space, state.currentLayout);
+  if (state.voiceEnabled) {
+    if (getGuidanceSpeechLocale() === "ja-JP") {
+      speakPreparedScript("parking_completed", {}, { userGesture: true });
+    } else {
+      speakText(ui("駐車完了を記録しました。出庫時は出庫ボタンを押してください。",
+        "Parking recorded. Tap Departure when you leave."), { userGesture: true });
+    }
+  }
+  return true;
+}
+
+/** 他車だった場合は、検知済みの区画を除外して最新空き枠を再検索する。 */
+function rejectOtherCar() {
+  const check = state.arrivalCheck;
+  if (!check?.confirmed || state.currentScreen !== "result"
+      || check.uid !== state.recommendedSpace?.uid
+      || check.facilityId !== state.selectedFacility?.id) return false;
+  if (window.parkingSafety && !window.parkingSafety.guardOperation()) return false;
+  const excludedUid = check.uid;
+  state.arrivalCheck = null;
+  if (parkingArrivalPanel) parkingArrivalPanel.hidden = true;
+  state.searchSequence += 1;
+  void runSpaceSearch(null, { fromRetry: true, excludedSpaceUid: excludedUid });
+  return true;
+}
+
+parkingArrivalConfirm?.addEventListener("click", confirmOwnParking);
+parkingArrivalOther?.addEventListener("click", rejectOtherCar);
+function departParkedLocation() {
+  if (state.currentScreen !== "parked" || !state.parkedSpace) return false;
+  if (window.parkingSafety && !window.parkingSafety.guardOperation()) return false;
+  // 出庫を本人が明示してから位置図を破棄し、ホームへ戻る。
   endGuidance();
-  if (announce) speakPreparedScript("parking_completed", {}, { userGesture: true });
-});
+  return true;
+}
+parkedDepartureButton?.addEventListener("click", departParkedLocation);
 
 /* =========================================================
    施設一覧・絞り込み・距離
@@ -1671,10 +1764,12 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         }
 
         const isRecommended = object.uid === recommendedSpace?.uid;
+        const isParked = state.currentScreen === "parked" && state.parkedSpace?.uid === object.uid;
         const isOccupied = !mapDisplay.isGuidableType(object.spaceType ?? "standard") || displayStatus !== "available";
         item.classList.toggle("is-occupied", isOccupied);
         item.classList.toggle("is-blocked", displayStatus === "blocked");
-        item.classList.toggle("is-recommended", isRecommended && !isOccupied);
+        item.classList.toggle("is-recommended", isRecommended && (!isOccupied || isParked));
+        item.classList.toggle("is-parked", isParked);
         const phase = state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID
           ? visibleSpacePhases.get(object.uid) : null;
         if (phase && videoPhaseLabels[phase]) {
@@ -1689,7 +1784,7 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         item.setAttribute("role", "listitem");
         item.setAttribute(
           "aria-label",
-          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${phase && videoPhaseLabels[phase] ? videoPhaseLabels[phase] : isRecommended && !isOccupied ? ui("案内先","Destination") : displayStatus === "occupied" ? ui("使用中","Occupied") : displayStatus === "blocked" ? ui("障害物あり","Blocked") : displayStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
+          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isParked ? ui("自分の駐車位置","Your parked space") : phase && videoPhaseLabels[phase] ? videoPhaseLabels[phase] : isRecommended && !isOccupied ? ui("案内先","Destination") : displayStatus === "occupied" ? ui("使用中","Occupied") : displayStatus === "blocked" ? ui("障害物あり","Blocked") : displayStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
         );
       } else if (object.objectType === "buildingEntrance") {
         mapDisplay.appendEntrance(item,object);
@@ -1782,7 +1877,8 @@ function renderDemoParkingMap(spaces, recommendedSpace) {
     }
     if (isRecommended) {
       item.classList.add("is-recommended");
-      status = "案内先";
+      if (state.currentScreen === "parked") item.classList.add("is-parked");
+      status = state.currentScreen === "parked" ? "駐車位置" : "案内先";
     }
 
     item.innerHTML = '<span class="parking-space-number"></span><span class="parking-space-state"></span>';
@@ -1846,7 +1942,7 @@ function showScreen(screenName, options = {}) {
       && !["voice-test", "voice-test-complete"].includes(screenName)) {
     state.voiceTestRun = null; // 前画面へ戻った後の遅延通知を破棄する。
   }
-  if (screenName === "facility" || screenName === "condition") {
+  if (screenName === "facility" || screenName === "condition" || screenName === "parked") {
     state.autoProximityArmed = false;
     state.autoTriggeredFacilityId = null;
   }
@@ -2355,7 +2451,8 @@ function getNoSpaceGuidanceMessage(locale = getGuidanceSpeechLocale()) {
 
 /** 空き区画検索を実行する。 */
 async function runSpaceSearch(priorityOverride = null, options = {}) {
-  const { autoTriggered = false, skipSafetyGuard = false, refreshSimulation = false, fromRetry = false } = options;
+  const { autoTriggered = false, skipSafetyGuard = false, refreshSimulation = false,
+    fromRetry = false, excludedSpaceUid = null } = options;
   // 通信を待つ前に依頼元を固定し、戻る操作・施設変更・再検索で無効化する。
   const requestId = ++state.searchRequestId;
   const facility = state.selectedFacility;
@@ -2411,8 +2508,12 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       state.currentSpaces = prepared.spaces;
       state.guideEntrance = prepared.entrance;
       const useRandomGuidance = !state.resultLive && RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id);
+      // 「ほかの車だった」区画は、この再探索で同じ番号を二度案内しない。
+      const searchCandidates = excludedSpaceUid
+        ? prepared.spaces.filter(space => space.uid !== excludedSpaceUid)
+        : prepared.spaces;
       state.recommendedSpace = selectRecommendedSpace(
-        prepared.spaces,
+        searchCandidates,
         priority,
         state.requestedSpaceType,
         useRandomGuidance,
@@ -4167,7 +4268,10 @@ function endGuidance() {
 function resetApplication() {
   cancelSpeech();
   window.parkingSafety?.resetConfirmation?.();
+  // 駐車中画面へ移動したマップを元の結果画面に戻す。
+  if (resultMapSlot && parkingMapSection) resultMapSlot.append(parkingMapSection);
   state.searchRequestId += 1;
+  state.parkedSpace = null;
   state.selectedFacility = null;
   state.selectedDestination = null;
   state.voiceTestRun = null;
@@ -4180,6 +4284,7 @@ function resetApplication() {
   state.pendingPrivateTestCalibration = false;
   state.recommendedSpace = null;
   state.arrivalCheck = null;
+  state.parkedSpace = null;
   state.searchOutcome = null;
   state.resultLive = false;
   state.currentSpaces = [];
@@ -4207,6 +4312,7 @@ facilityList.addEventListener("click", (event) => {
 
   state.selectedFacility = facility;
   state.arrivalCheck = null;
+  state.parkedSpace = null;
   state.pendingPrivateTestCalibration = false;
   state.searchOutcome = null;
   state.resultLive = false;
@@ -4492,11 +4598,17 @@ window.addEventListener("popstate", (event) => {
   }
 
   const requestedScreen = event.state?.screen;
+  // 駐車中は出庫操作まで区画とマップを保持し、戻る履歴で検索へ戻さない。
+  if (state.currentScreen === "parked" && state.parkedSpace) {
+    window.history.pushState({ screen: "parked" }, "", "#parked");
+    return;
+  }
   const canOpenScreen =
     requestedScreen === "facility" ||
     (requestedScreen === "condition" && state.selectedFacility) ||
     (requestedScreen === "waiting" && state.selectedFacility && state.autoProximityArmed) ||
     (requestedScreen === "result" && state.searchOutcome) ||
+    (requestedScreen === "parked" && state.parkedSpace) ||
     (requestedScreen === "voice-test" && state.selectedFacility?.isVoiceTest && state.voiceTestRun) ||
     (requestedScreen === "voice-test-complete" && state.selectedFacility?.isVoiceTest && state.voiceTestRun);
 

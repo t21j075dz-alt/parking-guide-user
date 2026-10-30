@@ -17,7 +17,7 @@
     >
     <title>駐車場空き区画案内｜卒業研究</title>
     <!-- 利用者画面の共通スタイル。管理画面とは別リポジトリで管理する。 -->
-    <link rel="stylesheet" href="./styles.css?v=20261030-sequential-voice-1">
+    <link rel="stylesheet" href="./styles.css?v=20261030-parking-owner-flow-1">
     <!-- 安全確認 → 施設データ → 同期設定 → レイアウト → 画面制御の順で読み込む。 -->
     <link rel="stylesheet" href="./map-display.css?v=20261029-phase-demo-2">
     <script src="./map-display.js?v=20261014-interaction" defer></script>
@@ -28,11 +28,11 @@
     <script src="./live-status.js?v=20261029-phase-demo-2" defer></script>
     <script src="./facility-operations.js?v=20261028-closed-rest-1" defer></script>
     <script src="./speech-readings.js?v=20261030-voice-reading-corrected-1" defer></script>
-    <script src="./voice-guide-scripts.js?v=20261030-home-experiments-1" defer></script>
+    <script src="./voice-guide-scripts.js?v=20261030-parking-owner-flow-1" defer></script>
   <script src="./voice-guide-playback.js?v=20261030-semantic-pauses-1" defer></script>
   <script src="./voice-audio-cache.js?v=20261030-rpc-manifest-1" defer></script>
   <script src="./voice-test-scenarios.js?v=20261030-sequential-1" defer></script>
-  <script src="./app.js?v=20261030-voice-parallel-decode-1" defer></script>
+  <script src="./app.js?v=20261030-parking-owner-flow-1" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
   <link href="./experience.css" rel="stylesheet">
 <script defer src="./camera-view.js"></script>
@@ -112,7 +112,7 @@
     </header>
 
     <main id="main-content" class="main-content" tabindex="-1">
-      <!-- 4画面構成：施設 → 条件 → 待機 → 区画。 -->
+      <!-- 5画面構成：施設 → 条件 → 待機 → 区画 → 駐車中。 -->
       <nav class="progress" aria-label="案内の進行状況">
         <ol class="progress-list">
           <li class="progress-item is-current" data-progress="facility" aria-current="step">
@@ -126,6 +126,9 @@
           </li>
           <li class="progress-item" data-progress="result">
             <span class="progress-number">4</span><span>区画</span>
+          </li>
+          <li class="progress-item" data-progress="parked">
+            <span class="progress-number">5</span><span>駐車</span>
           </li>
         </ol>
       </nav>
@@ -498,10 +501,13 @@
         <div id="result-content" hidden>
           <!-- 既存の検索結果で決まった案内先の駐車確認。新たな区画登録はしない。 -->
           <section id="parking-arrival-panel" class="parking-arrival-panel" hidden aria-labelledby="parking-arrival-heading">
-            <h2 id="parking-arrival-heading">カメラによる駐車確認</h2>
+            <h2 id="parking-arrival-heading">案内先の車両を確認</h2>
             <p id="parking-arrival-status" role="status" aria-live="polite">案内先の駐車を確認しています。</p>
-            <button class="primary-button full-width" id="parking-arrival-confirm" type="button" disabled>駐車完了</button>
-            <p class="muted">車両の持ち主はカメラだけでは特定できません。安全に停車してから操作してください。</p>
+            <div class="parking-arrival-actions" id="parking-arrival-actions" hidden>
+              <button class="primary-button" id="parking-arrival-confirm" type="button" disabled>はい、自分の車です</button>
+              <button class="secondary-button" id="parking-arrival-other" type="button" disabled>いいえ、別の車です（再探索）</button>
+            </div>
+            <p class="muted">YOLOは駐車枠の車両占有を検知しますが、車の持ち主までは判定できません。安全に停車してから選択してください。</p>
           </section>
           <section class="result-summary" aria-labelledby="space-number">
             <div>
@@ -514,7 +520,8 @@
             </div>
           </section>
 
-          <section class="parking-map-section" aria-labelledby="parking-map-title">
+          <div id="result-map-slot">
+          <section class="parking-map-section" id="parking-map-section" aria-labelledby="parking-map-title">
             <div class="section-title-row">
               <h2 id="parking-map-title">駐車場マップ</h2>
               <p id="updated-time" class="updated-time"></p>
@@ -531,12 +538,32 @@
             </div>
             <div id="parking-map" class="parking-map parking-map--demo" role="list" aria-label="駐車場内の区画"></div>
           </section>
+          </div>
 
           <div class="button-group result-actions">
             <button class="primary-button" id="voice-guide-button" type="button">案内をもう一度聞く</button>
             <button class="secondary-button" id="retry-button" type="button">再探索</button>
             <button class="secondary-button" id="end-guidance-button" type="button">案内を終了</button>
           </div>
+        </div>
+      </section>
+
+      <!-- 車両検知後に本人が確認した駐車位置を、出庫操作まで保持する。 -->
+      <section class="screen parked-screen" id="parked-screen" data-screen="parked" aria-labelledby="parked-title" hidden>
+        <div class="screen-heading">
+          <p class="step-label">駐車完了</p>
+          <h1 id="parked-title" tabindex="-1">駐車位置を記録しました</h1>
+        </div>
+        <section class="parked-location-card" aria-label="現在の駐車場所">
+          <p class="result-label">駐車した区画番号</p>
+          <p id="parked-space-number" class="space-number">—</p>
+          <p id="parked-facility-name" class="parked-facility-name"></p>
+          <p class="muted">この番号と駐車場マップを、出庫するまで確認できます。</p>
+        </section>
+        <div id="parked-map-slot" aria-label="駐車位置を示すマップ"></div>
+        <p class="parked-notice">案内と位置情報の監視は終了しました。出庫時に「出庫してホームへ戻る」を押してください。</p>
+        <div class="button-group">
+          <button class="primary-button full-width" id="parked-departure-button" type="button">出庫してホームへ戻る</button>
         </div>
       </section>
 
