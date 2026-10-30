@@ -29,26 +29,49 @@
   // 未生成の名前へ毎回MP3取得(404)を行わず、聞き取り開始の遅延を減らす。
   let readyHashes = null;
   let readyAt = 0;
-  let manifestPromise = null;
-  async function sharedReadyHashes(base, publishableKey, signal) {
+  const MANIFEST_TIMEOUT_MS = 1400;
+  const MANIFEST_RETRY_DELAY_MS = 15000;
+  let manifestRetryAt = 0;
+  async function sharedReadyHashes(base, publishableKey) {
     if (!publishableKey) return null;
     if (readyHashes && Date.now() - readyAt < 120000) return readyHashes;
     if (manifestPromise) return manifestPromise;
+    // 電波が弱い場合、音声一覧の取得待ちが案内を停止させないようにする。
+    // 一度失敗した直後は何十部品も同じ通信を繰り返さず端末TTSへ切り替える。
+    if (Date.now() < manifestRetryAt) return readyHashes;
     manifestPromise = (async () => {
+      const controller = new AbortController();
+      let timer = null;
       try {
-        const response = await fetch(
-          base + "/rest/v1/parking_voice_ready?select=audio_hash&limit=1000",
-          { headers: { apikey: publishableKey }, signal, cache: "no-store" },
-        );
-        if (!response.ok) return null;
+        const timeout = new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            controller.abort();
+            reject(new Error("Audio list timed out"));
+          }, MANIFEST_TIMEOUT_MS);
+        });
+        // この一覧は全ての部品から共有する。個々の再生中止で
+        // 他の部品の取得まで中断させないよう、個別signalは使わない。
+        const response = await Promise.race([
+          fetch(base + "/rest/v1/parking_voice_ready?select=audio_hash&limit=1000",
+            { headers: { apikey: publishableKey },
+              signal: controller.signal, cache: "no-store" }),
+          timeout,
+        ]);
+        if (!response.ok) throw new Error("Audio list unavailable");
         const data = await response.json();
-        if (!Array.isArray(data)) return null;
+        if (!Array.isArray(data)) throw new Error("Invalid audio list");
         readyHashes = new Set(data.map(row => row.audio_hash)
           .filter(h => typeof h === "string" && /^[a-f0-9]{64}$/.test(h)));
         readyAt = Date.now();
+        manifestRetryAt = 0;
         return readyHashes;
-      } catch { return null; }
-      finally { manifestPromise = null; }
+      } catch {
+        manifestRetryAt = Date.now() + MANIFEST_RETRY_DELAY_MS;
+        return readyHashes; // 古い一覧があれば完成済み分の再生は継続できる
+      } finally {
+        if (timer !== null) clearTimeout(timer);
+        manifestPromise = null;
+      }
     })();
     return manifestPromise;
   }
@@ -176,8 +199,10 @@
           const hash = key.match(/\/([0-9a-f]{64})\.mp3$/)?.[1];
           if (hash) {
             const manifest = await sharedReadyHashes(
-              base, window.PARKING_REMOTE_CONFIG?.publishableKey, options.signal);
-            if (manifest && !manifest.has(hash)) throw new Error("Audio preparation pending");
+              base, window.PARKING_REMOTE_CONFIG?.publishableKey);
+            // 一覧が取得できない場合は未知のURLへ無駄なMP3要求を送らない。
+            // 再生は外部音声サービスを待たずに端末TTSへ移行する。
+            if (!manifest || !manifest.has(hash)) throw new Error("Audio preparation pending");
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), 2600);
             const onAbort = () => controller.abort();
