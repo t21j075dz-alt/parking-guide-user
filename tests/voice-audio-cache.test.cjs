@@ -7,7 +7,7 @@ const { webcrypto, createHash } = require("node:crypto");
 
 const source = fs.readFileSync(path.join(__dirname, "../voice-audio-cache.js"), "utf8");
 
-function createAudioHarness({ rateLimited = false, remoteEnabled = false } = {}) {
+function createAudioHarness({ rateLimited = false, remoteEnabled = false, hangManifest = false, failManifest = false } = {}) {
   const entries = new Map();
   let calls = 0;
   const storageValues = new Map();
@@ -34,6 +34,8 @@ function createAudioHarness({ rateLimited = false, remoteEnabled = false } = {})
     fetch: async (url) => {
       calls++;
       if (url.includes("/rest/v1/parking_voice_ready")) {
+        if (failManifest) return { ok:false, status:503 };
+        if (hangManifest) return new Promise(() => {});
         const hash = createHash("sha256").update("voice-cache-v1:8:らむー おかやまてん").digest("hex");
         return { ok:true, json:async()=>[{audio_hash:hash}] };
       }
@@ -142,4 +144,30 @@ test("a store that is not yet generated skips MP3 download and uses device fallb
   assert.equal(h.getCalls(), 1, "only one manifest lookup, no MP3 download");
   await assert.rejects(h.api.get("別の未生成店舗", {cachedOnly:true, remote:true}), /not prepared/);
   assert.equal(h.getCalls(), 1, "manifest is shared and prevents repeat requests");
+});
+
+
+test("a stalled Supabase audio manifest falls back promptly and stops repeated network requests", async () => {
+  const h = createAudioHarness({ remoteEnabled: true, hangManifest: true });
+  const started = Date.now();
+  await assert.rejects(
+    h.api.get("電波の弱い場所", { cachedOnly: true, remote: true }),
+    /not prepared/,
+  );
+  assert.ok(Date.now() - started < 3000, "manifest must time out within a reasonable time");
+  assert.equal(h.getCalls(), 1, "only one manifest request");
+  await assert.rejects(
+    h.api.get("別の店舗", { cachedOnly: true, remote: true }),
+    /not prepared/,
+  );
+  assert.equal(h.getCalls(), 1, "15-second cooldown prevents a request storm");
+});
+
+test("an unavailable manifest never guesses unknown audio links", async () => {
+  const h = createAudioHarness({ remoteEnabled: true, failManifest: true });
+  await assert.rejects(
+    h.api.get("未生成店舗", { cachedOnly: true, remote: true }),
+    /not prepared/,
+  );
+  assert.equal(h.getCalls(), 1, "no blind Storage download after a manifest failure");
 });
