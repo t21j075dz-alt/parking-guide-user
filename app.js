@@ -2176,7 +2176,7 @@ function prepareSpaces(facility) {
 
   return {
     layout: null,
-    spaces: facility.isRecordedExperiment
+    spaces: (facility.isRecordedExperiment || facility.isVoiceTest)
       ? getRecordedExperimentUnknownSpaces(facility) : getDemoParkingSpaces(facility),
     entrance: null,
     isSimulation: true,
