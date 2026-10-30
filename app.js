@@ -3484,6 +3484,7 @@ function speakDeviceAssembledParts(message, parts, requestId, onComplete = null,
         speech.cancel();
         advance();
       } else {
+        settled = true;
         speech.cancel();
         stopSpeechAudioRoute();
         releasePriorityAudioSession();
@@ -3534,6 +3535,7 @@ function speakDeviceAssembledParts(message, parts, requestId, onComplete = null,
     try { speech.speak(utterance); }
     catch {
       clearTimeout(watchdog);
+      settled = true;
       stopSpeechAudioRoute();
       releasePriorityAudioSession();
       updateVoiceStatus(ui("端末音声を開始できません。画面の案内をご確認ください。", "Device speech failed to start."), "error");
@@ -3641,9 +3643,10 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
   /* Web Speech API の音量上限は 1。端末の再生音量は利用者が調整する。 */
   utterance.volume = getGuidanceSpeechVolume();
 
-  let started = false;
+  let started = false, settled = false;
   const startWatchdog = setTimeout(() => {
-    if (started || requestId !== speechRequestId) return;
+    if (started || settled || requestId !== speechRequestId) return;
+    settled = true;
     if (!localRetry && localVoice && localVoice !== voice) {
       void speakTextWhenVoicesReady(message, requestId, false, true, onComplete, onError);
     } else {
@@ -3655,9 +3658,9 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
     }
   }, 6000);
   utterance.addEventListener("start", () => {
+    if (settled || requestId !== speechRequestId) return;
     started = true;
     clearTimeout(startWatchdog);
-    if (requestId !== speechRequestId) return;
     updateVoiceStatus(
       ui(
         `${voice?.name ?? "ブラウザー標準音声"}で読み上げています。`,
@@ -3668,7 +3671,8 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
   });
   utterance.addEventListener("end", () => {
     clearTimeout(startWatchdog);
-    if (requestId !== speechRequestId) return;
+    if (settled || requestId !== speechRequestId) return;
+    settled = true;
     stopSpeechAudioRoute();
     releasePriorityAudioSession();
     updateVoiceStatus();
@@ -3676,7 +3680,8 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
   });
   utterance.addEventListener("error", (event) => {
     clearTimeout(startWatchdog);
-    if (requestId !== speechRequestId) return;
+    if (settled || requestId !== speechRequestId) return;
+    settled = true;
     if (!localRetry && localVoice && localVoice !== voice && !["canceled", "interrupted", "not-allowed"].includes(event.error)) {
       void speakTextWhenVoicesReady(message, requestId, false, true, onComplete, onError);
       return;
@@ -3692,7 +3697,17 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
 
   /* Web Audio のチャイムと端末音声の聞こえ方を同じ案内内で比較できる。 */
   cueSpeechAudioRoute();
-  window.speechSynthesis.speak(utterance);
+  try {
+    window.speechSynthesis.speak(utterance);
+  } catch {
+    if (settled || requestId !== speechRequestId) return;
+    settled = true;
+    clearTimeout(startWatchdog);
+    stopSpeechAudioRoute();
+    releasePriorityAudioSession();
+    updateVoiceStatus(ui("音声を開始できません。画面の区画情報と現地の表示をご確認ください。", "Voice did not start. Check the parking information and on-site signs."), "error");
+    onError?.();
+  }
 }
 
 /** PDF台本の固定音声と店舗名・駐車枠番号を組み立てる。 */
@@ -3762,6 +3777,7 @@ function preloadPreparedGuidanceClips() {
   const version = ++voicePreloadSequence;
   let scripts = [];
   let numberParts = [];
+  let arrivalFixedParts = [];
   try {
     const bank = window.ParkingVoiceGuideScripts;
     scripts = [startScript(), makePreparedScript("approaching"),
@@ -3770,9 +3786,9 @@ function preloadPreparedGuidanceClips() {
     // 結果画面に入る前に「案内する駐車枠」「繰り返します」「安全案内」も準備。
     for (const id of ["space_found", "retry_found"]) {
       const guide = bank?.build(id, { "駐車枠": "いち" });
-      if (guide) scripts.push({
-        parts: guide.parts.filter(part => part.role === "fixed").map(part => part.text),
-      });
+      if (guide) arrivalFixedParts.push(
+        ...guide.parts.filter(part => part.role === "fixed").map(part => part.text)
+      );
     }
     const layout = getFacilityLayout(state.selectedFacility);
     if (layout?.objects?.length) {
@@ -3784,9 +3800,11 @@ function preloadPreparedGuidanceClips() {
   } catch { return; }
   const normalize = part => typeof normalizeJapaneseSpeech === "function"
     ? normalizeJapaneseSpeech(part) : part;
-  // 選択時の開始案内と区画番号を優先し、それ以外の共通文は続いて準備する。
+  // 重要な到着案内の固定文を、最大48件の区画番号より先に準備する。
+  // 言葉遣い・施設名・区画番号の読み自体には変更を加えない。
   const parts = [...new Set([
     ...scripts.slice(0, 1).flatMap(script => script.parts),
+    ...arrivalFixedParts,
     ...numberParts,
     ...scripts.slice(1).flatMap(script => script.parts),
   ].map(normalize))].filter(Boolean);

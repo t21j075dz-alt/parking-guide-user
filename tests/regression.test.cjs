@@ -1108,6 +1108,8 @@ test('施設の登録済み駐車枠番号と到着時の固定音声を先読�
   assert.equal(spoken.filter(x=>x==="に").length,1);
   assert.ok(spoken.includes("固定:space_found。"));
   assert.ok(spoken.includes("固定:retry_found。"));
+  assert.ok(spoken.indexOf("固定:space_found。") < spoken.indexOf("いち"), "到着案内の固定文を区画番号の先読みより優先する");
+  assert.ok(spoken.indexOf("固定:retry_found。") < spoken.indexOf("いち"), "再探索の固定文を区画番号の先読みより優先する");
   assert.ok(spoken.includes("番です。"));
   assert.ok(received.every(x=>x.options.remote && x.options.cachedOnly));
 });
@@ -1402,4 +1404,47 @@ test("iPhone画面復帰で一時停止したWeb Audioのみでもresumeする",
   context.activeSpeechAudioRoute=null;
   run("resumePausedSpeechOnReturn()");
   assert.equal(run("Boolean(activeSpeechAudioRoute)"),true);
+});
+
+
+test("端末音声の同期エラー後に遅れた終了通知が来ても完了やエラーを重複しない", async () => {
+  const {run,context} = app();
+  let current;
+  class Speech {
+    constructor(text) { this.text=text; this.handlers={}; }
+    addEventListener(type, handler) { this.handlers[type]=handler; }
+  }
+  context.SpeechSynthesisUtterance=Speech;
+  context.window.SpeechSynthesisUtterance=Speech;
+  context.window.speechSynthesis.getVoices=()=>[];
+  context.window.speechSynthesis.speak=(utterance)=>{
+    current=utterance;
+    throw new Error("Device speech unavailable");
+  };
+  run("state.cloudVoiceEnabled=false; state.voiceEnabled=true; window.__errorCount=0; window.__completeCount=0;");
+  assert.equal(run("speakText('案内の確認', {parts:['案内の確認'], onError:()=>window.__errorCount++, onComplete:()=>window.__completeCount++})"),true);
+  assert.equal(run("window.__errorCount"),1);
+  current.handlers.error?.({error:"synthesis-failed"});
+  current.handlers.end?.();
+  assert.equal(run("window.__errorCount"),1);
+  assert.equal(run("window.__completeCount"),0);
+});
+
+test("通常の端末TTSのエラー後に届く終了通知では音声テストを進めない", async () => {
+  const {run,context}=app();
+  let current;
+  class Speech {
+    constructor(text) { this.text=text; this.handlers={}; }
+    addEventListener(type,handler) {this.handlers[type]=handler;}
+  }
+  context.SpeechSynthesisUtterance=Speech;
+  context.window.SpeechSynthesisUtterance=Speech;
+  context.window.speechSynthesis.getVoices=()=>[];
+  context.window.speechSynthesis.speak=u=>{current=u;};
+  run("window.__errorCount=0;window.__completeCount=0;");
+  await run("speakTextWhenVoicesReady('テスト', undefined, true, false, ()=>window.__completeCount++, ()=>window.__errorCount++)");
+  current.handlers.error({error:'synthesis-failed'});
+  current.handlers.end();
+  assert.equal(run("window.__errorCount"),1);
+  assert.equal(run("window.__completeCount"),0);
 });
