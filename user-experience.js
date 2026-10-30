@@ -24,10 +24,19 @@
     }
     if (kind === "result-status") {
       if (/録画YOLO|Recorded YOLO/i.test(source)) {
-        return t("録画映像の情報です。現在の空き状況ではありません。", "Recorded footage; not current availability.");
+        const remaining = source
+          .replace(/^【[^】]+】\s*/, "")
+          .replace(/^\[[^\]]+\]\s*/, "")
+          .replace(/（実際の空き情報ではありません）/g, "")
+          .replace(/\(not live availability\)/gi, "")
+          .trim();
+        const title = t("録画映像（現在の空きではありません）", "Recorded footage (not current)");
+        return remaining ? title + " · " + remaining : title;
       }
       if (/音声テスト・模擬|Voice test.*simulat/i.test(source)) {
-        return t("音声確認中（空き状況は参考情報です）", "Voice preview (sample availability)");
+        const remaining = source.replace(/^【[^】]+】\s*/, "").replace(/^\[[^\]]+\]\s*/, "").trim();
+        const title = t("音声確認中（参考情報）", "Voice preview (sample data)");
+        return remaining ? title + " · " + remaining : title;
       }
       if (/公開OFF|not published to users/i.test(source)) {
         return t("空き状況を確認できません。", "Parking availability is unavailable.");
