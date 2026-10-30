@@ -35,6 +35,7 @@ window.ParkingVoiceTestScenarios = (() => {
     ["conditions_unavailable","retry","条件に一致する区画なし","Conditions unavailable"],
     ["destination_changed","retry","目的地を変更","Destination changed"],
     ["arrival_detected","parking","車両の停車を検知（模擬）","Arrival detected (simulated)"],
+    ["arrival_video_confirm","parking","案内先の停車を確認","Assigned space occupied"],
     ["parking_completed","parking","駐車完了","Parking completed"],
     ["parked_location","parking","駐車位置を再案内","Parked location"],
     ["timer_started","parking","駐車時間の記録開始","Parking timer started"],
