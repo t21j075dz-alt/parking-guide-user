@@ -20,7 +20,6 @@
     <link rel="stylesheet" href="./styles.css?v=20261030-parking-owner-flow-1">
     <!-- 安全確認 → 施設データ → 同期設定 → レイアウト → 画面制御の順で読み込む。 -->
     <link rel="stylesheet" href="./map-display.css?v=20261029-phase-demo-2">
-    <link rel="stylesheet" href="./recorded-demo-link.css?v=20261030-1">
     <script src="./map-display.js?v=20261014-interaction" defer></script>
     <script src="./location-safety.js" defer></script>
     <script src="./facilities.js?v=20261030-home-experiments-1" defer></script>
@@ -29,13 +28,12 @@
     <script src="./live-status.js?v=20261029-phase-demo-2" defer></script>
     <script src="./facility-operations.js?v=20261028-closed-rest-1" defer></script>
     <script src="./speech-readings.js?v=20261030-voice-reading-corrected-1" defer></script>
-    <script src="./voice-guide-scripts.js?v=20261030-parking-owner-flow-1" defer></script>
+    <script src="./voice-guide-scripts.js?v=20261030-voice-consistent-1" defer></script>
   <script src="./voice-guide-playback.js?v=20261030-semantic-pauses-1" defer></script>
   <script src="./voice-continuous-playback.js?v=20261030-voice-no-cutoff-1" defer></script>
   <script src="./voice-audio-cache.js?v=20261030-rpc-manifest-1" defer></script>
   <script src="./voice-test-scenarios.js?v=20261030-sequential-1" defer></script>
-  <script src="./app.js?v=20261030-voice-no-cutoff-1" defer></script>
-    <script src="./recorded-demo-link.js?v=20261030-1" defer></script>
+  <script src="./app.js?v=20261030-voice-consistent-1" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
   <link href="./experience.css" rel="stylesheet">
 <script defer src="./camera-view.js"></script>
@@ -457,12 +455,11 @@
           </p>
         </section>
 
-        <section class="guidance-audio-card" aria-label="音声案内と読み上げ内容">
+        <section class="guidance-audio-card" aria-label="音声案内">
           <div class="guidance-audio-heading">
             <strong>音声案内</strong>
             <span class="guidance-audio-mode" role="status" aria-live="polite">案内待機中</span>
           </div>
-          <p class="guidance-audio-message">音声案内を開始すると、ここに読み上げ内容が表示されます。</p>
           <button class="secondary-button guidance-audio-replay" type="button">安全な場所で案内を聞き直す</button>
         </section>
         <div class="safety-note waiting-safety" role="note">
@@ -480,12 +477,11 @@
 
         <div id="search-status" class="search-status" role="status" aria-live="polite"></div>
 
-        <section class="guidance-audio-card" aria-label="音声案内と読み上げ内容">
+        <section class="guidance-audio-card" aria-label="音声案内">
           <div class="guidance-audio-heading">
             <strong>音声案内</strong>
             <span class="guidance-audio-mode" role="status" aria-live="polite">案内待機中</span>
           </div>
-          <p class="guidance-audio-message">音声案内を開始すると、ここに読み上げ内容が表示されます。</p>
           <button class="secondary-button guidance-audio-replay" type="button">安全な場所で案内を聞き直す</button>
         </section>
         <p id="congestion-notice" class="congestion-notice" role="status" hidden></p>

@@ -2062,13 +2062,15 @@ function announceClosingTimeIfNeeded() {
   if(document.hidden || !state.voiceEnabled || !["waiting","result"].includes(state.currentScreen))return false;
   const key=getClosingAnnouncementKey();
   if(!key || key===lastClosingAnnouncementKey || window.speechSynthesis?.speaking)return false;
-  const spoken=speakText(getClosingAnnouncement());
+  const spoken = getGuidanceSpeechLocale() === "ja-JP" && window.ParkingVoiceGuideScripts
+    ? speakPreparedScript("closing_soon")
+    : speakText(getClosingAnnouncement());
   if(spoken)lastClosingAnnouncementKey=key;
   return spoken;
 }
 function getClosingAnnouncement(locale=getGuidanceSpeechLocale()) {
   if(!getOperatingStatus()?.closingSoon)return "";
-  const messages={"ja-JP":"まもなく、へいてんじこくです。へいてんまで、いちじかんいないです。", "en-US":"This destination closes within one hour. ","en-GB":"This destination closes within one hour. ","zh-CN":"目的地将在一小时内结束营业。", "ko-KR":"목적지가 한 시간 이내에 영업을 종료합니다. ","es-ES":"Este destino cierra en menos de una hora. "};
+  const messages={"ja-JP":"閉店まで1時間以内です。ご利用時間にご注意ください。", "en-US":"This destination closes within one hour. ","en-GB":"This destination closes within one hour. ","zh-CN":"目的地将在一小时内结束营业。", "ko-KR":"목적지가 한 시간 이내에 영업을 종료합니다. ","es-ES":"Este destino cierra en menos de una hora. "};
   return messages[locale] || messages["en-US"];
 }
 function updateDestinationCards() {
@@ -3314,12 +3316,28 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
         const unique = [...new Set(parts)];
         // 施設名・店舗名・駐車枠番号・固定文を共有MP3として組み立てる。
         // 準備完了リストに無い部品は通信せず端末音声に切り替える。
-        const saved = await Promise.all(unique.map(async piece => [
-          piece,
-          await window.ParkingVoiceAudioCache.get(piece, {
-            signal: controller.signal, cachedOnly: true, remote: true,
-          }),
-        ]));
+        // 通信が弱い場所ではMP3を待ち続けず、端末音声へ素早く切り替える。
+        // 保存済みの部品なら即座に再生でき、時間切れの取得は中止する。
+        let preparationTimer = null;
+        let saved;
+        try {
+          saved = await Promise.race([
+            Promise.all(unique.map(async piece => [
+              piece,
+              await window.ParkingVoiceAudioCache.get(piece, {
+                signal: controller.signal, cachedOnly: true, remote: true,
+              }),
+            ])),
+            new Promise((_, reject) => {
+              preparationTimer = setTimeout(() => {
+                controller.abort();
+                reject(new Error("Prepared audio retrieval timed out"));
+              }, isPreview ? 2400 : 1700);
+            }),
+          ]);
+        } finally {
+          if (preparationTimer !== null) clearTimeout(preparationTimer);
+        }
         const copies = new Map(saved);
         clips.push(...parts.map(piece => copies.get(piece)));
         fromSavedParts = true;
@@ -3412,15 +3430,10 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
   }
 }
 
-/** 再生中の画面と音声を同じ案内内容へ揃える。 */
-let lastGuidanceTranscript = "";
+/** 通常画面は音声の状態だけ表示。全文は音声テスト専用画面に限定する。 */
 let lastGuidanceMode = "";
-function publishGuidanceTranscript(message, mode = "") {
-  if (message) lastGuidanceTranscript = message;
+function publishGuidanceTranscript(_message, mode = "") {
   if (mode) lastGuidanceMode = mode;
-  for (const node of document.querySelectorAll?.(".guidance-audio-message") || []) {
-    node.textContent = lastGuidanceTranscript || ui("案内開始後、ここに読み上げ内容を表示します。", "The spoken guidance appears here.");
-  }
   for (const node of document.querySelectorAll?.(".guidance-audio-mode") || []) {
     node.textContent = lastGuidanceMode || ui("音声案内は待機中です。", "Voice guidance is ready.");
   }
@@ -3474,7 +3487,7 @@ function speakDeviceAssembledParts(message, parts, requestId, onComplete = null,
         speech.cancel();
         stopSpeechAudioRoute();
         releasePriorityAudioSession();
-        updateVoiceStatus(ui("端末の音声が開始できません。画面の案内文をご確認ください。", "Device speech did not start. Follow the visible text."), "error");
+        updateVoiceStatus(ui("端末の音声を開始できません。画面の区画情報と現地の表示をご確認ください。", "Device speech did not start. Check the parking information and on-site signs."), "error");
         onError?.();
       }
     }, 5000);
@@ -3562,8 +3575,8 @@ function speakText(message, { preview = false, userGesture = false, parts = null
         else void speakTextWhenVoicesReady(message, requestId, false, false, onComplete, onError);
       } else {
         updateVoiceStatus(ui(
-          "このブラウザーで音声を再生できません。画面の案内文をご確認ください。",
-          "This browser cannot play speech. Follow the visible guidance text.",
+          "このブラウザーで音声を再生できません。画面の区画情報と現地の表示をご確認ください。",
+          "This browser cannot play speech. Check the parking information and on-site signs.",
         ), "error");
         onError?.();
       }
@@ -3637,7 +3650,7 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
       window.speechSynthesis.cancel();
       stopSpeechAudioRoute();
       releasePriorityAudioSession();
-      updateVoiceStatus(ui("音声を開始できません。案内内容：", "Voice did not start. Guidance: ") + message, "error");
+      updateVoiceStatus(ui("音声を開始できません。画面の区画情報と現地の表示をご確認ください。", "Voice did not start. Check the parking information and on-site signs."), "error");
       onError?.();
     }
   }, 6000);
@@ -3671,7 +3684,7 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
     stopSpeechAudioRoute();
     releasePriorityAudioSession();
     updateVoiceStatus(
-      ui("音声を再生できません。案内内容：", "Voice unavailable. Guidance: ") + message,
+      ui("音声を再生できません。画面の区画情報と現地の表示をご確認ください。", "Voice unavailable. Check the parking information and on-site signs."),
       "error",
     );
     onError?.();
