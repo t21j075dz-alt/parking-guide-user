@@ -617,7 +617,10 @@ test('全215施設に独立した日本語読み仮名があり、難読名を�
 });
 
 test('自宅の録画・リアルタイム・音声は共通配置図を使い、満空情報は別々に判定する', () => {
-  const { run, context } = app();
+  const { run, context } = app([{
+    id: 'home-test-001', name: '実験用駐車場（自宅駐車場リアルタイム用）',
+    prefecture: '岡山県', layoutId: 'home-test-001',
+  }]);
   const layout = { facilityId: 'home-test-001', objects: [
     { uid: 'space_001', objectType: 'parkingSpace', x: 10, y: 20, width: 5, height: 8, spaceType: 'standard', status: 'unknown' },
   ] };
