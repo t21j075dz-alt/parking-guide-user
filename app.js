@@ -783,8 +783,12 @@ function updateParkingArrivalPanel() {
         check.announced = true;
         if (state.voiceEnabled) {
           if (recorded) {
-            speakText(ui("録画の案内先で車両の停車を検知しました。画面で結果をご確認ください。",
-                         "A vehicle stopped in the assigned space in the recording. Check the result."));
+            // 録画の注記は画面に残し、通常のナビと同じ調子で停車検知を案内する。
+            if (getGuidanceSpeechLocale() === "ja-JP")
+              speakPreparedScript("arrival_video_confirm");
+            else
+              speakText(ui("ご案内した駐車枠に車を検知しました。安全に停車してから画面をご確認ください。",
+                "A vehicle was detected in the assigned space. Check the screen after stopping safely."));
           } else {
             speakPreparedScript("arrival_detected");
           }
@@ -924,9 +928,14 @@ function confirmOwnParking() {
   renderParkingMap(state.currentSpaces, space, state.currentLayout);
   if (state.voiceEnabled) {
     if (recorded) {
-      speakText(ui("録画の中で駐車を確認しました。現在の駐車状況ではありません。",
-        "Parking was detected in recorded footage. This is not current parking status."),
-        { userGesture: true });
+      // 録画の結果表示と現在の駐車位置を保存しない制御は継続する。
+      // 音声は他の施設と同じ駐車完了の案内を使う。
+      if (getGuidanceSpeechLocale() === "ja-JP")
+        speakPreparedScript("parking_completed", {}, { userGesture: true });
+      else
+        speakText(ui("駐車が完了しました。ご利用ありがとうございました。",
+          "Parking completed. Thank you for using the parking guide."),
+          { userGesture: true });
     } else if (getGuidanceSpeechLocale() === "ja-JP") {
       speakPreparedScript("parking_completed", {}, { userGesture: true });
     } else {
@@ -2584,6 +2593,10 @@ function updateSearchResultNotice() {
 }
 function getFacilitySpokenName(locale) {
   const facility = state.selectedFacility;
+  // 画面では録画実験と明示するが、通常の音声案内では施設名だけを自然に読む。
+  // 録画結果は現地の現在の状況として扱わず、区画状態の鮮度確認は従来どおり行う。
+  if (facility?.id === VIDEO_REPLAY_FACILITY_ID)
+    return locale === "ja-JP" ? "自宅駐車場" : "Home parking lot";
   if (locale === "ja-JP") return facility?.nameReading || window.PARKING_SPEECH_READINGS?.[facility?.id] || getFacilityDisplayName(facility);
   return getFacilityDisplayName(facility);
 }
@@ -3804,9 +3817,6 @@ function makePreparedScript(id, values = {}) {
   const prefixes = [];
   if (getOperatingStatus()?.closingSoon && id !== "closing_soon")
     prefixes.push(...bank.build("closing_soon").parts);
-  if (state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID &&
-      ["space_found", "space_none", "retry_found", "retry_none"].includes(id))
-    prefixes.unshift(...bank.build("recorded_demo").parts);
   if (state.selectedFacility?.id === VOICE_TEST_FACILITY_ID &&
       ["start_single", "start_complex", "space_found", "space_none", "retry_found", "retry_none"].includes(id))
     prefixes.unshift(...bank.build("voice_test_notice").parts);
@@ -3938,16 +3948,8 @@ function getCurrentGuidanceMessage(locale = getGuidanceSpeechLocale()) {
   return getClosingAnnouncement(locale) + getParkingGuidanceMessage(locale);
 }
 function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale(), options = {}) {
-  // すべての案内言語で「録画の実演」であることを先に伝える。
-  // 音声だけ聞く利用者にも実際の空き案内と誤解させない。
-  const replayWarnings = {
-    "ja-JP": "これはろくがえいぞうによるけんきゅうじつえんです。げんざいのあきじょうきょうではありません。",
-    "en-US": "This is a demonstration using recorded footage, not current parking availability. ",
-    "en-GB": "This is a demonstration using recorded footage, not current parking availability. ",
-    "zh-CN": "这是过去录像的研究演示，不代表目前的停车位状态。",
-    "ko-KR": "이것은 녹화 영상을 이용한 연구 시연입니다. 현재 주차 상황이 아닙니다. ",
-    "es-ES": "Esta es una demostración con una grabación, no la disponibilidad actual del aparcamiento. ",
-  };
+  // 録画用の注意は画面に残す。音声は他の施設と同じ駐車案内のみ読み上げる。
+  // 音声テスト専用施設のシナリオ注意は従来どおり維持する。
   const voiceTestWarnings = {
     "ja-JP": "これはおんせいあんないのてすとです。あきくかくはもぎでーたです。",
     "en-US": "This is a voice guidance test using simulated parking spaces. ",
@@ -3956,14 +3958,12 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale(), options =
     "ko-KR": "이것은 가상 주차 공간을 이용한 음성 안내 테스트입니다. ",
     "es-ES": "Esta es una prueba de guía por voz con plazas simuladas. ",
   };
-  const replayNotice = state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID
-    ? (replayWarnings[locale] || replayWarnings["en-US"])
-    : state.selectedFacility?.id === VOICE_TEST_FACILITY_ID
-      ? (voiceTestWarnings[locale] || voiceTestWarnings["en-US"]) : "";
+  const specialNotice = state.selectedFacility?.id === VOICE_TEST_FACILITY_ID
+    ? (voiceTestWarnings[locale] || voiceTestWarnings["en-US"]) : "";
   if (state.searchOutcome === "not-found" && !options.space) {
     const full = summarizeOccupancy(state.currentSpaces, state.resultSimulation).level === "full";
     const fullMessages = {"ja-JP":"とうろくでーたでは、まんしゃです。", "en-US":"The saved data shows a full parking lot. ", "en-GB":"The saved data shows a full car park. ", "zh-CN":"已保存的数据显示停车场已满。", "ko-KR":"저장된 데이터상 주차장이 만차입니다. ", "es-ES":"Los datos guardados indican que el aparcamiento está lleno. "};
-    return replayNotice + (full ? fullMessages[locale] ?? fullMessages["en-US"] : "") + getNoSpaceGuidanceMessage(locale);
+    return specialNotice + (full ? fullMessages[locale] ?? fullMessages["en-US"] : "") + getNoSpaceGuidanceMessage(locale);
   }
   if (!state.recommendedSpace && !options.space) return "";
   const number = getSpokenSpaceId(options.space ?? state.recommendedSpace, locale);
@@ -3981,7 +3981,7 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale(), options =
     "es-ES": `${approaching ? `Se está acercando a ${facility}. ` : facility ? `Guía de aparcamiento para ${facility}. ` : ""}La plaza recomendada es la número ${number}. Repito, número ${number}. Compruebe la seguridad de su entorno y las señales antes de aparcar. Si no encuentra una plaza, no espere en la vía pública; continúe de forma segura.`,
   };
   const crowdMessages = {"en-US": `The parking lot is busy. Only ${occupancy.available} spaces remain. `, "en-GB": `The car park is busy. Only ${occupancy.available} spaces remain. `, "zh-CN": `停车场拥挤，仅剩${occupancy.available}个空车位。`, "ko-KR": `주차장이 혼잡합니다. 빈 공간은 ${occupancy.available}개입니다. `, "es-ES": `El aparcamiento está concurrido. Solo quedan ${occupancy.available} plazas. `};
-  return replayNotice + (crowded && locale !== "ja-JP" ? crowdMessages[locale] ?? crowdMessages["en-US"] : "") + (messages[locale] ?? messages["en-US"]);
+  return specialNotice + (crowded && locale !== "ja-JP" ? crowdMessages[locale] ?? crowdMessages["en-US"] : "") + (messages[locale] ?? messages["en-US"]);
 }
 
 /** 自動探索、手動探索、再案内で同じ案内文を使う。 */
