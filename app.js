@@ -3077,13 +3077,12 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
         // 重複するエリア名・番号は1回だけ取得し、個々の音声は並列で取り出す。
         // 再生の順序は元のpartsで維持する（同じ駐車枠を2回案内する仕様）。
         const unique = [...new Set(parts)];
-        const nameParts = new Set(parts.filter((piece, index) =>
-          ["目的施設名", "目的店舗名", "施設名", "駐車場名"].includes(roles?.[index])));
+        // 施設名・店舗名だけでなく固定文も共有MP3を再利用。
+        // 準備完了リストに無い部品は通信せず端末音声に切り替える。
         const saved = await Promise.all(unique.map(async piece => [
           piece,
           await window.ParkingVoiceAudioCache.get(piece, {
-            signal: controller.signal, cachedOnly: true,
-            remote: nameParts.has(piece),
+            signal: controller.signal, cachedOnly: true, remote: true,
           }),
         ]));
         const copies = new Map(saved);

@@ -25,6 +25,34 @@
   }
   function status() { return { cooldownSeconds: cooldownSeconds(), blocked: cooldownSeconds() > 0 }; }
 
+  // 音声の準備完了ハッシュだけを取得する。店舗名などの本文は公開しない。
+  // 未生成の名前へ毎回MP3取得(404)を行わず、聞き取り開始の遅延を減らす。
+  let readyHashes = null;
+  let readyAt = 0;
+  let manifestPromise = null;
+  async function sharedReadyHashes(base, publishableKey, signal) {
+    if (!publishableKey) return null;
+    if (readyHashes && Date.now() - readyAt < 120000) return readyHashes;
+    if (manifestPromise) return manifestPromise;
+    manifestPromise = (async () => {
+      try {
+        const response = await fetch(
+          base + "/rest/v1/parking_voice_ready?select=audio_hash&limit=1000",
+          { headers: { apikey: publishableKey }, signal, cache: "no-store" },
+        );
+        if (!response.ok) return null;
+        const data = await response.json();
+        if (!Array.isArray(data)) return null;
+        readyHashes = new Set(data.map(row => row.audio_hash)
+          .filter(h => typeof h === "string" && /^[a-f0-9]{64}$/.test(h)));
+        readyAt = Date.now();
+        return readyHashes;
+      } catch { return null; }
+      finally { manifestPromise = null; }
+    })();
+    return manifestPromise;
+  }
+
   const SCOPE = new URL("./", window.location.href);
 
   function trustedAudioUrl(value) {
@@ -147,6 +175,9 @@
         if (window.PARKING_REMOTE_CONFIG?.enabled === true && /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(base || "")) {
           const hash = key.match(/\/([0-9a-f]{64})\.mp3$/)?.[1];
           if (hash) {
+            const manifest = await sharedReadyHashes(
+              base, window.PARKING_REMOTE_CONFIG?.publishableKey, options.signal);
+            if (manifest && !manifest.has(hash)) throw new Error("Audio preparation pending");
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), 2600);
             const onAbort = () => controller.abort();

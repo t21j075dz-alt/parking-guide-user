@@ -19,12 +19,15 @@ window.ParkingVoiceAssembler = (() => {
     const result = [];
     let current = "";
     for (const item of pieces) {
-      const importantBoundary = /繰り返します。|くりかえします。|まもなく目的地です。|番です。/.test(item);
-      if (current && (current.length + item.length > maxChars || importantBoundary)) {
+      // 駐車枠の場所、繰り返し、到着、安全注意は独立した意味のまとまり。
+      // 「エリア名」「店舗名」「枠番号」は語句の途中で切らずに読み上げる。
+      const isKeySentence = /(?:繰り返します|くりかえします|まもなく目的地です|(?:番|ばん)です)[。！？.!?]?$/.test(item);
+      if (current && (current.length + item.length > maxChars || isKeySentence)) {
         result.push(current); current = "";
       }
       if (item.length <= maxChars) {
         current += item;
+        if (isKeySentence) { result.push(current); current = ""; }
       } else {
         if (current) { result.push(current); current = ""; }
         // 長い文を読点で区切る。名前・駐車枠番号を勝手に省略しない。
@@ -43,8 +46,8 @@ window.ParkingVoiceAssembler = (() => {
   function segments(parts) {
     return sentences(parts).map(text => ({
       text,
-      pauseAfterMs: /繰り返します。|くりかえします。/.test(text) ? 450
-        : /まもなく目的地です。|番です。/.test(text) ? 280 : 170,
+      pauseAfterMs: /(?:繰り返します|くりかえします)[。！？]$/.test(text) ? 450
+        : /(?:まもなく目的地です|(?:番|ばん)です)[。！？]$/.test(text) ? 280 : 170,
     }));
   }
 
