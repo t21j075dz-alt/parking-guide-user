@@ -195,3 +195,22 @@ body[data-guidance-screen="voice-test-complete"] .location-panel {
 @media (prefers-reduced-motion: reduce) {
   .facility-button { transition: none; }
 }
+
+
+/* 停車検知時は案内番号の直後に、確認操作をはっきり表示する。 */
+#result-screen .parking-arrival-panel.is-confirmed {
+  border: 2px solid var(--color-primary);
+  background: var(--color-surface);
+  box-shadow: 0 6px 22px rgb(20 57 93 / 12%);
+}
+#result-screen .parking-arrival-panel.is-confirmed #parking-arrival-heading {
+  color: var(--color-primary);
+  font-weight: 800;
+}
+#result-screen .parking-arrival-panel.is-confirmed #parking-arrival-status {
+  font-size: clamp(1rem, 3.7vw, 1.15rem);
+  font-weight: 750;
+}
+#result-screen .parking-arrival-panel.is-confirmed .parking-arrival-actions button {
+  min-height: 3.35rem;
+}
