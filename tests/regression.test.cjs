@@ -1162,5 +1162,6 @@ test("保存済み音声部品は最大6本の並列デコードで読み、順�
   assert.equal(peak,6);
   assert.equal(starts.length,parts.length);
   assert.ok(starts.every((at,i)=>i===0 || at>=starts[i-1]));
-  assert.equal(fetched.filter(x=>x===space).length,1,"同じ番号のMP3は一度だけ読み取る");
+  const spokenSpace = run("normalizeJapaneseSpeech("+JSON.stringify(space)+")");
+  assert.equal(fetched.filter(x=>x===spokenSpace).length,1,"正規化した同じ番号のMP3は一度だけ読み取る");
 });
