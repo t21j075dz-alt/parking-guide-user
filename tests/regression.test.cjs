@@ -1208,7 +1208,8 @@ test('録画映像や古いYOLO判定では本人確認を表示しない',()=>{
   run('updateParkingArrivalPanel()');
   assert.equal(run('state.arrivalCheck.confirmed'),false);
   run("startArrivalCheck({id:'home-video-demo-001',isRecordedExperiment:true},{uid:'p',id:'1'},true)");
-  assert.equal(run('state.arrivalCheck'),null,'録画デモは現地の駐車完了としない');
+  assert.equal(run('state.arrivalCheck.recorded'),true,'録画の停車検知は専用モードとして扱う');
+  assert.equal(run('state.arrivalCheck.confirmed'),false,'録画の停車を初期状態では確定しない');
 });
 
 test('自分の車なら案内を停止し、駐車番号と地図を出庫まで保持する',()=>{
@@ -1447,4 +1448,68 @@ test("通常の端末TTSのエラー後に届く終了通知では音声テス�
   current.handlers.end();
   assert.equal(run("window.__errorCount"),1);
   assert.equal(run("window.__completeCount"),0);
+});
+
+
+test('録画案内は空き→駐車開始→停車の新しい判定を待って確認画面を表示する',()=>{
+  const {run,context,nodes}=app();
+  const recorded={id:'home-video-demo-001',name:'録画用駐車場',isRecordedExperiment:true};
+  let row={status:'occupied',source:'recorded_video_demo',occupancy_phase:'stopped',
+    checked_at:new Date().toISOString()};
+  context.window.ParkingLiveStatus={snapshot:()=>({published:true,error:false,
+    rows:new Map([['space_003',row]])}),stop(){}};
+  run("state.currentScreen='result';state.searchOutcome='found';state.resultLive=true;state.voiceEnabled=false");
+  context.testFacility=recorded;
+  run("state.selectedFacility=testFacility;state.recommendedSpace={uid:'space_003',id:'3',spaceType:'standard'}");
+  run("startArrivalCheck(state.selectedFacility,state.recommendedSpace,true);state.arrivalCheck.startedAt=Date.now()-10000");
+  run("updateParkingArrivalPanel()");
+  assert.equal(run("state.arrivalCheck.hitCount"),0,'再生開始時から停車中の車は駐車完了としない');
+  row={...row,status:'available',occupancy_phase:'available',
+    checked_at:new Date(Date.now()+1000).toISOString()};
+  run("updateParkingArrivalPanel()");
+  assert.equal(run("state.arrivalCheck.seenAvailable"),true);
+  row={...row,status:'occupied',occupancy_phase:'parking_in',
+    checked_at:new Date(Date.now()+2000).toISOString()};
+  run("updateParkingArrivalPanel()");
+  assert.equal(run("state.arrivalCheck.seenApproach"),true);
+  row={...row,occupancy_phase:'stopped',
+    checked_at:new Date(Date.now()+3000).toISOString()};
+  run("updateParkingArrivalPanel()");
+  assert.equal(run("state.arrivalCheck.hitCount"),1);
+  assert.equal(nodes.get('#parking-arrival-actions').hidden,true);
+  run("updateParkingArrivalPanel()");
+  assert.equal(run("state.arrivalCheck.hitCount"),1,'同じ更新は二重カウントしない');
+  row={...row,checked_at:new Date(Date.now()+4000).toISOString()};
+  run("state.arrivalCheck.occupiedSince=Date.now()-2500;updateParkingArrivalPanel()");
+  assert.equal(run("state.arrivalCheck.confirmed"),true);
+  assert.equal(nodes.get('#parking-arrival-actions').hidden,false);
+  assert.match(nodes.get('#parking-arrival-status').textContent,/録画の案内先で停車/);
+  assert.match(nodes.get('#parking-arrival-confirm').textContent,/録画の駐車結果/);
+});
+
+test('録画の確認は駐車位置として保存せず、終了画面を表示する',()=>{
+  const {run,context,nodes}=app();
+  const writes=[];
+  context.localStorage={setItem(...args){writes.push(args)},removeItem(){}};
+  context.window.ParkingLiveStatus={stop(){}};
+  run("state.currentScreen='result';state.searchOutcome='found';state.resultLive=true;state.voiceEnabled=false");
+  run("state.selectedFacility={id:'home-video-demo-001',name:'録画用',isRecordedExperiment:true}");
+  run("state.recommendedSpace={uid:'space_003',id:'3',spaceType:'standard'}");
+  run("state.currentSpaces=[state.recommendedSpace];state.currentLayout=null;");
+  run("state.arrivalCheck={facilityId:'home-video-demo-001',uid:'space_003',confirmed:true,recorded:true}");
+  run("renderParkingMap=()=>{}");
+  assert.equal(run('confirmOwnParking()'),true);
+  assert.equal(run("state.currentScreen"),"parked");
+  assert.match(nodes.get("#parked-title").textContent,/録画で駐車/);
+  assert.match(nodes.get("#parked-departure-button").textContent,/確認を終了/);
+  assert.equal(writes.length,0,'録画を実際の駐車位置として永続保存しない');
+  assert.equal(run("departParkedLocation()"),true);
+  assert.equal(run("state.currentScreen"),"facility");
+});
+
+test('リアルタイム共有OFFなら車両検知の誤通知を開始しない',()=>{
+  const {run}=app();
+  run("state.currentScreen='result';state.searchOutcome='found';state.resultLive=false;");
+  run("startArrivalCheck({id:'home-test-001'},{uid:'space_001'},false)");
+  assert.equal(run("state.arrivalCheck"),null);
 });
