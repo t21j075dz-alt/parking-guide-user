@@ -3684,7 +3684,7 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
     stopSpeechAudioRoute();
     releasePriorityAudioSession();
     updateVoiceStatus(
-      ui("音声を再生できません。案内内容：", "Voice unavailable. Guidance: ") + message,
+      ui("音声を再生できません。画面の区画情報と現地の表示をご確認ください。", "Voice unavailable. Check the parking information and on-site signs."),
       "error",
     );
     onError?.();
