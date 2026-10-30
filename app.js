@@ -4650,6 +4650,8 @@ document.querySelectorAll("[data-back]").forEach((button) => {
 document.querySelectorAll("[data-go-home]").forEach((element) => {
   element.addEventListener("click", (event) => {
     event.preventDefault();
+    // 駐車中は誤タップで記録を消さず、出庫ボタンでのみホームへ戻る。
+    if (state.currentScreen === "parked" && state.parkedSpace) return;
     resetApplication();
   });
 });
