@@ -32,6 +32,7 @@
   const MANIFEST_TIMEOUT_MS = 1400;
   const MANIFEST_RETRY_DELAY_MS = 15000;
   let manifestRetryAt = 0;
+  let manifestPromise = null;
   async function sharedReadyHashes(base, publishableKey) {
     if (!publishableKey) return null;
     if (readyHashes && Date.now() - readyAt < 120000) return readyHashes;
