@@ -616,6 +616,30 @@ test('全215施設に独立した日本語読み仮名があり、難読名を�
   }
 });
 
+test('自宅の録画・リアルタイム・音声は共通配置図を使い、満空情報は別々に判定する', () => {
+  const { run, context } = app();
+  const layout = { facilityId: 'home-test-001', objects: [
+    { uid: 'space_001', objectType: 'parkingSpace', x: 10, y: 20, width: 5, height: 8, spaceType: 'standard', status: 'unknown' },
+  ] };
+  context.window.PARKING_LAYOUTS['home-test-001'] = layout;
+  const ids = run("FACILITIES.filter(f => ['home-test-001','home-video-demo-001','home-voice-test-001'].includes(f.id)).map(f => f.id)");
+  assert.deepEqual([...ids].sort(), ['home-test-001','home-video-demo-001','home-voice-test-001'].sort());
+  assert.equal(run('getFacilityLayout(VIDEO_REPLAY_FACILITY)'), layout);
+  assert.equal(run('getFacilityLayout(VOICE_TEST_FACILITY)'), layout);
+  assert.equal(run("getFacilityLayout(FACILITIES.find(f => f.id === 'home-test-001'))"), layout);
+  const testSpace = run('prepareSpaces(VOICE_TEST_FACILITY)');
+  assert.equal(testSpace.isSimulation, true);
+  assert.equal(testSpace.isLive, false);
+  assert.equal(testSpace.spaces.length, 1);
+  assert.equal(testSpace.spaces[0].occupancyStatus, 'available');
+  const videoSpace = run('prepareSpaces(VIDEO_REPLAY_FACILITY)');
+  assert.equal(videoSpace.spaces[0].occupancyStatus, 'unknown');
+  assert.equal(run('privateTestStorageKey(VIDEO_REPLAY_FACILITY)'),
+               run("privateTestStorageKey(FACILITIES.find(f => f.id === 'home-test-001'))"));
+  assert.equal(run('privateTestStorageKey(VOICE_TEST_FACILITY)'),
+               run('privateTestStorageKey(VIDEO_REPLAY_FACILITY)'));
+});
+
 test('区画番号は英字・全角・先頭ゼロ・桁数を処理し、管理用読み仮名を優先する', () => {
   const { run } = app();
   assert.equal(run("getSpokenSpaceId({id:'Ｂ－０５'})"), 'びー、ご');
