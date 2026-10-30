@@ -47,7 +47,7 @@ test("通常画面には読み上げ全文を表示せず、音声確認専用�
   const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.doesNotMatch(html, /class="guidance-audio-message"/);
   assert.match(html, /id="voice-test-transcript"/);
-  assert.match(html, /class="guidance-audio-replay"/);
+  assert.match(html, /class="[^"]*guidance-audio-replay/);
   assert.doesNotMatch(app, /node\.textContent = lastGuidanceTranscript/);
   assert.doesNotMatch(app, /案内内容："[, ]*.*\+ message/);
 });
