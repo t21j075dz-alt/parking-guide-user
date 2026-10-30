@@ -138,10 +138,11 @@ test("端末の音声は最終endでのみ完了し、手動中止や音声エ�
   const {run,context}=testApp();
   let current;
   context.window.ParkingVoiceAssembler = {segments: parts => [{text:parts.join(""),pauseAfterMs:0}]};
-  context.window.SpeechSynthesisUtterance = class {
+  context.SpeechSynthesisUtterance = class {
     constructor(text){this.text=text;this.handlers={};}
     addEventListener(name,fn){this.handlers[name]=fn;}
   };
+  context.window.SpeechSynthesisUtterance = context.SpeechSynthesisUtterance;
   context.window.speechSynthesis.getVoices=()=>[];
   context.window.speechSynthesis.speak=utterance=>{current=utterance;};
   run("state.cloudVoiceEnabled = false; window.__finished = 0; window.__errors = 0;");
