@@ -528,7 +528,7 @@ function privateTestStorageKey(facility) {
 }
 const RANDOM_GUIDANCE_FACILITY_IDS = new Set(["target_021", PRIVATE_TEST_FACILITY_ID]);
 
-const SCREEN_ORDER = Object.freeze(["facility", "condition", "waiting", "result"]);
+const SCREEN_ORDER = Object.freeze(["facility", "condition", "waiting", "result", "voice-test", "voice-test-complete"]);
 
 const state = {
   currentScreen: "facility",
@@ -541,6 +541,7 @@ const state = {
   lastSearchWasAuto: false,
   selectedFacility: null,
   selectedDestination: null,
+  voiceTestRun: null, // 実カメラ・本番の案内とは独立した試験の進行状態
   resolvedFacilityCoordinates: new Map(),
   resolvingFacilityCoordinates: new Map(),
   // 店舗ごとのデモ状態を保持し、再描画やGPS更新だけでは抽選し直さない。
@@ -1840,6 +1841,10 @@ function showScreen(screenName, options = {}) {
   if (screenName !== state.currentScreen && screenName !== "result") {
     state.searchRequestId += 1;
     cancelSpeech();
+  }
+  if (state.currentScreen === "voice-test"
+      && !["voice-test", "voice-test-complete"].includes(screenName)) {
+    state.voiceTestRun = null; // 前画面へ戻った後の遅延通知を破棄する。
   }
   if (screenName === "facility" || screenName === "condition") {
     state.autoProximityArmed = false;
@@ -3681,6 +3686,241 @@ function speakCurrentGuidance() {
   return spoken;
 }
 
+/* =========================================================
+   研究用：読み上げ終了を合図に画面を進める音声テスト
+   ========================================================= */
+const voiceTestLaunch = document.querySelector("#voice-test-launch");
+const normalConditionActions = document.querySelector("#normal-condition-actions");
+const voiceTestCategory = document.querySelector("#voice-test-category");
+const voiceTestCount = document.querySelector("#voice-test-count");
+const voiceTestProgress = document.querySelector("#voice-test-progress");
+const voiceTestTitle = document.querySelector("#voice-test-title");
+const voiceTestGroup = document.querySelector("#voice-test-group");
+const voiceTestTranscript = document.querySelector("#voice-test-transcript");
+const voiceTestStatus = document.querySelector("#voice-test-status");
+const voiceTestPauseButton = document.querySelector("#voice-test-pause");
+const voiceTestPreviousButton = document.querySelector("#voice-test-prev");
+const voiceTestCompleteCount = document.querySelector("#voice-test-complete-count");
+
+/** 選択施設だけにテストメニューを表示し、言語別の対応件数を示す。 */
+function updateVoiceTestEntry() {
+  const active = state.selectedFacility?.id === VOICE_TEST_FACILITY_ID;
+  if (voiceTestLaunch) voiceTestLaunch.hidden = !active;
+  if (normalConditionActions) normalConditionActions.hidden = active;
+  if (!active || !window.ParkingVoiceTestScenarios) return;
+  const groups = window.ParkingVoiceTestScenarios.groups;
+  const locale = getGuidanceSpeechLocale();
+  const value = voiceTestCategory?.value || "all";
+  if (voiceTestCategory) {
+    voiceTestCategory.replaceChildren(...groups.map(group =>
+      new Option(isEnglish() ? group.en : group.ja, group.id)));
+    voiceTestCategory.value = groups.some(group => group.id === value) ? value : "all";
+  }
+  const count = window.ParkingVoiceTestScenarios.scenarios(locale, voiceTestCategory?.value || "all").length;
+  if (voiceTestCount) voiceTestCount.textContent = ui(
+    "この条件では" + count + "種類の音声を順番にテストします。",
+    count + " announcements will be tested in sequence.",
+  );
+}
+
+/** 案内文と読み上げ番号は既存の管理者マップ・台本を再利用する。 */
+function voiceTestScript(item) {
+  const bank = window.ParkingVoiceTestScenarios;
+  if (!bank) throw new Error("音声テストの台本を読み込めません。");
+  const layout = getFacilityLayout(state.selectedFacility);
+  const spaces = layout ? createLayoutParkingSpaces(layout, state.selectedFacility) : [];
+  const space = spaces.find(candidate => candidate.spaceType === "standard") || spaces[0];
+  const spokenSpace = space ? getSpokenSpaceId(space, "ja-JP") : "ご";
+  return bank.build(item, {
+    facility: getFacilitySpokenName("ja-JP") || "テスト施設",
+    space: spokenSpace, destination: "サンプル店舗",
+  }, getGuidanceSpeechLocale());
+}
+
+/** 音声の開始失敗や中断時は自動で次へ移らない。 */
+function voiceTestPlaybackError(run, index, token) {
+  if (run !== state.voiceTestRun || state.currentScreen !== "voice-test"
+      || run.index !== index || run.token !== token) return;
+  run.paused = true;
+  if (voiceTestStatus) voiceTestStatus.textContent = ui(
+    "音声を再生できませんでした。「再開」または「次へスキップ」を押してください。",
+    "Voice playback failed. Tap Resume or Skip to next.",
+  );
+  if (voiceTestPauseButton) voiceTestPauseButton.textContent = ui("再開", "Resume");
+}
+
+/** 最後の音声部品または最後のWeb Speech文の完了通知でのみ進める。 */
+function voiceTestPlaybackComplete(run, index, token) {
+  if (run !== state.voiceTestRun || state.currentScreen !== "voice-test"
+      || run.index !== index || run.token !== token || run.paused) return;
+  run.index += 1;
+  if (run.index >= run.scenarios.length) {
+    if (voiceTestCompleteCount) voiceTestCompleteCount.textContent = ui(
+      run.scenarios.length + "種類の音声案内テストを終了しました。",
+      "Finished " + run.scenarios.length + " voice announcements.",
+    );
+    showScreen("voice-test-complete");
+    return;
+  }
+  renderVoiceTestStep();
+  if (document.hidden) {
+    // 背景タブでは自動発話が禁止される端末がある。
+    run.paused = true;
+    if (voiceTestStatus) voiceTestStatus.textContent = ui(
+      "次の画面へ進みました。画面を開き「再開」を押してください。",
+      "Moved to the next step. Return and tap Resume.",
+    );
+    if (voiceTestPauseButton) voiceTestPauseButton.textContent = ui("再開", "Resume");
+  } else {
+    playVoiceTestStep();
+  }
+}
+
+/** MP3と端末音声を同一の完了イベントへ接続する。 */
+function playVoiceTestStep() {
+  const run = state.voiceTestRun;
+  if (!run || state.currentScreen !== "voice-test" || !run.scenarios[run.index]) return false;
+  if (!state.voiceEnabled || !voiceEnabledInput?.checked) {
+    run.paused = true;
+    if (voiceTestStatus) voiceTestStatus.textContent = ui(
+      "音声案内がOFFです。設定へ戻って音声案内をONにしてください。",
+      "Voice guidance is off. Enable it in the settings.",
+    );
+    if (voiceTestPauseButton) voiceTestPauseButton.textContent = ui("再開", "Resume");
+    return false;
+  }
+  run.paused = false;
+  run.token += 1;
+  const token = run.token;
+  const index = run.index;
+  if (voiceTestPauseButton) voiceTestPauseButton.textContent = ui("一時停止", "Pause");
+  if (voiceTestStatus) voiceTestStatus.textContent = ui(
+    "読み上げ中です。終了すると自動的に次の案内画面へ移ります。",
+    "Speaking now. The next step opens when playback finishes.",
+  );
+  let script;
+  try {
+    script = voiceTestScript(run.scenarios[index]);
+  } catch {
+    voiceTestPlaybackError(run, index, token);
+    return false;
+  }
+  const spoken = speakText(script.text, {
+    userGesture: true, parts: script.parts, roles: script.roles,
+    onComplete: () => voiceTestPlaybackComplete(run, index, token),
+    onError: () => voiceTestPlaybackError(run, index, token),
+  });
+  if (!spoken) voiceTestPlaybackError(run, index, token);
+  return Boolean(spoken);
+}
+
+/** 1件ずつ見出し・文章・進行度を切り替え、次の画面として表示する。 */
+function renderVoiceTestStep() {
+  const run = state.voiceTestRun;
+  if (!run || !run.scenarios[run.index]) return;
+  const item = run.scenarios[run.index];
+  const group = window.ParkingVoiceTestScenarios.groups.find(entry => entry.id === item.group);
+  const script = voiceTestScript(item);
+  voiceTestTitle.textContent = isEnglish() ? item.en : item.ja;
+  voiceTestProgress.textContent = ui(
+    "音声テスト " + (run.index + 1) + " / " + run.scenarios.length,
+    "Voice test " + (run.index + 1) + " of " + run.scenarios.length,
+  );
+  voiceTestGroup.textContent = group ? (isEnglish() ? group.en : group.ja) : "";
+  voiceTestTranscript.textContent = script.text;
+  voiceTestStatus.textContent = ui("音声を準備しています。", "Preparing voice playback.");
+  voiceTestPreviousButton.disabled = run.index === 0;
+  if (voiceTestPauseButton) voiceTestPauseButton.textContent = ui(
+    run.paused ? "再開" : "一時停止", run.paused ? "Resume" : "Pause",
+  );
+  window.scrollTo?.({ top:0, behavior:"auto" });
+  voiceTestTitle.focus?.();
+}
+
+/** 必ずボタン操作から第1案内を開始する。実カメラ・位置情報は開始しない。 */
+function startVoiceTest() {
+  if (state.selectedFacility?.id !== VOICE_TEST_FACILITY_ID) return false;
+  if (window.parkingSafety && !window.parkingSafety.guardOperation()) return false;
+  if (!voiceEnabledInput?.checked) {
+    voiceTestCount.textContent = ui(
+      "音声案内がOFFです。上の音声案内をONにしてください。",
+      "Voice is off. Enable voice guidance in the settings.",
+    );
+    return false;
+  }
+  const bank = window.ParkingVoiceTestScenarios;
+  const scenarios = bank?.scenarios(getGuidanceSpeechLocale(), voiceTestCategory?.value || "all") || [];
+  if (!scenarios.length) {
+    voiceTestCount.textContent = ui(
+      "この言語に対応する音声がありません。別の種類を選択してください。",
+      "No localized audio in this group. Choose another group.",
+    );
+    return false;
+  }
+  state.voiceTestRun = { scenarios, index:0, token:0, paused:false };
+  showScreen("voice-test");
+  renderVoiceTestStep();
+  return playVoiceTestStep();
+}
+
+/** 戻る・スキップ・繰り返しは旧発話の終了通知を無効化する。 */
+function moveVoiceTestStep(delta) {
+  const run = state.voiceTestRun;
+  if (!run || state.currentScreen !== "voice-test") return;
+  cancelSpeech();
+  run.token += 1;
+  run.index = Math.min(run.scenarios.length, Math.max(0, run.index + delta));
+  if (run.index >= run.scenarios.length) {
+    if (voiceTestCompleteCount) voiceTestCompleteCount.textContent = ui(
+      run.scenarios.length + "種類の音声テストを終了しました。",
+      "Finished " + run.scenarios.length + " announcements.",
+    );
+    showScreen("voice-test-complete");
+    return;
+  }
+  run.paused = false;
+  renderVoiceTestStep();
+  playVoiceTestStep();
+}
+
+voiceTestCategory?.addEventListener("change", updateVoiceTestEntry);
+document.querySelector("#voice-test-start")?.addEventListener("click", startVoiceTest);
+voiceTestPauseButton?.addEventListener("click", () => {
+  const run = state.voiceTestRun;
+  if (!run || state.currentScreen !== "voice-test") return;
+  if (run.paused) {
+    playVoiceTestStep(); // 音声の途中で切らず、現在の1件を最初からやり直す。
+  } else {
+    run.paused = true;
+    run.token += 1;
+    cancelSpeech();
+    voiceTestPauseButton.textContent = ui("再開", "Resume");
+    voiceTestStatus.textContent = ui(
+      "一時停止しました。再開時はこの音声の最初から読み上げます。",
+      "Paused. Resume restarts this announcement from the beginning.",
+    );
+  }
+});
+document.querySelector("#voice-test-retry")?.addEventListener("click", () => {
+  if (!state.voiceTestRun || state.currentScreen !== "voice-test") return;
+  cancelSpeech();
+  playVoiceTestStep();
+});
+voiceTestPreviousButton?.addEventListener("click", () => moveVoiceTestStep(-1));
+document.querySelector("#voice-test-next")?.addEventListener("click", () => moveVoiceTestStep(1));
+document.querySelector("#voice-test-back")?.addEventListener("click", () => {
+  cancelSpeech();
+  state.voiceTestRun = null;
+  showScreen("condition");
+  updateVoiceTestEntry();
+});
+document.querySelector("#voice-test-repeat")?.addEventListener("click", startVoiceTest);
+document.querySelector("#voice-test-finish")?.addEventListener("click", () => {
+  state.voiceTestRun = null;
+  showScreen("condition");
+  updateVoiceTestEntry();
+});
+
 /** 現在設定の音声案内言語で短い試聴を行う。 */
 function getVoicePreviewMessage(locale = getGuidanceSpeechLocale()) {
   const messages = {
@@ -3925,6 +4165,7 @@ function resetApplication() {
   state.searchRequestId += 1;
   state.selectedFacility = null;
   state.selectedDestination = null;
+  state.voiceTestRun = null;
   state.selectedPriority = "balanced";
   state.requestedSpaceType = "standard";
   state.voiceEnabled = voiceEnabledInput?.checked !== false;
@@ -3978,6 +4219,7 @@ facilityList.addEventListener("click", (event) => {
   updateDestinationPanel();
   updateRandomGuidanceNote();
   updatePrivateTestLocationPanel();
+  updateVoiceTestEntry();
   void ensureFacilityCoordinate(facility);
   showScreen("condition");
 });
@@ -3987,6 +4229,11 @@ themeButton.addEventListener("click", toggleTheme);
 languageButton.addEventListener("click", () => {
   cancelSpeech();
   applyLanguage(isEnglish() ? "ja" : "en");
+  if (state.currentScreen === "voice-test") {
+    state.voiceTestRun = null;
+    showScreen("condition");
+  }
+  updateVoiceTestEntry();
 });
 destinationSelect?.addEventListener("change", () => {
   saveSelectedDestination();
@@ -4153,6 +4400,10 @@ window.addEventListener("parking:locationchange", (event) => {
 conditionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   saveSearchConditions();
+  if (state.selectedFacility?.id === VOICE_TEST_FACILITY_ID) {
+    startVoiceTest();
+    return;
+  }
 
   if (getFacilityDestinations().length > 0
       && !state.selectedDestination) {
@@ -4188,6 +4439,10 @@ conditionForm.addEventListener("submit", async (event) => {
 
 searchNowButton?.addEventListener("click", () => {
   saveSearchConditions();
+  if (state.selectedFacility?.id === VOICE_TEST_FACILITY_ID) {
+    startVoiceTest();
+    return;
+  }
   if (getFacilityDestinations().length > 0
       && !state.selectedDestination) {
     destinationSelect.reportValidity();
@@ -4236,7 +4491,9 @@ window.addEventListener("popstate", (event) => {
     requestedScreen === "facility" ||
     (requestedScreen === "condition" && state.selectedFacility) ||
     (requestedScreen === "waiting" && state.selectedFacility && state.autoProximityArmed) ||
-    (requestedScreen === "result" && state.searchOutcome);
+    (requestedScreen === "result" && state.searchOutcome) ||
+    (requestedScreen === "voice-test" && state.selectedFacility?.isVoiceTest && state.voiceTestRun) ||
+    (requestedScreen === "voice-test-complete" && state.selectedFacility?.isVoiceTest && state.voiceTestRun);
 
   showScreen(canOpenScreen ? requestedScreen : "facility", { addHistory: false });
 });
