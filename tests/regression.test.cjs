@@ -915,7 +915,7 @@ test('全言語でネットワーク音声のエラー時は同言語の端末�
   spoken[0].handlers.error({error:'network'});
   assert.equal(spoken.length,2);assert.equal(spoken[1].voice.lang,lang);assert.equal(spoken[1].voice.localService,true);
   spoken[1].handlers.error({error:'synthesis-failed'});assert.equal(spoken.length,2);
-  assert.match(run('voiceStatus.textContent'),/sample/);
+  assert.match(run('voiceStatus.textContent'),/音声を再生できません|Voice unavailable/);assert.doesNotMatch(run('voiceStatus.textContent'),/sample/);
  }
 });
 test('オフラインでは選択したネット音声より同言語の端末内音声を優先する',async()=>{
