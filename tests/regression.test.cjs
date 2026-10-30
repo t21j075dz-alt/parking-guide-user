@@ -1165,3 +1165,97 @@ test("保存済み音声部品は最大6本の並列デコードで読み、順�
   const spokenSpace = run("normalizeJapaneseSpeech("+JSON.stringify(space)+")");
   assert.equal(fetched.filter(x=>x===spokenSpace).length,1,"正規化した同じ番号のMP3は一度だけ読み取る");
 });
+
+
+test('YOLOの新しい2回の占有判定後だけ、自分の車か質問する', () => {
+  const {run,context,nodes}=app();
+  let row={status:'occupied',source:'yolo',checked_at:new Date(Date.now()-1000).toISOString()};
+  context.window.ParkingLiveStatus={snapshot:()=>({
+    published:true,error:false,rows:new Map([['stall-1',row]])
+  }),stop(){}};
+  run("state.currentScreen='result';state.searchOutcome='found';state.resultLive=true;state.voiceEnabled=false;");
+  run("state.selectedFacility={id:'home-test-001',name:'実験用駐車場'};");
+  run("state.recommendedSpace={uid:'stall-1',id:'A列 12',spaceType:'standard'};");
+  run("startArrivalCheck(state.selectedFacility,state.recommendedSpace,true);state.arrivalCheck.startedAt=Date.now()-5000;");
+  run("updateParkingArrivalPanel()");
+  assert.equal(run('state.arrivalCheck.hitCount'),1);
+  assert.equal(run('state.arrivalCheck.confirmed'),false);
+  run('updateParkingArrivalPanel()');
+  assert.equal(run('state.arrivalCheck.hitCount'),1,'同じフレームは重複カウントしない');
+  row={...row,checked_at:new Date().toISOString()};
+  run('state.arrivalCheck.occupiedSince=Date.now()-2500;updateParkingArrivalPanel()');
+  assert.equal(run('state.arrivalCheck.confirmed'),true);
+  assert.equal(nodes.get('#parking-arrival-actions').hidden,false);
+  assert.match(nodes.get('#parking-arrival-status').textContent,/ご自身の車ですか/);
+});
+
+test('録画映像や古いYOLO判定では本人確認を表示しない',()=>{
+  const {run,context}=app();
+  let source='recorded_video_demo',time=new Date().toISOString();
+  context.window.ParkingLiveStatus={snapshot:()=>({
+    published:true,error:false,
+    rows:new Map([['p',{status:'occupied',source,checked_at:time}]])
+  })};
+  run("state.currentScreen='result';state.searchOutcome='found';state.resultLive=true;");
+  run("state.selectedFacility={id:'home-test-001'};state.recommendedSpace={uid:'p',id:'1'};");
+  run("startArrivalCheck(state.selectedFacility,state.recommendedSpace,true);state.arrivalCheck.startedAt=Date.now()-5000;");
+  run('updateParkingArrivalPanel()');
+  assert.equal(run('state.arrivalCheck.hitCount'),0);
+  source='yolo';
+  time=new Date(Date.now()-30000).toISOString();
+  run('updateParkingArrivalPanel()');
+  assert.equal(run('state.arrivalCheck.confirmed'),false);
+  run("startArrivalCheck({id:'home-video-demo-001',isRecordedExperiment:true},{uid:'p',id:'1'},true)");
+  assert.equal(run('state.arrivalCheck'),null,'録画デモは現地の駐車完了としない');
+});
+
+test('自分の車なら案内を停止し、駐車番号と地図を出庫まで保持する',()=>{
+  const {run,nodes,context}=app();
+  let stopped=0;
+  context.window.ParkingLiveStatus={stop(){stopped++;}};
+  run("state.currentScreen='result';state.searchOutcome='found';state.resultLive=true;state.voiceEnabled=false;");
+  run("state.selectedFacility={id:'home-test-001',name:'実験用駐車場'};");
+  run("state.recommendedSpace={uid:'p',id:'A列 12',isOccupied:true,spaceType:'standard'};");
+  run("state.currentSpaces=[state.recommendedSpace];state.currentLayout=null;");
+  run("state.arrivalCheck={facilityId:'home-test-001',uid:'p',confirmed:true};");
+  assert.equal(run('confirmOwnParking()'),true);
+  assert.equal(run('state.currentScreen'),'parked');
+  assert.equal(run('state.parkedSpace.id'),'A列 12');
+  assert.equal(nodes.get('#parked-space-number').textContent,'A列 12');
+  assert.equal(nodes.get('#parked-facility-name').textContent,'実験用駐車場');
+  assert.ok(nodes.get('#parked-map-slot').children.includes(nodes.get('#parking-map-section')));
+  assert.ok(stopped>0);
+  assert.equal(run('departParkedLocation()'),true);
+  assert.equal(run('state.currentScreen'),'facility');
+  assert.equal(run('state.parkedSpace'),null);
+  assert.ok(nodes.get('#result-map-slot').children.includes(nodes.get('#parking-map-section')));
+});
+
+test('他の車ならその区画を指定して別の空き枠を自動探索する',()=>{
+  const {run}=app();
+  run("state.currentScreen='result';state.searchOutcome='found';");
+  run("state.selectedFacility={id:'home-test-001',name:'実験用駐車場'};");
+  run("state.recommendedSpace={uid:'occupied-stall',id:'4'};");
+  run("state.arrivalCheck={facilityId:'home-test-001',uid:'occupied-stall',confirmed:true};");
+  run("var capturedReroute=null;runSpaceSearch=(priority,options)=>{capturedReroute={priority,options};return Promise.resolve();};");
+  assert.equal(run('rejectOtherCar()'),true);
+  assert.equal(run('capturedReroute.options.excludedSpaceUid'),'occupied-stall');
+  assert.equal(run('capturedReroute.options.fromRetry'),true);
+  assert.equal(run('state.arrivalCheck'),null);
+  assert.equal(run('state.currentScreen'),'result');
+});
+
+test('他車の区画は誤って空き判定に戻っても検索候補から除外する',async()=>{
+  const {run,context}=app();
+  context.window.ParkingLiveStatus={
+    refresh:async()=>({published:true}),snapshot:()=>({published:true,rows:new Map()}),
+    watch(){},stop(){}
+  };
+  run("state.selectedFacility={id:'test',name:'Test Parking'};state.currentScreen='result';state.voiceEnabled=false;");
+  run("loadRemoteParkingLayouts=async()=>{};saveSearchConditions=()=>{};");
+  run("beginLiveUpdates=()=>{};updateSearchResultNotice=()=>{};renderParkingMap=()=>{};");
+  run("prepareSpaces=()=>({isLive:true,isSimulation:false,layout:null,entrance:null,spaces:[{uid:'old',id:'4',spaceType:'standard',occupancyStatus:'available',isOccupied:false,distanceScore:1},{uid:'new',id:'5',spaceType:'standard',occupancyStatus:'available',isOccupied:false,distanceScore:2}]});");
+  const result=await run("runSpaceSearch(null,{fromRetry:true,excludedSpaceUid:'old'})");
+  assert.equal(result.spaceId,'5');
+  assert.equal(run('state.recommendedSpace.uid'),'new');
+});
