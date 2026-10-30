@@ -13,9 +13,9 @@
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
     <meta
       name="description"
-      content="研究対象施設から空き駐車区画を案内する卒業研究用Webアプリ"
+      content="空き駐車区画を地図と音声で案内するアプリ"
     >
-    <title>駐車場空き区画案内｜卒業研究</title>
+    <title>駐車場空き区画案内</title>
     <!-- 利用者画面の共通スタイル。管理画面とは別リポジトリで管理する。 -->
     <link rel="stylesheet" href="./styles.css?v=20261030-parking-owner-flow-1">
     <!-- 安全確認 → 施設データ → 同期設定 → レイアウト → 画面制御の順で読み込む。 -->
@@ -36,7 +36,9 @@
   <script src="./app.js?v=20261030-voice-consistent-1" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
   <link href="./experience.css" rel="stylesheet">
+  <link href="./user-experience.css?v=20261030-driver-first-1" rel="stylesheet">
 <script defer src="./camera-view.js"></script>
+  <script defer src="./user-experience.js?v=20261030-driver-first-1"></script>
 </head>
 
   <body>
@@ -54,7 +56,7 @@
           <span class="launch-spinner" aria-hidden="true"></span>
           <span>起動しています…</span>
         </p>
-        <p class="launch-note">卒業研究プロトタイプ</p>
+        
       </div>
     </div>
     <script>
@@ -134,9 +136,7 @@
         </ol>
       </nav>
 
-      <p class="research-note">
-        研究用デモ · 実際の空き情報ではありません
-      </p>
+
 
       <!-- 端末への追加・通信状態・更新を表示する。操作は既存の運転中制御を通す。 -->
       <section class="pwa-panel" aria-labelledby="pwa-title">
@@ -223,14 +223,14 @@
           <p id="selected-facility-name" class="selected-place"></p>
           <section id="private-test-location-panel" class="private-test-location-panel" hidden aria-labelledby="private-test-location-title">
             <h2 id="private-test-location-title">実験地点（現在地）</h2>
-            <p>実験用施設の所在地として現在地を登録します。正確な位置は公開データへ保存せず、この端末内だけで使います。道の駅日光の実所在地とは異なります。</p>
+            <p>案内に使用する地点を、この端末に登録できます。</p>
             <p id="private-test-location-status" class="private-test-location-status" role="status" aria-live="polite">テスト地点はまだ登録されていません。</p>
             <div class="private-test-location-actions">
               <button class="secondary-button" id="save-private-test-location-button" type="button">現在地をテスト地点として登録</button>
               <button class="secondary-button" id="clear-private-test-location-button" type="button">登録地点を削除</button>
             </div>
           </section>
-          <p id="random-guidance-note" class="random-guidance-note" hidden>研究用：空き区画からランダムに案内します。</p>
+          <p id="random-guidance-note" class="random-guidance-note" hidden></p>
         </div>
 
         <section id="facility-camera" class="camera-card" aria-label="現地の写真"><h2>駐車場のカメラ写真</h2><p>現地の様子を、案内開始前に確認できます。</p><label>カメラ<select aria-label="表示するカメラ"></select></label><img hidden alt="駐車場のカメラ写真"><p role="status" aria-live="polite">現在の写真を確認できません</p><button type="button" class="secondary-button">写真を更新</button></section>
@@ -325,10 +325,10 @@
                 <input type="checkbox" id="cloud-voice-enabled">
                 <span>保存済み部品を組み立てて再生（ない場合は端末音声）</span>
               </label>
-              <p class="voice-status">共通の案内文・店舗名・駐車枠番号を組み合わせ、保存済みなら音声ファイルで再生します。まだ保存されていない場合も同じ文章を端末で読み上げます。外部サービスのエラーで案内が止まることは避ける設計です。</p>
-              <p class="voice-status">保存済み音声：VOICEVOX 春日部つむぎ（Supabaseから取得）。未生成の場合は端末音声。</p>
+              <p class="voice-status">利用できる音声で案内します。接続できないときは端末の音声に切り替えます。</p>
+              
               <p id="cloud-voice-diagnostic" class="voice-status" role="status" aria-live="polite">接続診断：テスト後に表示します。</p>
-        <p class="voice-status">施設名・店舗名の音声は、管理者が登録した時点で自動的に生成待ちへ登録され、完成次第利用できます。利用者が音声を生成する必要はありません。</p>
+        
         <details class="technical-help" id="voice-preparation-details" hidden>
           <summary>音声を事前保存（任意・停車中のみ）</summary>
           <p class="voice-status">生成サービスの制限を避けるため、1回あたり新規8件まで保存します。未処理が残る場合は、後から同じ操作を繰り返せます。保存済みの音声は再生成しません。</p>
@@ -388,7 +388,7 @@
 
           <section id="voice-test-launch" class="voice-test-launch" hidden aria-labelledby="voice-test-launch-title">
             <h2 id="voice-test-launch-title">音声ガイダンスの連続テスト</h2>
-            <p>読み上げが最後まで終わると、次の案内画面へ自動的に移動します。すべて模擬イベントで、実際の駐車状態やカメラには影響しません。</p>
+            <p>読み上げが終わると、次の案内へ自動で進みます。</p>
             <label for="voice-test-category">テストする案内の種類</label>
             <select id="voice-test-category">
               <option value="all">すべての音声</option>
@@ -398,7 +398,7 @@
               <option value="parking">駐車・退出</option>
               <option value="operation">営業時間・営業状態</option>
               <option value="connection">カメラ・通信・位置情報</option>
-              <option value="advanced">入口・経路案内（研究用）</option>
+              <option value="advanced">入口・経路案内</option>
             </select>
             <p id="voice-test-count" role="status">選択した案内を順番に再生します。</p>
             <button class="primary-button full-width" id="voice-test-start" type="button">連続音声テストを開始</button>
@@ -450,9 +450,7 @@
           <a id="waiting-google-maps-link" class="google-maps-link" href="#" target="_blank" rel="noopener noreferrer">
             Google Mapsで目的施設を開く
           </a>
-          <p id="waiting-google-maps-note" class="waiting-map-note" hidden>
-            自宅テスト用では、端末内に登録した座標をGoogle Mapsへ渡します。
-          </p>
+          <p id="waiting-google-maps-note" class="waiting-map-note" hidden>登録した地点を地図で表示します。</p>
         </section>
 
         <section class="guidance-audio-card" aria-label="音声案内">
@@ -506,7 +504,7 @@
               <button class="primary-button" id="parking-arrival-confirm" type="button" disabled>はい、自分の車です</button>
               <button class="secondary-button" id="parking-arrival-other" type="button" disabled>いいえ、別の車です（再探索）</button>
             </div>
-            <p class="muted">YOLOは駐車枠の車両占有を検知しますが、車の持ち主までは判定できません。安全に停車してから選択してください。</p>
+            <p class="muted">安全に停車してからお答えください。</p>
           </section>
           <section class="result-summary" aria-labelledby="space-number">
             <div>
@@ -572,14 +570,14 @@
         <div class="screen-heading">
           <p class="step-label" id="voice-test-progress">テストの準備中</p>
           <h1 id="voice-test-title" tabindex="-1">音声テスト</h1>
-          <p id="voice-test-group">模擬イベントによる音声案内</p>
+          <p id="voice-test-group">音声案内の確認</p>
         </div>
         <section class="guidance-audio-card voice-test-card" aria-labelledby="voice-test-transcript-title">
           <h2 id="voice-test-transcript-title">読み上げる案内文</h2>
           <p id="voice-test-transcript" class="voice-test-transcript"></p>
           <p id="voice-test-status" role="status" aria-live="polite">音声再生を準備しています。</p>
         </section>
-        <p class="safety-note" role="note">研究用の仮想的な状況です。車両・区画・営業時間・通信状態を実際に変更したり、検出したりするものではありません。</p>
+        
         <div class="voice-test-actions">
           <button class="primary-button" id="voice-test-pause" type="button">一時停止</button>
           <button class="secondary-button" id="voice-test-retry" type="button">この音声をもう一度</button>
@@ -624,8 +622,8 @@
 
     <!-- 卒業研究の試作であり実運用向けではないことを表示する。 -->
     <footer class="site-footer">
-      <p>岡山理科大学 工学部 情報工学科 卒業研究</p>
-      <details class="app-about"><summary>利用規約・プライバシー・このアプリについて</summary>
+      <p>駐車時は周囲の安全と現地の表示を優先してください。</p>
+      <details class="app-about"><summary>ご利用上の注意・アプリについて</summary>
         <p>営業時間は施設の登録情報です。臨時休業や現地の表示を優先してください。デモの空き状況は実際の情報ではありません。</p>
         <p>公開写真は5分間隔の静止画で、連続映像ではありません。端末の消音、OSの制限、音声の未導入や通信障害により音声が使えない場合は画面の案内をご確認ください。</p>
         <p>卒業研究用の試作です。カメラ連携が公開された施設では、数秒ごとに最新の区画状況を確認します。未公開の施設は保存データ、レイアウト未登録施設はデモを表示します。カメラの更新が途切れた区画は「未確認」とし、空きとして案内しません。実際の駐車可否は現地の表示に従ってください。</p>
