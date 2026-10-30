@@ -47,8 +47,8 @@ const DEMO_FACILITY = Object.freeze({
 const VIDEO_REPLAY_FACILITY_ID = "home-video-demo-001";
 const VIDEO_REPLAY_FACILITY = Object.freeze({
   id: VIDEO_REPLAY_FACILITY_ID,
-  name: "自宅駐車場（録画YOLO実演）",
-  displayName: "自宅駐車場（録画YOLO実演）",
+  name: "実験用駐車場（自宅駐車場録画用）",
+  displayName: "実験用駐車場（自宅駐車場録画用）",
   prefecture: "岡山県",
   municipality: "岡山市（実験地点は現在地）",
   address: "現在地（録画実演用・実際の現在の空き情報ではありません）",
@@ -56,7 +56,7 @@ const VIDEO_REPLAY_FACILITY = Object.freeze({
   locationVerified: false,
   coordinateSource: "端末の現在地を実験用として利用。自宅の住所は公開しない",
   operatingStatus: "active",
-  layoutId: VIDEO_REPLAY_FACILITY_ID,
+  layoutId: "home-test-001", // 3モード共通の編集マップ
   isDemo: false,
   isPrivateTest: true,
   requiresLocalCalibration: true,
@@ -65,8 +65,30 @@ const VIDEO_REPLAY_FACILITY = Object.freeze({
   statusNote: "過去の録画をYOLOが逐次解析する実演。実際の現在の空きではありません",
 });
 
+// 音声テストは実際の空き状況を使用せず、共通マップの空き区画で案内を試す。
+const VOICE_TEST_FACILITY_ID = "home-voice-test-001";
+const VOICE_TEST_FACILITY = Object.freeze({
+  id: VOICE_TEST_FACILITY_ID,
+  name: "実験用駐車場（音声テスト用）",
+  displayName: "実験用駐車場（音声テスト用）",
+  prefecture: "岡山県",
+  municipality: "岡山市（実験地点は現在地）",
+  address: "現在地（音声テスト用・空き状況は模擬データ）",
+  category: "experiment",
+  locationVerified: false,
+  coordinateSource: "実験用3施設は端末に保存した同じ現在地を使用。住所を公開しない",
+  operatingStatus: "active",
+  layoutId: "home-test-001",
+  isDemo: false,
+  isPrivateTest: true,
+  requiresLocalCalibration: true,
+  isVoiceTest: true,
+  researchSpaceCount: 6,
+  statusNote: "音声案内の操作試験専用。現在の駐車場の空き状況ではありません",
+});
+
 // sampleRole は研究上の分類に使用し、一覧の表示条件にはしない。
-const FACILITIES = Object.freeze([DEMO_FACILITY, VIDEO_REPLAY_FACILITY, ...FACILITY_CATALOG]);
+const FACILITIES = Object.freeze([DEMO_FACILITY, VIDEO_REPLAY_FACILITY, VOICE_TEST_FACILITY, ...FACILITY_CATALOG]);
 
 const CATEGORY_LABELS = Object.freeze({
   supermarket: "スーパー・食品店",
@@ -488,7 +510,11 @@ function isPrivateTestFacility(facility) {
   return Boolean(facility?.requiresLocalCalibration || facility?.id === PRIVATE_TEST_FACILITY_ID);
 }
 function privateTestStorageKey(facility) {
-  return facility?.id && facility.id !== PRIVATE_TEST_FACILITY_ID
+  // 同じ現地で行う3つの実験は、端末内の現在地を共用する。
+  if ([PRIVATE_TEST_FACILITY_ID, VIDEO_REPLAY_FACILITY_ID, VOICE_TEST_FACILITY_ID].includes(facility?.id)) {
+    return PRIVATE_TEST_COORDINATE_STORAGE_KEY;
+  }
+  return facility?.id
     ? `${PRIVATE_TEST_COORDINATE_STORAGE_KEY}:${facility.id}`
     : PRIVATE_TEST_COORDINATE_STORAGE_KEY;
 }
@@ -1147,8 +1173,11 @@ function getFacilityLayout(facility) {
   if (!facility || !window.PARKING_LAYOUTS) {
     return null;
   }
-  const layout = window.PARKING_LAYOUTS[facility.layoutId ?? facility.id];
-  if (!layout || layout.facilityId !== facility.id || !Array.isArray(layout.objects)) {
+  const sharedMapId = facility.layoutId ?? facility.id;
+  const layout = window.PARKING_LAYOUTS[sharedMapId];
+  // 録画・リアルタイム・音声テストは同一の配置図を参照する。
+  // 判定状態は常に facility.id 側で分け、決して流用しない。
+  if (!layout || layout.facilityId !== sharedMapId || !Array.isArray(layout.objects)) {
     return null;
   }
 
@@ -1846,6 +1875,8 @@ function getFacilityDestinations(facility = state.selectedFacility) {
   return (Array.isArray(saved)?saved:facility?.destinations || []).filter(d=>d && typeof d.id==="string" && typeof d.name==="string");
 }
 function getOperatingStatus(facility=state.selectedFacility, destination=state.selectedDestination) {
+  // 音声の試験中に共通マップの店舗営業時間でテストを遮らない。
+  if (facility?.id === VOICE_TEST_FACILITY_ID) return { closed: false, preOpening: false, hours: "音声テストはいつでも利用できます" };
   const site=getFacilityLayout(facility)?.operations || facility?.operations;
   const siteStatus=window.ParkingOperations?.operating(site);
   if(siteStatus?.closed || !destination?.operations)return siteStatus;
@@ -2120,6 +2151,18 @@ function prepareSpaces(facility) {
   const layout = getFacilityLayout(facility);
   if (getOperatingStatus(facility, facility===state.selectedFacility?state.selectedDestination:null)?.closed) return {layout, spaces:[], entrance:null, isSimulation:false, isLive:false};
   if (layout) {
+    if (facility.isVoiceTest) {
+      // 案内の読み上げ試験専用。カメラやSupabaseの満空状態を見ない。
+      const spaces = createLayoutParkingSpaces(layout, facility).map(space =>
+        space.occupancyStatus === "unavailable" ? space : {
+          ...space, occupancyStatus: "available", isOccupied: false,
+        });
+      return {
+        layout, spaces: window.ParkingOperations?.shared(spaces) ?? spaces,
+        entrance: getGuideEntrance(layout, facility),
+        isSimulation: true, isLive: false,
+      };
+    }
     const live = window.ParkingLiveStatus?.snapshot(facility.id)?.published === true;
     let spaces = window.ParkingLiveStatus?.apply(
       facility.id, createLayoutParkingSpaces(layout, facility),
@@ -2188,10 +2231,13 @@ function getFacilityOccupancy(facility) {
   const prepared = prepareSpaces(facility);
   return { ...summarizeOccupancy(prepared.spaces, prepared.isSimulation, prepared.isLive),
     recordedExperiment: facility?.isRecordedExperiment === true,
-    videoDemo: facility?.id === VIDEO_REPLAY_FACILITY_ID };
+    videoDemo: facility?.id === VIDEO_REPLAY_FACILITY_ID,
+    voiceTest: facility?.id === VOICE_TEST_FACILITY_ID };
 }
 function getOccupancyLabel(occupancy) {
-  const source = occupancy.videoDemo
+  const source = occupancy.voiceTest
+    ? ui("音声テスト・空き状況は模擬データ", "Voice test · simulated availability")
+    : occupancy.videoDemo
     ? ui("録画映像を逐次YOLO判定・実際の空きではありません",
          "Recorded YOLO replay · not current availability")
     : occupancy.live ? ui("カメラ確認", "Camera verified")
@@ -2229,6 +2275,10 @@ function updateSearchResultNotice() {
           + (state.resultLive && state.selectedFacility?.id !== VIDEO_REPLAY_FACILITY_ID
               ? ui("（数秒ごとに更新・現地優先）", " (updates every few seconds; follow on-site signs)")
               : ui("（実際の空き情報ではありません）", " (not live availability)")));
+  if (state.selectedFacility?.id === VOICE_TEST_FACILITY_ID) {
+    searchStatus.textContent = ui("【音声テスト・模擬空き区画】", "[Voice test — simulated spaces] ")
+      + " " + searchStatus.textContent;
+  }
   if (state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID) {
     // ここは結果・案内画面でも常に「録画再生中」と明示する。
     searchStatus.textContent = ui(
@@ -3428,6 +3478,9 @@ function makePreparedScript(id, values = {}) {
   if (state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID &&
       ["space_found", "space_none", "retry_found", "retry_none"].includes(id))
     prefixes.unshift(...bank.build("recorded_demo").parts);
+  if (state.selectedFacility?.id === VOICE_TEST_FACILITY_ID &&
+      ["start_single", "start_complex", "space_found", "space_none", "retry_found", "retry_none"].includes(id))
+    prefixes.unshift(...bank.build("voice_test_notice").parts);
   const sourceParts = [...prefixes, ...result.parts];
   const parts = sourceParts.map(x => x.text);
   const roles = sourceParts.map(x => x.role);
@@ -3540,8 +3593,18 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale(), options =
     "ko-KR": "이것은 녹화 영상을 이용한 연구 시연입니다. 현재 주차 상황이 아닙니다. ",
     "es-ES": "Esta es una demostración con una grabación, no la disponibilidad actual del aparcamiento. ",
   };
+  const voiceTestWarnings = {
+    "ja-JP": "これはおんせいあんないのてすとです。あきくかくはもぎでーたです。",
+    "en-US": "This is a voice guidance test using simulated parking spaces. ",
+    "en-GB": "This is a voice guidance test using simulated parking spaces. ",
+    "zh-CN": "这是使用模拟车位的语音引导测试。",
+    "ko-KR": "이것은 가상 주차 공간을 이용한 음성 안내 테스트입니다. ",
+    "es-ES": "Esta es una prueba de guía por voz con plazas simuladas. ",
+  };
   const replayNotice = state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID
-    ? (replayWarnings[locale] || replayWarnings["en-US"]) : "";
+    ? (replayWarnings[locale] || replayWarnings["en-US"])
+    : state.selectedFacility?.id === VOICE_TEST_FACILITY_ID
+      ? (voiceTestWarnings[locale] || voiceTestWarnings["en-US"]) : "";
   if (state.searchOutcome === "not-found" && !options.space) {
     const full = summarizeOccupancy(state.currentSpaces, state.resultSimulation).level === "full";
     const fullMessages = {"ja-JP":"とうろくでーたでは、まんしゃです。", "en-US":"The saved data shows a full parking lot. ", "en-GB":"The saved data shows a full car park. ", "zh-CN":"已保存的数据显示停车场已满。", "ko-KR":"저장된 데이터상 주차장이 만차입니다. ", "es-ES":"Los datos guardados indican que el aparcamiento está lleno. "};
