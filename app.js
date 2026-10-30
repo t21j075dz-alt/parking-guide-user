@@ -3200,17 +3200,21 @@ function cueSpeechAudioRoute() {
 /** 画面へ戻った際、ブラウザーが一時停止した読み上げだけを再開する。 */
 function resumePausedSpeechOnReturn() {
   if (document.hidden || !state.voiceEnabled) return;
+  // iPhoneで画面復帰時にWeb Audioだけが一時停止する場合にも復帰させる。
+  if (activeSpeechAudioRoute?.context?.state === "suspended") {
+    configureVoiceAudioSession();
+    void activeSpeechAudioRoute.context.resume?.().catch?.(() => {});
+  }
   if (window.speechSynthesis?.paused) {
     configureVoiceAudioSession();
-    if (activeSpeechAudioRoute) {
-      void activeSpeechAudioRoute.context.resume?.().catch?.(() => {});
-    }
     window.speechSynthesis.resume?.();
   }
 }
 
 let speechRequestId = 0;
 let pendingCloudVoiceController = null;
+// iOSのWeb SpeechがUtteranceを途中で解放しないよう参照を保持する。
+let activeDeviceSpeechUtterance = null;
 
 /** Web Speech と外部TTSを区別して外部サービスの状態を常に表示する。 */
 function setCloudVoiceDiagnostic(message, isError = false) {
@@ -3253,6 +3257,7 @@ function describeCloudVoiceError(error) {
 /** 再生中だけでなく、音声一覧を待っている読み上げも取り消す。 */
 function cancelSpeech() {
   speechRequestId += 1;
+  activeDeviceSpeechUtterance = null;
   pendingCloudVoiceController?.abort();
   pendingCloudVoiceController = null;
   window.speechSynthesis?.cancel?.();
@@ -3345,9 +3350,17 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
       throw new Error("Audio playback requires a user gesture");
     }
     const rate = getGuidanceSpeechRate();
+    // iOSで短いMP3を個別予約再生すると先頭だけで終了する場合がある。
+    // 全部品をひとつのAudioBufferへ連結し、1音源で最後まで再生する。
+    const joined = fromSavedParts
+      ? window.ParkingContinuousVoice?.join?.(route.context, buffers, parts)
+      : null;
+    const playbackBuffers = joined ? [joined] : buffers;
     route.voiceSources = [];
     let cursor = route.context.currentTime + 0.03;
-    buffers.forEach((buffer, index) => {
+    // 出力方式を変更すると予約済み再生が中断する環境があるため開始前に設定。
+    configureVoiceAudioSession();
+    playbackBuffers.forEach((buffer, index) => {
       const source = route.context.createBufferSource();
       source.buffer = buffer;
       source.playbackRate?.setValueAtTime(rate, route.context.currentTime);
@@ -3357,7 +3370,7 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
       level.connect(route.context.destination);
       route.voiceSources.push(source);
       route.voiceSource = source;
-      if (index === buffers.length - 1) {
+      if (index === playbackBuffers.length - 1) {
         source.addEventListener("ended", () => {
           if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return;
           stopSpeechAudioRoute();
@@ -3373,9 +3386,8 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
       const segment = parts?.[index] || "";
       const pause = /繰り返します。|くりかえします。/.test(segment) ? 0.38
         : /[。！？]$/.test(segment) ? 0.18 : 0;
-      cursor += buffer.duration / rate + (fromSavedParts ? pause : 0);
+      cursor += buffer.duration / rate + (fromSavedParts && !joined ? pause : 0);
     });
-    configureVoiceAudioSession();
     publishGuidanceTranscript("", fromSavedParts
       ? ui("保存済みの音声部品を再生中", "Playing saved audio components")
       : ui("保存済み音声を再生中", "Playing saved audio"));
@@ -3423,8 +3435,14 @@ function publishGuidanceTranscript(message, mode = "") {
 function speakDeviceAssembledParts(message, parts, requestId, onComplete = null, onError = null) {
   const speech = window.speechSynthesis;
   if (!speech || !window.SpeechSynthesisUtterance) return false;
-  const chunks = window.ParkingVoiceAssembler?.segments?.(parts)
+  const segmented = window.ParkingVoiceAssembler?.segments?.(parts)
     || [{ text: message, pauseAfterMs: 0 }];
+  // iOSは1文終了後に別のspeechSynthesis.speakを開始すると無音になりやすい。
+  // 一般的な案内台本(約200字)は、文間の句読点を残した1回の発話にする。
+  const agent = typeof navigator !== "undefined" ? navigator.userAgent || "" : "";
+  const isIOS = /iPhone|iPad|iPod/.test(agent) && /AppleWebKit/.test(agent);
+  const chunks = isIOS && message.length <= 360
+    ? [{ text: message, pauseAfterMs: 0 }] : segmented;
   if (!chunks.length) return false;
   const locale = getGuidanceSpeechLocale();
   const candidates = getSpeechVoices();
@@ -3437,6 +3455,7 @@ function speakDeviceAssembledParts(message, parts, requestId, onComplete = null,
     if (requestId !== speechRequestId || index >= chunks.length) return;
     const chunk = chunks[index];
     const utterance = new SpeechSynthesisUtterance(localeForSpeechMessage(chunk.text));
+    activeDeviceSpeechUtterance = utterance;
     utterance.lang = locale;
     const selected = usedLocalFallback ? (localVoice || selectedVoice) : (selectedVoice || localVoice);
     if (selected) utterance.voice = selected;
@@ -3470,6 +3489,7 @@ function speakDeviceAssembledParts(message, parts, requestId, onComplete = null,
       clearTimeout(watchdog);
       if (settled || requestId !== speechRequestId) return;
       settled = true;
+      if (activeDeviceSpeechUtterance === utterance) activeDeviceSpeechUtterance = null;
       index += 1;
       if (index < chunks.length) {
         // 文意が切れる位置だけに短い間を作り、番号を繰り返す前は長めに区切る。
@@ -3486,6 +3506,7 @@ function speakDeviceAssembledParts(message, parts, requestId, onComplete = null,
       clearTimeout(watchdog);
       if (settled || requestId !== speechRequestId) return;
       settled = true;
+      if (activeDeviceSpeechUtterance === utterance) activeDeviceSpeechUtterance = null;
       if (!usedLocalFallback && localVoice && localVoice !== selectedVoice
           && !["canceled", "interrupted", "not-allowed"].includes(event.error)) {
         usedLocalFallback = true;
