@@ -1261,3 +1261,28 @@ test('他車の区画は誤って空き判定に戻っても検索候補から�
   assert.equal(result.spaceId,'5');
   assert.equal(run('state.recommendedSpace.uid'),'new');
 });
+
+
+test('一度本人確認が表示されたら一時的なカメラ通信断でも回答を保持する',()=>{
+  const {run,context,nodes}=app();
+  context.window.ParkingLiveStatus={snapshot:()=>({published:true,error:true,rows:new Map()})};
+  run("state.currentScreen='result';state.searchOutcome='found';state.resultLive=true;");
+  run("state.selectedFacility={id:'home-test-001',name:'実験用'};");
+  run("state.recommendedSpace={uid:'p',id:'4'};");
+  run("state.arrivalCheck={facilityId:'home-test-001',uid:'p',confirmed:true};");
+  run('updateParkingArrivalPanel()');
+  assert.equal(run('state.arrivalCheck.confirmed'),true);
+  assert.equal(nodes.get('#parking-arrival-confirm').disabled,false);
+  assert.equal(nodes.get('#parking-arrival-other').disabled,false);
+  assert.equal(nodes.get('#parking-arrival-actions').hidden,false);
+});
+
+test('検知されていない区画で駐車位置を確定することはできない',()=>{
+  const {run}=app();
+  run("state.currentScreen='result';state.searchOutcome='found';");
+  run("state.selectedFacility={id:'home-test-001'};state.recommendedSpace={uid:'p',id:'4'};");
+  run("state.arrivalCheck={facilityId:'home-test-001',uid:'p',confirmed:false};");
+  assert.equal(run('confirmOwnParking()'),false);
+  assert.equal(run('state.currentScreen'),'result');
+  assert.equal(run('state.parkedSpace'),null);
+});
