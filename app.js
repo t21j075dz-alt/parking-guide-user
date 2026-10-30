@@ -165,6 +165,18 @@ const PRIORITY_LABELS_EN = Object.freeze({
  * 静的HTMLは日本語文言を英訳辞書で置換する。
  */
 const STATIC_JA_EN = Object.freeze({
+  "駐車": "Parked",
+  "案内先の車両を確認": "Confirm vehicle in assigned space",
+  "はい、自分の車です": "Yes, it is my car",
+  "いいえ、別の車です（再探索）": "No, another car (find another space)",
+  "車両の持ち主はカメラだけでは特定できません。安全に停車してから操作してください。": "The camera detects occupancy, not the owner. Answer only after stopping safely.",
+  "YOLOは駐車枠の車両占有を検知しますが、車の持ち主までは判定できません。安全に停車してから選択してください。": "YOLO detects whether a space is occupied, not whose car it is. Answer only after stopping safely.",
+  "駐車完了": "Parked",
+  "駐車位置を記録しました": "Parking location recorded",
+  "駐車した区画番号": "Your parking space number",
+  "この番号と駐車場マップを、出庫するまで確認できます。": "This space number and map will remain available until you depart.",
+  "案内と位置情報の監視は終了しました。出庫時に「出庫してホームへ戻る」を押してください。": "Guidance and location tracking have ended. Tap Departure when you leave.",
+  "出庫してホームへ戻る": "Departure — return home",
   "その他の車種・専用区画": "Other vehicles / dedicated spaces",
   "車種・専用用途を選択": "Choose vehicle or dedicated use",
   "専用・予約区画は現地の利用条件をご確認ください。": "Check eligibility and reservations for dedicated spaces.",
@@ -681,6 +693,18 @@ function updateParkingArrivalPanel() {
     && check.facilityId === state.selectedFacility?.id;
   parkingArrivalPanel.hidden = !visible;
   if (!visible) return;
+  // 二度の新しいYOLO判定で本人確認を開始した後は、Wi-Fiが一瞬切れても
+  // 「はい／いいえ」を消さない。利用者の判断が終わるまで案内先を維持する。
+  if (check.confirmed) {
+    parkingArrivalStatus.textContent = ui(
+      "案内中の駐車枠で車を検知しました。駐車したのはご自身の車ですか？安全に停車してから選んでください。",
+      "A vehicle was detected in your assigned space. Is it your car? Answer after stopping safely.",
+    );
+    parkingArrivalConfirm.disabled = false;
+    if (parkingArrivalOther) parkingArrivalOther.disabled = false;
+    if (parkingArrivalActions) parkingArrivalActions.hidden = false;
+    return;
+  }
   const info = window.ParkingLiveStatus?.snapshot(check.facilityId);
   if (!info?.published || info.error) {
     parkingArrivalStatus.textContent = ui(
