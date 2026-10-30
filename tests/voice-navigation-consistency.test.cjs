@@ -23,8 +23,8 @@ const sample = {
   "駐車時間": "15分",
 };
 
-test("日本語37種類のナビ案内には空の読み上げや未置換の語句がない", () => {
-  assert.equal(scripts.ids.length, 37);
+test("日本語38種類のナビ案内には空の読み上げや未置換の語句がない", () => {
+  assert.equal(scripts.ids.length, 38);
   for (const id of scripts.ids) {
     const result = scripts.build(id, sample);
     assert.ok(result.text.length > 5, id);
