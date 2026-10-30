@@ -5,7 +5,8 @@
   const NAMES = ["未確認", "空き", "駐車中", "障害物あり"];
   const MAX_EVENTS = 4000;
   const RECORDING_FACILITIES = Object.freeze({
-    "home-test-001": "自宅駐車場",
+    "home-test-001": "実験用駐車場（自宅駐車場リアルタイム用）",
+    "home-video-demo-001": "実験用駐車場（自宅駐車場録画用）",
     "nikko-test-001": "道の駅日光（日光街道ニコニコ本陣）",
   });
   const qs = selector => document.querySelector(selector);
