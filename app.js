@@ -697,7 +697,8 @@ function updateParkingArrivalPanel() {
     const now = Date.now();
     const fresh = Number.isFinite(timestamp) && timestamp <= now + 5000
       && now - timestamp <= 20000;
-    if (!fresh || row?.status !== "occupied" || timestamp <= check.startedAt) {
+    if (!fresh || row?.source !== "yolo"
+        || row?.status !== "occupied" || timestamp <= check.startedAt) {
       // 検知されていなければ次の空き→使用中への変化を待つ。
       check.occupiedSince = null;
       check.hitCount = 0;
@@ -754,7 +755,14 @@ function confirmOwnParking() {
   // 同じマップを専用画面へ移すため、位置・縮尺や建物入口が保持される。
   if (parkedMapSlot && parkingMapSection) parkedMapSlot.append(parkingMapSection);
   renderParkingMap(state.currentSpaces, space, state.currentLayout);
-  if (state.voiceEnabled) speakPreparedScript("parking_completed", {}, { userGesture: true });
+  if (state.voiceEnabled) {
+    if (getGuidanceSpeechLocale() === "ja-JP") {
+      speakPreparedScript("parking_completed", {}, { userGesture: true });
+    } else {
+      speakText(ui("駐車完了を記録しました。出庫時は出庫ボタンを押してください。",
+        "Parking recorded. Tap Departure when you leave."), { userGesture: true });
+    }
+  }
   return true;
 }
 
