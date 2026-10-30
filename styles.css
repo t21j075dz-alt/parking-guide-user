@@ -2377,3 +2377,7 @@ html[data-theme="dark"] .parked-location-card {
 @media (max-width: 480px) {
   .parking-arrival-actions { grid-template-columns: 1fr; }
 }
+
+html[lang="en"] #parked-map-slot .map-object--parkingSpace.is-parked::after {
+  content: "Your space";
+}
