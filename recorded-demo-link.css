@@ -1,0 +1,18 @@
+.recorded-demo-link-status:not([hidden]) {
+  margin: 0 0 1.25rem;
+  padding: .85rem 1rem;
+  border-radius: .75rem;
+  border: 1px solid #afc5d9;
+  background: #f1f7fb;
+  color: #20435c;
+  line-height: 1.65;
+  font-weight: 600;
+  font-size: .92rem;
+}
+@media (prefers-color-scheme: dark) {
+  .recorded-demo-link-status:not([hidden]) {
+    background: #183044;
+    color: #e6f2fb;
+    border-color: #4e7189;
+  }
+}
