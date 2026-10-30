@@ -28,7 +28,7 @@ test("the facility and tenant name are preserved without missing joins", () => {
   });
   const result = x.ParkingVoiceAssembler.sentences(phrase.parts);
   assert.equal(result.join(""), phrase.text);
-  assert.ok(result.join("").includes("大型施設内の店舗Aへの案内"));
+  assert.ok(result.join("").includes("大型施設内の店舗Aへの駐車案内"));
   assert.ok(result.every(s => s.trim() !== ""));
 });
 
