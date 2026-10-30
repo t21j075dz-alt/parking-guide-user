@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>録画実験デモ | 駐車場案内</title>
+<title>録画再生 | 駐車場案内</title>
 <style>
 :root { color-scheme:light; font-family:"Yu Gothic UI","Noto Sans JP",system-ui,sans-serif; color:#182334; background:#f2f5f9 }
 * { box-sizing:border-box }
@@ -37,13 +37,13 @@ input[type=range] {flex:1;min-width:180px;accent-color:#0672b7}
 <script src="./recorded-demo.js" defer></script>
 </head>
 <body>
-<header><a href="./index.html">← 通常の駐車場案内へ戻る</a><h1>録画実験の再生（自宅駐車場・道の駅日光）</h1><p>卒業研究：車両検出と駐車枠判定の確認</p></header>
+<header><a href="./index.html">← 通常の駐車場案内へ戻る</a><h1>録画した駐車場の状況</h1><p>過去の映像から記録した区画の状態を表示します。</p></header>
 <main>
 <div class="notice" role="note"><strong>これは過去に撮影した映像の判定結果です。現在の空き状況ではありません。</strong>
-実験結果の閲覧専用です。この画面から駐車枠への案内やリアルタイムの空き確認はできません。録画そのもの・車両ID・ナンバープレートは共有リンクに含まれません。</div>
+録画の閲覧専用です。この画面から駐車枠への案内やリアルタイムの空き確認はできません。録画そのもの・車両ID・ナンバープレートは共有リンクに含まれません。</div>
 <section class="panel">
-<h2>再生する実験</h2>
-<p id="summary" class="muted">管理者アプリで録画の「駐車枠の状態.csv」を選択し、作成したリンクから開いてください。</p>
+<h2>録画を選択</h2>
+<p id="summary" class="muted">録画の共有リンクから開くと、区画の変化を確認できます。</p>
 <p id="error" role="alert" hidden></p>
 <div id="controls" hidden>
 <div class="row">
