@@ -1921,6 +1921,7 @@ function saveSelectedDestination() {
   ) ?? null;
   if (state.selectedDestination) {
     preloadPreparedStoreName(state.selectedDestination.nameReading || state.selectedDestination.name);
+    preloadPreparedGuidanceClips();
   }
 }
 
@@ -3149,7 +3150,7 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
       ? ui("事前生成した音声部品を組み立てて再生しています。", "Playing assembled prepared voice clips.")
       : clips[0]?.source === "saved"
         ? ui("保存済み音声を再生しています（通信不要）。", "Playing saved audio (no network required).")
-        : ui("未保存の文章を生成しました。事前保存すると次回から部品を使えます。", "Generated missing full guidance; prepare clips for assembled playback."));
+        : ui("保存済みの案内音声を再生しています。", "Playing previously saved guidance."));
     updateVoiceStatus(ui("VOICEVOXの音声ファイルを再生しています。", "Playing VOICEVOX audio."), "active");
     return true;
   } catch (error) {
@@ -3467,6 +3468,32 @@ function parkingScript() {
   });
 }
 
+/**
+ * 施設選択時、開始案内と接近・再探索案内の共通音声部品を先読みする。
+ * 端末に保存済みなら通信しない。クラウドに完成済みなら取得してキャッシュする。
+ * 音声を新規合成するAPIには接続しない。端末の通信を圧迫しないよう3件ずつ。
+ */
+let voicePreloadSequence = 0;
+function preloadPreparedGuidanceClips() {
+  if (!state.cloudVoiceEnabled || getGuidanceSpeechLocale() !== "ja-JP"
+      || !state.selectedFacility || !window.ParkingVoiceAudioCache?.get) return;
+  const version = ++voicePreloadSequence;
+  let scripts;
+  try {
+    scripts = [startScript(), makePreparedScript("approaching"),
+      makePreparedScript("retry_started")].filter(Boolean);
+  } catch { return; }
+  const parts = [...new Set(scripts.flatMap(script => script.parts)
+    .map(part => typeof normalizeJapaneseSpeech === "function"
+      ? normalizeJapaneseSpeech(part) : part))];
+  void (async () => {
+    for (let i = 0; i < parts.length; i += 3) {
+      if (version !== voicePreloadSequence || !state.cloudVoiceEnabled) break;
+      await Promise.allSettled(parts.slice(i, i + 3).map(part =>
+        window.ParkingVoiceAudioCache.get(part, { cachedOnly: true, remote: true })));
+    }
+  })();
+}
 /** 施設選択時に保存済み音声を先読み。外部TTSへ生成を依頼しない。 */
 function preloadPreparedStoreName(name) {
   if (!state.cloudVoiceEnabled || getGuidanceSpeechLocale() !== "ja-JP" || !name) return;
@@ -3840,6 +3867,7 @@ facilityList.addEventListener("click", (event) => {
   state.selectedDestination = null;
   selectedFacilityName.textContent = getFacilityDisplayName(facility);
   preloadPreparedStoreName(getFacilitySpokenName("ja-JP") || facility.name);
+  preloadPreparedGuidanceClips();
   updateDestinationPanel();
   updateRandomGuidanceNote();
   updatePrivateTestLocationPanel();
