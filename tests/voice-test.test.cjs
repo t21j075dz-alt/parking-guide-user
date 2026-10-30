@@ -46,13 +46,13 @@ function testApp() {
   return { run, context, nodes };
 }
 
-test("日本語37種類の台本を実際のシナリオへ組み立て、プレースホルダーを残さない",()=>{
+test("日本語38種類の台本を実際のシナリオへ組み立て、プレースホルダーを残さない",()=>{
   const context=vm.createContext({window:{}});
   loadScript(context,"voice-guide-scripts.js");
   loadScript(context,"voice-test-scenarios.js");
   const data=vm.runInContext("window.ParkingVoiceTestScenarios",context);
   const scenarios=data.scenarios("ja-JP","all");
-  assert.equal(scenarios.length,37);
+  assert.equal(scenarios.length,38);
   for(const item of scenarios){
     const result=data.build(item,{facility:"試験施設",space:"びー、ご",destination:"店舗"}, "ja-JP");
     assert.ok(result.text.length>5,item.id);
@@ -76,7 +76,7 @@ test("音声テストだけに専用画面を表示し、通常のカメラ状�
   run("updateVoiceTestEntry()");
   assert.equal(nodes.get("#voice-test-launch").hidden,false);
   assert.equal(nodes.get("#normal-condition-actions").hidden,true);
-  assert.match(nodes.get("#voice-test-count").textContent,/37/);
+  assert.match(nodes.get("#voice-test-count").textContent,/38/);
   assert.equal(run("state.currentScreen"),"facility");
   run("state.selectedFacility = {id:'home-test-001'}; updateVoiceTestEntry()");
   assert.equal(nodes.get("#voice-test-launch").hidden,true);
