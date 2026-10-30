@@ -76,6 +76,13 @@
       }
       return source;
     }
+    if (kind === "pwa") {
+      if (/研究用シミュレーション|research simulations|管理データ|managed data/i.test(source)) {
+        return t("オフラインです。最新の空き状況を確認できません。", 
+          "You are offline. Current parking availability cannot be confirmed.");
+      }
+      return source;
+    }
     if (kind === "location") {
       return en
         ? source.replace(/test location/gi, "saved location").replace(/test point/gi, "saved location")
@@ -194,6 +201,9 @@
   const hero = $("#result-screen .result-summary");
   if (result && hero) {
     result.prepend(hero);
+    // 番号の前に音声カードが並ばないよう、結果内の番号直後へ移す。
+    const audioCard = $("#result-screen > .guidance-audio-card");
+    if (audioCard) hero.insertAdjacentElement("afterend", audioCard);
     hero.classList.add("guidance-hero");
     const label = hero.querySelector(".result-label");
     if (label) label.textContent = t("ご案内する駐車区画", "Your parking space");
