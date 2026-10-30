@@ -468,12 +468,12 @@ function restoreLanguage() {
     );
     const profiles = JSON.parse(localStorage.getItem("parkingGuideVoiceProfiles") || "{}");
     state.voiceProfiles = profiles && typeof profiles === "object" && !Array.isArray(profiles) ? profiles : {};
-    state.cloudVoiceEnabled = localStorage.getItem("parkingGuideCloudVoiceEnabled") === "true";
+    state.cloudVoiceEnabled = localStorage.getItem("parkingGuideCloudVoiceEnabled") !== "false";
     localStorage.removeItem("parkingGuideVoiceURI");
   } catch {
     state.guidanceVoiceLanguage = "en-US";
     state.voiceOutputMode = getDefaultVoiceOutputMode();
-    state.cloudVoiceEnabled = false;
+    state.cloudVoiceEnabled = true;
   }
   applyLanguage(saved);
 }
@@ -503,7 +503,7 @@ const state = {
   guidanceVoiceLanguage: "en-US",
   voiceOutputMode: getDefaultVoiceOutputMode(),
   voiceProfiles: {},
-  cloudVoiceEnabled: false,
+  cloudVoiceEnabled: true,
   lastSearchWasAuto: false,
   selectedFacility: null,
   selectedDestination: null,
