@@ -1286,3 +1286,37 @@ test('検知されていない区画で駐車位置を確定することはで�
   assert.equal(run('state.currentScreen'),'result');
   assert.equal(run('state.parkedSpace'),null);
 });
+
+
+test('駐車位置を端末内だけに保存し、再読込後も番号とマップへ復元できる',()=>{
+  const catalog=[{id:'home-test-001',name:'実験用駐車場',layoutId:'home-test-001'}];
+  const data=new Map();
+  const localStorage={
+    setItem(k,v){data.set(k,v);},getItem(k){return data.get(k)||null;},
+    removeItem(k){data.delete(k);}
+  };
+  const first=app(catalog);
+  first.context.localStorage=localStorage;
+  first.run("state.selectedFacility=FACILITIES.find(x=>x.id==='home-test-001');");
+  first.run("state.currentLayout={facilityId:'home-test-001',objects:[{objectType:'parkingSpace',uid:'p',spaceNumber:'012',status:'occupied',x:10,y:15,width:24,height:48}]};");
+  first.run("saveParkedSession({uid:'p',id:'A列 12'})");
+  assert.equal(JSON.parse(data.get('parkingGuideParkedSessionV1')).id,'A列 12');
+  const second=app(catalog);
+  second.context.localStorage=localStorage;
+  second.run("renderParkingMap=()=>{};");
+  assert.equal(second.run('restoreParkedSession()'),true);
+  assert.equal(second.run('state.currentScreen'),'parked');
+  assert.equal(second.run('state.parkedSpace.id'),'A列 12');
+  assert.equal(second.nodes.get('#parked-space-number').textContent,'A列 12');
+  assert.ok(second.nodes.get('#parked-map-slot').children.includes(second.nodes.get('#parking-map-section')));
+  second.run('endGuidance()');
+  assert.equal(second.run('state.currentScreen'),'facility');
+  assert.equal(data.has('parkingGuideParkedSessionV1'),false,'出庫で端末保存を削除する');
+});
+
+test('駐車位置データが破損していてもホーム画面の初期表示を妨げない',()=>{
+  const {run,context}=app();
+  context.localStorage={getItem(){return '{broken json';}};
+  assert.equal(run('restoreParkedSession()'),false);
+  assert.equal(run('state.currentScreen'),'facility');
+});
