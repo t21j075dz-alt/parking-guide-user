@@ -758,6 +758,67 @@ function updateParkingArrivalPanel() {
   if (parkingArrivalActions) parkingArrivalActions.hidden = !check.confirmed;
 }
 
+const PARKED_SESSION_KEY = "parkingGuideParkedSessionV1";
+/** 店舗から戻るまでの駐車位置を、この端末だけに保存する。 */
+function saveParkedSession(space) {
+  if (!state.selectedFacility?.id || !space?.uid) return;
+  const record = {
+    facilityId: state.selectedFacility.id,
+    uid: space.uid,
+    id: space.id,
+    savedAt: Date.now(),
+  };
+  // 通信が途切れてもマップを表示できるよう、小さな公開配置図だけ保持。
+  try {
+    if (state.currentLayout) {
+      const layoutJson = JSON.stringify(state.currentLayout);
+      if (layoutJson.length < 450000) record.layout = state.currentLayout;
+    }
+    localStorage.setItem(PARKED_SESSION_KEY, JSON.stringify(record));
+  } catch { /* 端末の保存容量が足りない場合も今回の駐車画面は維持する。 */ }
+}
+
+/** アプリ再読込後も駐車区画を表示。持ち主・車両画像・現在地は保存しない。 */
+function restoreParkedSession() {
+  let record;
+  try { record = JSON.parse(localStorage.getItem(PARKED_SESSION_KEY) || "null"); }
+  catch { return false; }
+  if (!record || typeof record.facilityId !== "string"
+      || typeof record.uid !== "string" || typeof record.id !== "string"
+      || record.uid.length > 160 || record.id.length > 160) return false;
+  const facility = FACILITIES.find(item => item.id === record.facilityId);
+  if (!facility) return false;
+  state.selectedFacility = facility;
+  const id = facility.layoutId ?? facility.id;
+  const savedLayout = record.layout?.facilityId === id && Array.isArray(record.layout.objects)
+    ? record.layout : null;
+  const layout = getFacilityLayout(facility) || savedLayout;
+  const spaces = layout ? createLayoutParkingSpaces(layout, facility) : [];
+  const matching = spaces.find(space => space.uid === record.uid);
+  const parked = {
+    ...(matching || {spaceType:"standard"}),
+    uid: record.uid, id: record.id,
+    occupancyStatus: "occupied", isOccupied: true,
+  };
+  state.currentSpaces = spaces.length
+    ? spaces.map(space => space.uid === parked.uid ? parked : space)
+    : [parked];
+  state.parkedSpace = parked;
+  state.recommendedSpace = parked;
+  state.currentLayout = layout;
+  state.guideEntrance = layout ? getGuideEntrance(layout, facility) : null;
+  state.arrivalCheck = null;
+  state.searchOutcome = "found";
+  state.resultLive = false;
+  state.autoProximityArmed = false;
+  if (parkedSpaceNumber) parkedSpaceNumber.textContent = parked.id;
+  if (parkedFacilityName) parkedFacilityName.textContent = getFacilityDisplayName(facility);
+  showScreen("parked", {addHistory:false,moveFocus:false});
+  if (parkedMapSlot && parkingMapSection) parkedMapSlot.append(parkingMapSection);
+  renderParkingMap(state.currentSpaces, parked, layout);
+  return true;
+}
+
 /** YOLO検知と本人の回答が一致した場合だけ、案内を終了して駐車位置を残す。 */
 function confirmOwnParking() {
   const check = state.arrivalCheck;
@@ -767,6 +828,7 @@ function confirmOwnParking() {
       || check.uid !== space.uid || check.facilityId !== state.selectedFacility?.id) return false;
   if (window.parkingSafety && !window.parkingSafety.guardOperation()) return false;
   state.parkedSpace = { ...space };
+  saveParkedSession(space);
   state.autoProximityArmed = false;
   state.proximitySearchRunning = false;
   state.autoTriggeredFacilityId = null;
@@ -4268,7 +4330,8 @@ function endGuidance() {
 function resetApplication() {
   cancelSpeech();
   window.parkingSafety?.resetConfirmation?.();
-  // 駐車中画面へ移動したマップを元の結果画面に戻す。
+  // 出庫時は今回の駐車番号・マップの端末内記録も消去する。
+  try { localStorage.removeItem(PARKED_SESSION_KEY); } catch {}
   if (resultMapSlot && parkingMapSection) resultMapSlot.append(parkingMapSection);
   state.searchRequestId += 1;
   state.parkedSpace = null;
@@ -4632,8 +4695,13 @@ if ("speechSynthesis" in window) {
   });
 }
 initializeFilters();
-window.history.replaceState({ screen: "facility" }, "", "#facility");
-showScreen("facility", { addHistory: false, moveFocus: false });
+// アプリが閉じられても、出庫操作までは保存した駐車位置へ戻れるようにする。
+const restoredParking = restoreParkedSession();
+window.history.replaceState(
+  { screen: restoredParking ? "parked" : "facility" },
+  "", restoredParking ? "#parked" : "#facility",
+);
+if (!restoredParking) showScreen("facility", { addHistory: false, moveFocus: false });
 
 // 営業時間の境界を越えた一覧を、操作なしでも更新する。
 setInterval(() => { if (state.currentScreen === "facility") renderFacilities(); }, 60000);
