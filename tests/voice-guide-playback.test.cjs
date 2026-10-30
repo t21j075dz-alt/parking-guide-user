@@ -40,3 +40,30 @@ test("building chunks works offline with no TTS service or storage", () => {
   assert.equal(result.join(""), phrase.text);
   assert.equal(result.join("").split("B列の5番です。").length - 1, 2);
 });
+
+
+test("meaningful speech pauses separate approach, each numbered slot and its repetition", () => {
+  const x=load();
+  const guide=x.ParkingVoiceGuideScripts.build("space_found",{"駐車枠":"Aエリアの12"});
+  const pieces=x.ParkingVoiceAssembler.segments(guide.parts);
+  assert.equal(pieces.map(p=>p.text).join(""),guide.text);
+  const approach=pieces.find(p=>p.text === "まもなく目的地です。");
+  assert.ok(approach && approach.pauseAfterMs>=200);
+  const numbers=pieces.filter(p=>p.text.endsWith("Aエリアの12番です。"));
+  assert.equal(numbers.length,2);
+  assert.ok(numbers.every(p=>p.pauseAfterMs>=200));
+  const repeat=pieces.find(p=>p.text === "繰り返します。");
+  assert.ok(repeat && repeat.pauseAfterMs>=400);
+});
+
+test("long facility and tenant names stay intact within an assembled sentence", () => {
+  const x=load();
+  const name="スーパーセンタートライアル福岡新宮中央店";
+  const script=x.ParkingVoiceGuideScripts.build("start_complex",{
+    "目的施設名":"大型複合商業施設",
+    "目的店舗名":name,"混雑状況":"混雑しています"
+  });
+  const pieces=x.ParkingVoiceAssembler.segments(script.parts);
+  assert.ok(pieces.some(p=>p.text.includes(name)));
+  assert.equal(pieces.map(p=>p.text).join(""),script.text);
+});
