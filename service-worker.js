@@ -4,7 +4,7 @@
  * 利用者が事前生成した音声は、別のCache Storageに本人の操作で保存する。
  * 配信ファイルを変更するときはVERSIONとSHELL_FILESを一緒に更新する。
  */
-const VERSION = "20261030-ready-catalog-1";
+const VERSION = "20261030-auto-name-preload-1";
 // 同じgithub.io上の管理アプリや別のパスのキャッシュを削除しない。
 const CACHE_PREFIX = `parking-guide-user:${self.registration.scope}:`;
 const CACHE_NAME = `${CACHE_PREFIX}${VERSION}`;
@@ -26,7 +26,7 @@ const SHELL_FILES = [
   "./voice-guide-scripts.js?v=20261029-assembled-voice-1",
   "./voice-guide-playback.js?v=20261030-semantic-pauses-1",
   "./voice-audio-cache.js?v=20261030-ready-catalog-1",
-  "./app.js?v=20261030-ready-catalog-1",
+  "./app.js?v=20261030-auto-name-preload-1",
   "./pwa.js?v=20261010-pwa",
   "./manifest.webmanifest",
   "./icons/icon-192.png",

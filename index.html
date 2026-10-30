@@ -31,7 +31,7 @@
     <script src="./voice-guide-scripts.js?v=20261029-assembled-voice-1" defer></script>
   <script src="./voice-guide-playback.js?v=20261030-semantic-pauses-1" defer></script>
   <script src="./voice-audio-cache.js?v=20261030-ready-catalog-1" defer></script>
-  <script src="./app.js?v=20261030-ready-catalog-1" defer></script>
+  <script src="./app.js?v=20261030-auto-name-preload-1" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
   <link href="./experience.css" rel="stylesheet">
 <script defer src="./camera-view.js"></script>
@@ -321,9 +321,10 @@
                 <span>保存済み部品を組み立てて再生（ない場合は端末音声）</span>
               </label>
               <p class="voice-status">共通の案内文・店舗名・駐車枠番号を組み合わせ、保存済みなら音声ファイルで再生します。まだ保存されていない場合も同じ文章を端末で読み上げます。外部サービスのエラーで案内が止まることは避ける設計です。</p>
-              <p class="voice-status">VOICEVOX:春日部つむぎ（外部サービス tts.quest に接続）</p>
+              <p class="voice-status">保存済み音声：VOICEVOX 春日部つむぎ（Supabaseから取得）。未生成の場合は端末音声。</p>
               <p id="cloud-voice-diagnostic" class="voice-status" role="status" aria-live="polite">接続診断：テスト後に表示します。</p>
-        <details class="technical-help" id="voice-preparation-details">
+        <p class="voice-status">施設名・店舗名の音声は、管理者が登録した時点で自動的に生成待ちへ登録され、完成次第利用できます。利用者が音声を生成する必要はありません。</p>
+        <details class="technical-help" id="voice-preparation-details" hidden>
           <summary>音声を事前保存（任意・停車中のみ）</summary>
           <p class="voice-status">生成サービスの制限を避けるため、1回あたり新規8件まで保存します。未処理が残る場合は、後から同じ操作を繰り返せます。保存済みの音声は再生成しません。</p>
           <button class="secondary-button" id="voice-prepare-button" type="button">選択施設の案内文・駐車枠を事前保存</button>
