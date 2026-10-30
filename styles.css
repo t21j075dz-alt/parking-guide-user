@@ -2304,3 +2304,26 @@ html[data-theme="dark"] .parking-map.parking-map--layout {
   overflow-y: auto;
 }
 .guidance-audio-replay { width: 100%; min-height: 44px; }
+
+/* 卒業研究：音声だけを段階的に試験する施設の専用UI */
+.voice-test-launch {
+  margin: 1.2rem 0;
+  padding: clamp(1rem, 3.5vw, 1.5rem);
+  border: 1px solid var(--color-border, #cdd5dd);
+  border-radius: 1rem;
+  background: var(--color-surface, rgba(120, 130, 150, .07));
+}
+.voice-test-launch h2, .voice-test-card h2 { font-size: 1.12rem; margin: 0 0 .75rem; }
+.voice-test-launch p { line-height: 1.65; }
+.voice-test-launch label { display: block; font-weight: 700; margin: .9rem 0 .4rem; }
+.voice-test-launch select { width: 100%; min-height: 46px; padding: .55rem; margin-bottom: .5rem; }
+.voice-test-launch button { margin-top: .8rem; }
+.voice-test-card { margin: 1.2rem 0; padding: clamp(1rem, 4vw, 1.5rem); }
+.voice-test-transcript { white-space: pre-wrap; line-height: 1.9; font-size: 1.08rem; overflow-wrap: anywhere; }
+#voice-test-status { font-weight: 600; margin-top: 1rem; line-height: 1.6; }
+.voice-test-actions { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: .75rem; margin: 1.2rem 0; }
+.voice-test-actions button { min-height: 52px; white-space: normal; }
+#voice-test-complete-screen .button-group { margin-top: 1.2rem; }
+@media (max-width: 420px) {
+  .voice-test-actions { grid-template-columns: 1fr; }
+}
