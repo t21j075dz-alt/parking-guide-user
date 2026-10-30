@@ -3643,9 +3643,10 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
   /* Web Speech API の音量上限は 1。端末の再生音量は利用者が調整する。 */
   utterance.volume = getGuidanceSpeechVolume();
 
-  let started = false;
+  let started = false, settled = false;
   const startWatchdog = setTimeout(() => {
-    if (started || requestId !== speechRequestId) return;
+    if (started || settled || requestId !== speechRequestId) return;
+    settled = true;
     if (!localRetry && localVoice && localVoice !== voice) {
       void speakTextWhenVoicesReady(message, requestId, false, true, onComplete, onError);
     } else {
@@ -3657,9 +3658,9 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
     }
   }, 6000);
   utterance.addEventListener("start", () => {
+    if (settled || requestId !== speechRequestId) return;
     started = true;
     clearTimeout(startWatchdog);
-    if (requestId !== speechRequestId) return;
     updateVoiceStatus(
       ui(
         `${voice?.name ?? "ブラウザー標準音声"}で読み上げています。`,
@@ -3670,7 +3671,8 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
   });
   utterance.addEventListener("end", () => {
     clearTimeout(startWatchdog);
-    if (requestId !== speechRequestId) return;
+    if (settled || requestId !== speechRequestId) return;
+    settled = true;
     stopSpeechAudioRoute();
     releasePriorityAudioSession();
     updateVoiceStatus();
@@ -3678,7 +3680,8 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
   });
   utterance.addEventListener("error", (event) => {
     clearTimeout(startWatchdog);
-    if (requestId !== speechRequestId) return;
+    if (settled || requestId !== speechRequestId) return;
+    settled = true;
     if (!localRetry && localVoice && localVoice !== voice && !["canceled", "interrupted", "not-allowed"].includes(event.error)) {
       void speakTextWhenVoicesReady(message, requestId, false, true, onComplete, onError);
       return;
@@ -3694,7 +3697,17 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
 
   /* Web Audio のチャイムと端末音声の聞こえ方を同じ案内内で比較できる。 */
   cueSpeechAudioRoute();
-  window.speechSynthesis.speak(utterance);
+  try {
+    window.speechSynthesis.speak(utterance);
+  } catch {
+    if (settled || requestId !== speechRequestId) return;
+    settled = true;
+    clearTimeout(startWatchdog);
+    stopSpeechAudioRoute();
+    releasePriorityAudioSession();
+    updateVoiceStatus(ui("音声を開始できません。画面の区画情報と現地の表示をご確認ください。", "Voice did not start. Check the parking information and on-site signs."), "error");
+    onError?.();
+  }
 }
 
 /** PDF台本の固定音声と店舗名・駐車枠番号を組み立てる。 */
