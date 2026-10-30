@@ -3144,7 +3144,7 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
         // 重複するエリア名・番号は1回だけ取得し、個々の音声は並列で取り出す。
         // 再生の順序は元のpartsで維持する（同じ駐車枠を2回案内する仕様）。
         const unique = [...new Set(parts)];
-        // 施設名・店舗名だけでなく固定文も共有MP3を再利用。
+        // 施設名・店舗名・駐車枠番号・固定文を共有MP3として組み立てる。
         // 準備完了リストに無い部品は通信せず端末音声に切り替える。
         const saved = await Promise.all(unique.map(async piece => [
           piece,
@@ -3168,9 +3168,14 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
     }
     if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return true;
     // 全部準備できてから連続再生する。欠損時に文章が途中で途切れるのを防ぐ。
+    // 逐次デコードすると、部品数に比例して案内開始が遅れる。
+    // iPhoneなどのメモリを圧迫しないよう最大6部品ずつ並列デコードする。
     const buffers = [];
-    for (const clip of clips) {
-      buffers.push(await route.context.decodeAudioData(clip.bytes.slice(0)));
+    for (let index = 0; index < clips.length; index += 6) {
+      const section = await Promise.all(clips.slice(index, index + 6).map(clip =>
+        route.context.decodeAudioData(clip.bytes.slice(0))));
+      buffers.push(...section);
+      if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return true;
     }
     if (requestId !== speechRequestId || activeSpeechAudioRoute !== route) return true;
     if (route.context.state && route.context.state !== "running") {
