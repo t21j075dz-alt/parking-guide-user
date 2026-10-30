@@ -51,14 +51,18 @@
         });
         // この一覧は全ての部品から共有する。個々の再生中止で
         // 他の部品の取得まで中断させないよう、個別signalは使わない。
-        const response = await Promise.race([
-          fetch(base + "/rest/v1/parking_voice_ready?select=audio_hash&limit=1000",
-            { headers: { apikey: publishableKey },
-              signal: controller.signal, cache: "no-store" }),
+        const data = await Promise.race([
+          (async () => {
+            const response = await fetch(
+              base + "/rest/v1/parking_voice_ready?select=audio_hash&limit=1000",
+              { headers: { apikey: publishableKey },
+                signal: controller.signal, cache: "no-store" },
+            );
+            if (!response.ok) throw new Error("Audio list unavailable");
+            return response.json();
+          })(),
           timeout,
         ]);
-        if (!response.ok) throw new Error("Audio list unavailable");
-        const data = await response.json();
         if (!Array.isArray(data)) throw new Error("Invalid audio list");
         readyHashes = new Set(data.map(row => row.audio_hash)
           .filter(h => typeof h === "string" && /^[a-f0-9]{64}$/.test(h)));
