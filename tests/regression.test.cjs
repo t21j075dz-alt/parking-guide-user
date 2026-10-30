@@ -372,9 +372,9 @@ test('Web Audio非対応でも読み上げだけは維持する', async () => {
   assert.equal(spoken.text, '案内');
 });
 
-test('音声ファイル方式は初期状態では無効で、同意前に外部APIへアクセスしない', () => {
+test('保存済み音声は初期状態で有効だが、外部TTSを勝手に生成しない', () => {
   const { run } = app();
-  assert.equal(run('state.cloudVoiceEnabled'), false);
+  assert.equal(run('state.cloudVoiceEnabled'), true);
   assert.equal(run("isTrustedVoiceAudioUrl('https://evil.test/sample.mp3')"), false);
   assert.equal(run("isTrustedVoiceAudioUrl('https://audio2.tts.quest/v1/data/a12b3c/audio.mp3')"), true);
   assert.equal(run("isTrustedVoiceAudioUrl('https://audio2.tts.quest.evil.test/v1/data/a12b3c/audio.mp3')"), false);
