@@ -55,7 +55,9 @@
         const data = await Promise.race([
           (async () => {
             const response = await fetch(
-              base + "/rest/v1/parking_voice_ready?select=audio_hash&limit=1000",
+              // 1,000件制限のあるテーブル一覧ではなく、完成済みハッシュの配列だけを取得する。
+              // 店舗・施設が増えても先頭1,000件以外が再生不能にならない。
+              base + "/rest/v1/rpc/parking_voice_ready_hashes",
               { headers: { apikey: publishableKey },
                 signal: controller.signal, cache: "no-store" },
             );
@@ -65,8 +67,8 @@
           timeout,
         ]);
         if (!Array.isArray(data)) throw new Error("Invalid audio list");
-        readyHashes = new Set(data.map(row => row.audio_hash)
-          .filter(h => typeof h === "string" && /^[a-f0-9]{64}$/.test(h)));
+        readyHashes = new Set(data.filter(h =>
+          typeof h === "string" && /^[a-f0-9]{64}$/.test(h)));
         readyAt = Date.now();
         manifestRetryAt = 0;
         return readyHashes;
