@@ -42,7 +42,7 @@ function testApp() {
   run("renderFacilities = () => {}; state.selectedFacility = VOICE_TEST_FACILITY; state.voiceEnabled = true;");
   nodes.get("#voice-enabled").checked = true;
   // 実デバイスの音声代わりに終了・失敗イベントだけを手動で送信する。
-  run("speakText = (message,options) => { window.__currentVoice = {message, options}; return true; };");
+  run("window.__realSpeakText = speakText; speakText = (message,options) => { window.__currentVoice = {message, options}; return true; };");
   return { run, context, nodes };
 }
 
@@ -132,4 +132,60 @@ test("非表示タブでは次画面に進んでも自動発話しない",()=>{
   assert.equal(run("state.voiceTestRun.index"),1);
   assert.equal(run("state.voiceTestRun.paused"),true);
   assert.equal(context.window.__currentVoice,old);
+});
+
+test("端末の音声は最終endでのみ完了し、手動中止や音声エラーでは進まない",()=>{
+  const {run,context}=testApp();
+  let current;
+  context.window.ParkingVoiceAssembler = {segments: parts => [{text:parts.join(""),pauseAfterMs:0}]};
+  context.window.SpeechSynthesisUtterance = class {
+    constructor(text){this.text=text;this.handlers={};}
+    addEventListener(name,fn){this.handlers[name]=fn;}
+  };
+  context.window.speechSynthesis.getVoices=()=>[];
+  context.window.speechSynthesis.speak=utterance=>{current=utterance;};
+  run("state.cloudVoiceEnabled = false; window.__finished = 0; window.__errors = 0;");
+  assert.equal(run("window.__realSpeakText('確認音声', {parts:['確認音声'], onComplete:()=>window.__finished++, onError:()=>window.__errors++})"),true);
+  const canceled=current;
+  run("cancelSpeech()");
+  canceled.handlers.end();
+  assert.equal(context.window.__finished,0);
+  assert.equal(run("window.__realSpeakText('再開した音声', {parts:['再開した音声'], onComplete:()=>window.__finished++, onError:()=>window.__errors++})"),true);
+  current.handlers.start();
+  current.handlers.end();
+  assert.equal(context.window.__finished,1);
+  assert.equal(context.window.__errors,0);
+  run("window.__realSpeakText('失敗した音声', {parts:['失敗した音声'], onComplete:()=>window.__finished++, onError:()=>window.__errors++})");
+  current.handlers.error({error:"synthesis-failed"});
+  assert.equal(context.window.__errors,1);
+  assert.equal(context.window.__finished,1);
+});
+
+test("保存済み音声は最後のMP3のendedでのみ完了する",async()=>{
+  const {run,context}=testApp();
+  let lastSource;
+  const audioContext={
+    currentTime:0,state:"running",destination:{},
+    decodeAudioData:async()=>({duration:.3}),
+    createBufferSource(){
+      lastSource={
+        playbackRate:{setValueAtTime(){}},connect(){},start(){},stop(){},
+        addEventListener(event,fn){ if(event==="ended")this.onEnded=fn; },
+      };
+      return lastSource;
+    },
+    createGain(){return {gain:{setValueAtTime(){}},connect(){}};},
+    close:async()=>{},
+  };
+  context.window.ParkingVoiceAudioCache = {
+    get:async()=>({bytes:new ArrayBuffer(300),source:"saved"}),
+  };
+  context.window.__route={context:audioContext,oscillator:{stop(){}},voiceSources:[]};
+  run("state.cloudVoiceEnabled=true; window.__finished=0; speechRequestId=9; activeSpeechAudioRoute=window.__route;");
+  const played=await run("playCloudVoiceAudio('保存済み',9,false,null,null,()=>window.__finished++)");
+  assert.equal(played,true);
+  assert.ok(lastSource?.onEnded);
+  assert.equal(context.window.__finished,0);
+  lastSource.onEnded();
+  assert.equal(context.window.__finished,1);
 });
