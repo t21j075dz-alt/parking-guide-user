@@ -13,7 +13,7 @@ test("the script bank defines all seven categories of the supplied Japanese guid
   const ids = ["start_complex", "start_single", "approaching", "space_found",
     "space_alternative", "space_none", "space_maybe_taken",
     "retry_started", "retry_found", "retry_none",
-    "arrival_detected", "parking_completed", "guidance_ended",
+    "arrival_detected", "arrival_video_confirm", "parking_completed", "guidance_ended",
     "full", "rest", "closed", "space_changed", "conditions_changed",
     "conditions_unavailable", "destination_changed",
     "camera_disconnected", "camera_recovered", "recognition_unknown",
