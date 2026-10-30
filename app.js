@@ -1919,6 +1919,9 @@ function saveSelectedDestination() {
   state.selectedDestination = destinations.find(
     (destination) => destination.id === destinationSelect.value,
   ) ?? null;
+  if (state.selectedDestination) {
+    preloadPreparedStoreName(state.selectedDestination.nameReading || state.selectedDestination.name);
+  }
 }
 
 function updateRandomGuidanceNote() {
@@ -3464,6 +3467,15 @@ function parkingScript() {
   });
 }
 
+/** 施設選択時に保存済み音声を先読み。外部TTSへ生成を依頼しない。 */
+function preloadPreparedStoreName(name) {
+  if (!state.cloudVoiceEnabled || getGuidanceSpeechLocale() !== "ja-JP" || !name) return;
+  const message = typeof normalizeJapaneseSpeech === "function"
+    ? normalizeJapaneseSpeech(String(name)) : String(name);
+  void window.ParkingVoiceAudioCache?.get(message, {
+    cachedOnly: true, remote: true,
+  }).catch(() => { /* 未生成の場合は端末音声で案内する。 */ });
+}
 /** 自動案内開始時の安全メッセージを読み上げる。 */
 function getAutomaticGuidanceStartMessage(locale = getGuidanceSpeechLocale()) {
   const facility = getFacilitySpokenName(locale) || ui("もくてきしせつ", "the destination");
@@ -3827,6 +3839,7 @@ facilityList.addEventListener("click", (event) => {
   state.recommendedSpace = null;
   state.selectedDestination = null;
   selectedFacilityName.textContent = getFacilityDisplayName(facility);
+  preloadPreparedStoreName(getFacilitySpokenName("ja-JP") || facility.name);
   updateDestinationPanel();
   updateRandomGuidanceNote();
   updatePrivateTestLocationPanel();
@@ -3878,7 +3891,7 @@ cloudVoiceInput?.addEventListener("change", () => {
   cancelSpeech();
   state.cloudVoiceEnabled = cloudVoiceInput.checked;
   setCloudVoiceDiagnostic(state.cloudVoiceEnabled
-    ? ui("音声ファイル方式を試行します。接続結果をここに表示します。", "Testing audio-file playback; results appear here.")
+    ? ui("保存済み音声部品を優先します。未生成の音声は端末音声を使います。", "Using prepared audio when available, otherwise device speech.")
     : ui("音声ファイル方式はオフです。", "Audio-file mode is off."));
   try {
     localStorage.setItem("parkingGuideCloudVoiceEnabled", String(state.cloudVoiceEnabled));
