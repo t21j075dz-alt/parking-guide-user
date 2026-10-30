@@ -88,7 +88,15 @@ const VOICE_TEST_FACILITY = Object.freeze({
 });
 
 // sampleRole は研究上の分類に使用し、一覧の表示条件にはしない。
-const FACILITIES = Object.freeze([DEMO_FACILITY, VIDEO_REPLAY_FACILITY, VOICE_TEST_FACILITY, ...FACILITY_CATALOG]);
+// 同じ駐車場を使う3つの実験を一覧で連続表示し、選び間違いを防ぐ。
+const HOME_LIVE_FACILITY = FACILITY_CATALOG.find((facility) => facility.id === "home-test-001");
+const FACILITIES = Object.freeze([
+  DEMO_FACILITY,
+  VIDEO_REPLAY_FACILITY,
+  ...(HOME_LIVE_FACILITY ? [HOME_LIVE_FACILITY] : []),
+  VOICE_TEST_FACILITY,
+  ...FACILITY_CATALOG.filter((facility) => facility.id !== "home-test-001"),
+]);
 
 const CATEGORY_LABELS = Object.freeze({
   supermarket: "スーパー・食品店",
