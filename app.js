@@ -697,6 +697,7 @@ function updateParkingArrivalPanel() {
     && check?.uid === state.recommendedSpace?.uid
     && check.facilityId === state.selectedFacility?.id;
   parkingArrivalPanel.hidden = !visible;
+  parkingArrivalPanel.classList.toggle("is-confirmed", Boolean(visible && check?.confirmed));
   if (!visible) return;
   const recorded = check.recorded === true;
   const heading = document.querySelector("#parking-arrival-heading");
