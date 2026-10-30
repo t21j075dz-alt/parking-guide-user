@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const path = require("node:path");
-const { webcrypto } = require("node:crypto");
+const { webcrypto, createHash } = require("node:crypto");
 
 const source = fs.readFileSync(path.join(__dirname, "../voice-audio-cache.js"), "utf8");
 
@@ -28,11 +28,15 @@ function createAudioHarness({ rateLimited = false, remoteEnabled = false } = {})
   const context = vm.createContext({
     localStorage: { getItem(key) { return storageValues.get(key) ?? null; }, setItem(key, value) { storageValues.set(key, value); } },
     window: { caches: {},
-      PARKING_REMOTE_CONFIG: remoteEnabled ? { enabled:true, supabaseUrl:"https://gahoqlpuufqjqpyaaykt.supabase.co" } : {},
+      PARKING_REMOTE_CONFIG: remoteEnabled ? { enabled:true, supabaseUrl:"https://gahoqlpuufqjqpyaaykt.supabase.co", publishableKey:"sb_publishable_test" } : {},
       location: { href: "https://example.test/parking-guide-user/#facility" }, crypto: webcrypto },
     navigator, caches: { async open() { return cache; } },
     fetch: async (url) => {
       calls++;
+      if (url.includes("/rest/v1/parking_voice_ready")) {
+        const hash = createHash("sha256").update("voice-cache-v1:8:らむー おかやまてん").digest("hex");
+        return { ok:true, json:async()=>[{audio_hash:hash}] };
+      }
       if (url.includes("/storage/v1/object/public/parking-voice/ja-JP/"))
         return { ok: true, headers: {get: () => "512"}, arrayBuffer: async () => fakeBytes.slice(0) };
       if (url.includes("/synthesis?") && rateLimited) return { ok: false, status: 429 };
@@ -124,9 +128,18 @@ test("cloud prepared store names download once, then play from local cache offli
   const h = createAudioHarness({ remoteEnabled: true });
   const first = await h.api.get("らむー おかやまてん", { cachedOnly:true, remote:true });
   assert.equal(first.source, "shared");
-  assert.equal(h.getCalls(), 1, "only one Supabase Storage fetch");
+  assert.equal(h.getCalls(), 2, "one ready-catalog request and one Storage fetch");
   h.setOnline(false);
   const second = await h.api.get("らむー おかやまてん", { cachedOnly:true, remote:true });
   assert.equal(second.source, "saved");
-  assert.equal(h.getCalls(), 1, "offline replay must not use network");
+  assert.equal(h.getCalls(), 2, "offline replay must not use network");
+});
+
+
+test("a store that is not yet generated skips MP3 download and uses device fallback", async () => {
+  const h = createAudioHarness({remoteEnabled:true});
+  await assert.rejects(h.api.get("未生成の新店舗", {cachedOnly:true, remote:true}), /not prepared/);
+  assert.equal(h.getCalls(), 1, "only one manifest lookup, no MP3 download");
+  await assert.rejects(h.api.get("別の未生成店舗", {cachedOnly:true, remote:true}), /not prepared/);
+  assert.equal(h.getCalls(), 1, "manifest is shared and prevents repeat requests");
 });
