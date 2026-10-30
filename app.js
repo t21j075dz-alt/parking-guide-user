@@ -1730,10 +1730,12 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         }
 
         const isRecommended = object.uid === recommendedSpace?.uid;
+        const isParked = state.currentScreen === "parked" && state.parkedSpace?.uid === object.uid;
         const isOccupied = !mapDisplay.isGuidableType(object.spaceType ?? "standard") || displayStatus !== "available";
         item.classList.toggle("is-occupied", isOccupied);
         item.classList.toggle("is-blocked", displayStatus === "blocked");
-        item.classList.toggle("is-recommended", isRecommended && !isOccupied);
+        item.classList.toggle("is-recommended", isRecommended && (!isOccupied || isParked));
+        item.classList.toggle("is-parked", isParked);
         const phase = state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID
           ? visibleSpacePhases.get(object.uid) : null;
         if (phase && videoPhaseLabels[phase]) {
@@ -1748,7 +1750,7 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         item.setAttribute("role", "listitem");
         item.setAttribute(
           "aria-label",
-          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${phase && videoPhaseLabels[phase] ? videoPhaseLabels[phase] : isRecommended && !isOccupied ? ui("案内先","Destination") : displayStatus === "occupied" ? ui("使用中","Occupied") : displayStatus === "blocked" ? ui("障害物あり","Blocked") : displayStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
+          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isParked ? ui("自分の駐車位置","Your parked space") : phase && videoPhaseLabels[phase] ? videoPhaseLabels[phase] : isRecommended && !isOccupied ? ui("案内先","Destination") : displayStatus === "occupied" ? ui("使用中","Occupied") : displayStatus === "blocked" ? ui("障害物あり","Blocked") : displayStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
         );
       } else if (object.objectType === "buildingEntrance") {
         mapDisplay.appendEntrance(item,object);
@@ -1841,7 +1843,8 @@ function renderDemoParkingMap(spaces, recommendedSpace) {
     }
     if (isRecommended) {
       item.classList.add("is-recommended");
-      status = "案内先";
+      if (state.currentScreen === "parked") item.classList.add("is-parked");
+      status = state.currentScreen === "parked" ? "駐車位置" : "案内先";
     }
 
     item.innerHTML = '<span class="parking-space-number"></span><span class="parking-space-state"></span>';
