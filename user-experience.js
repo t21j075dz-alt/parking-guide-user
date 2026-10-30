@@ -213,6 +213,9 @@
     // 番号の前に音声カードが並ばないよう、結果内の番号直後へ移す。
     const audioCard = $("#result-screen > .guidance-audio-card");
     if (audioCard) hero.insertAdjacentElement("afterend", audioCard);
+    // 停車検知は音声設定より優先し、区画番号の直後に表示する。
+    const arrivalPanel = $("#parking-arrival-panel");
+    if (arrivalPanel) hero.insertAdjacentElement("afterend", arrivalPanel);
     hero.classList.add("guidance-hero");
     const label = hero.querySelector(".result-label");
     if (label) label.textContent = t("ご案内する駐車区画", "Your parking space");
