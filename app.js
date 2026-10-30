@@ -2062,13 +2062,15 @@ function announceClosingTimeIfNeeded() {
   if(document.hidden || !state.voiceEnabled || !["waiting","result"].includes(state.currentScreen))return false;
   const key=getClosingAnnouncementKey();
   if(!key || key===lastClosingAnnouncementKey || window.speechSynthesis?.speaking)return false;
-  const spoken=speakText(getClosingAnnouncement());
+  const spoken = getGuidanceSpeechLocale() === "ja-JP" && window.ParkingVoiceGuideScripts
+    ? speakPreparedScript("closing_soon")
+    : speakText(getClosingAnnouncement());
   if(spoken)lastClosingAnnouncementKey=key;
   return spoken;
 }
 function getClosingAnnouncement(locale=getGuidanceSpeechLocale()) {
   if(!getOperatingStatus()?.closingSoon)return "";
-  const messages={"ja-JP":"まもなく、へいてんじこくです。へいてんまで、いちじかんいないです。", "en-US":"This destination closes within one hour. ","en-GB":"This destination closes within one hour. ","zh-CN":"目的地将在一小时内结束营业。", "ko-KR":"목적지가 한 시간 이내에 영업을 종료합니다. ","es-ES":"Este destino cierra en menos de una hora. "};
+  const messages={"ja-JP":"閉店まで1時間以内です。ご利用時間にご注意ください。", "en-US":"This destination closes within one hour. ","en-GB":"This destination closes within one hour. ","zh-CN":"目的地将在一小时内结束营业。", "ko-KR":"목적지가 한 시간 이내에 영업을 종료합니다. ","es-ES":"Este destino cierra en menos de una hora. "};
   return messages[locale] || messages["en-US"];
 }
 function updateDestinationCards() {
