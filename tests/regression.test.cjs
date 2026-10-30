@@ -1111,3 +1111,56 @@ test('施設の登録済み駐車枠番号と到着時の固定音声を先読�
   assert.ok(spoken.includes("番です。"));
   assert.ok(received.every(x=>x.options.remote && x.options.cachedOnly));
 });
+
+
+test("駐車場所の読みが駐車場の部分置換で壊れない", () => {
+  const { run } = app();
+  const sentence = run('normalizeJapaneseSpeech("お客様の駐車場所は、A列の12番です。")');
+  assert.match(sentence, /お客様のちゅうしゃばしょは、/);
+  assert.doesNotMatch(sentence, /ちゅうしゃじょう所/);
+});
+
+test("保存済み音声部品は最大6本の並列デコードで読み、順序と駐車枠2回を保つ", async () => {
+  const { run, context } = app();
+  let active = 0, peak = 0;
+  const starts = [];
+  context.navigator = { audioSession: {type:"ambient"} };
+  context.window.AudioContext = class {
+    constructor() { this.destination={};this.currentTime=0;this.state="running"; }
+    createOscillator() { return {frequency:{setValueAtTime(){}},connect(){},start(){},stop(){}}; }
+    createGain() { return {gain:{setValueAtTime(){}},connect(){}}; }
+    createBufferSource() {
+      return { playbackRate:{setValueAtTime(){}},connect(){},addEventListener(){},
+        start(at){starts.push(at);},stop(){} };
+    }
+    decodeAudioData() {
+      active += 1;
+      peak = Math.max(peak, active);
+      return new Promise(resolve => setImmediate(() => {
+        active -= 1;
+        resolve({duration:0.24});
+      }));
+    }
+    resume() {return Promise.resolve();}
+    close() {return Promise.resolve();}
+  };
+  const fetched = [];
+  context.window.ParkingVoiceAudioCache = {
+    get: async (piece, options) => {
+      assert.equal(options.cachedOnly,true);
+      fetched.push(piece);
+      return {bytes:new ArrayBuffer(400),source:"saved"};
+    },
+  };
+  run("state.cloudVoiceEnabled=true;state.voiceEnabled=true;");
+  const space="A列12番";
+  const parts=["まもなく目的地です。","ご案内する駐車枠は、",space,"番です。",
+    "繰り返します。",space,"番です。","安全運転でお進みください。"];
+  const message=parts.join("");
+  assert.equal(run("speakText("+JSON.stringify(message)+",{parts:"+JSON.stringify(parts)+"})"),true);
+  for(let i=0;i<10;i++) await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(peak,6);
+  assert.equal(starts.length,parts.length);
+  assert.ok(starts.every((at,i)=>i===0 || at>=starts[i-1]));
+  assert.equal(fetched.filter(x=>x===space).length,1,"同じ番号のMP3は一度だけ読み取る");
+});
