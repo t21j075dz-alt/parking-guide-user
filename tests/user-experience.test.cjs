@@ -35,7 +35,7 @@ test("区画番号は既存の要素を再利用し、通常画面の読み上�
 
 test("録画映像を現在の空き状況と誤認させない", () => {
   const js = read("user-experience.js");
-  assert.match(js, /録画映像の情報です。現在の空き状況ではありません。/);
+  assert.match(js, /録画映像（現在の空きではありません）/);
   assert.match(js, /録画映像を再生中（現在の空きではありません）/);
 });
 
