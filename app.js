@@ -3538,15 +3538,38 @@ let voicePreloadSequence = 0;
 function preloadPreparedGuidanceClips() {
   if (!state.cloudVoiceEnabled || getGuidanceSpeechLocale() !== "ja-JP"
       || !state.selectedFacility || !window.ParkingVoiceAudioCache?.get) return;
+  // 施設変更・店舗変更で前の処理を中止。端末の通信を占有しないよう3件ずつ取得する。
   const version = ++voicePreloadSequence;
-  let scripts;
+  let scripts = [];
+  let numberParts = [];
   try {
+    const bank = window.ParkingVoiceGuideScripts;
     scripts = [startScript(), makePreparedScript("approaching"),
-      makePreparedScript("retry_started")].filter(Boolean);
+      makePreparedScript("retry_started"), makePreparedScript("space_none"),
+      makePreparedScript("retry_none")].filter(Boolean);
+    // 結果画面に入る前に「案内する駐車枠」「繰り返します」「安全案内」も準備。
+    for (const id of ["space_found", "retry_found"]) {
+      const guide = bank?.build(id, { "駐車枠": "いち" });
+      if (guide) scripts.push({
+        parts: guide.parts.filter(part => part.role === "fixed").map(part => part.text),
+      });
+    }
+    const layout = getFacilityLayout(state.selectedFacility);
+    if (layout?.objects?.length) {
+      // ユーザーへ実際に案内する番号と同じ正規化規則を使用する。
+      // 多数の区画がある施設では通信量を抑え、先頭48種類まで先読みする。
+      numberParts = [...new Set(createLayoutParkingSpaces(layout, state.selectedFacility)
+        .map(space => getSpokenSpaceId(space, "ja-JP")).filter(Boolean))].slice(0, 48);
+    }
   } catch { return; }
-  const parts = [...new Set(scripts.flatMap(script => script.parts)
-    .map(part => typeof normalizeJapaneseSpeech === "function"
-      ? normalizeJapaneseSpeech(part) : part))];
+  const normalize = part => typeof normalizeJapaneseSpeech === "function"
+    ? normalizeJapaneseSpeech(part) : part;
+  // 選択時の開始案内と区画番号を優先し、それ以外の共通文は続いて準備する。
+  const parts = [...new Set([
+    ...scripts.slice(0, 1).flatMap(script => script.parts),
+    ...numberParts,
+    ...scripts.slice(1).flatMap(script => script.parts),
+  ].map(normalize))].filter(Boolean);
   void (async () => {
     for (let i = 0; i < parts.length; i += 3) {
       if (version !== voicePreloadSequence || !state.cloudVoiceEnabled) break;

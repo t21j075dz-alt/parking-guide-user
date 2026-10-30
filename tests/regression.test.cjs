@@ -1065,8 +1065,49 @@ test('施設選択時の共通音声先読みは重複を除き3件ずつ取得�
   for (let i = 0; i < 6; i++) await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(received.map(x => x.message), [
     "共通の文。", "試験店舗", "approaching", "retry_started",
+    "space_none", "retry_none",
   ]);
   assert.ok(received.every(x => x.options.cachedOnly === true && x.options.remote === true));
   run("state.cloudVoiceEnabled = false; preloadPreparedGuidanceClips();");
-  assert.equal(received.length, 4, "無効設定なら先読みしない");
+  assert.equal(received.length, 6, "無効設定なら先読みしない");
+});
+
+test('施設の登録済み駐車枠番号と到着時の固定音声を先読みする', async () => {
+  const {run, context} = app();
+  const received = [];
+  context.window.ParkingVoiceAudioCache = {
+    get(message, options) {
+      received.push({message, options});
+      return Promise.resolve({source: "saved", bytes: new ArrayBuffer(500)});
+    },
+  };
+  context.window.ParkingVoiceGuideScripts = {
+    build(id) {
+      return {parts: [{role:"fixed",text: "固定:" + id + "。"},
+        {role:"駐車枠",text:"いち"}, {role:"fixed",text:"番です。"}]};
+    },
+  };
+  run(`state.cloudVoiceEnabled=true;
+    state.selectedFacility={id:'lot', name:'試験施設'};
+    startScript=()=>({parts:["案内開始。"]});
+    makePreparedScript=id=>({parts:["案内:"+id+"。"]});
+    getFacilityLayout=()=>({objects:[{objectType:"parkingSpace",spaceNumber:"001"},
+      {objectType:"parkingSpace",spaceNumber:"002"}]});
+    createLayoutParkingSpaces=()=>[
+      {id:"1",sourceObject:{spaceNumber:"001"}},
+      {id:"2",sourceObject:{spaceNumber:"002"}},
+      {id:"2",sourceObject:{spaceNumber:"002"}}
+    ];
+    getSpokenSpaceId=space=>space.id==="1"?"いち":"に";
+    normalizeJapaneseSpeech=x=>x;`);
+  run("preloadPreparedGuidanceClips()");
+  for(let i=0;i<12;i++) await new Promise(resolve=>setImmediate(resolve));
+  const spoken=received.map(x=>x.message);
+  assert.ok(spoken.includes("いち"));
+  assert.ok(spoken.includes("に"));
+  assert.equal(spoken.filter(x=>x==="に").length,1);
+  assert.ok(spoken.includes("固定:space_found。"));
+  assert.ok(spoken.includes("固定:retry_found。"));
+  assert.ok(spoken.includes("番です。"));
+  assert.ok(received.every(x=>x.options.remote && x.options.cachedOnly));
 });
