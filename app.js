@@ -1905,7 +1905,7 @@ function showScreen(screenName, options = {}) {
       && !["voice-test", "voice-test-complete"].includes(screenName)) {
     state.voiceTestRun = null; // 前画面へ戻った後の遅延通知を破棄する。
   }
-  if (screenName === "facility" || screenName === "condition") {
+  if (screenName === "facility" || screenName === "condition" || screenName === "parked") {
     state.autoProximityArmed = false;
     state.autoTriggeredFacilityId = null;
   }
@@ -2414,7 +2414,8 @@ function getNoSpaceGuidanceMessage(locale = getGuidanceSpeechLocale()) {
 
 /** 空き区画検索を実行する。 */
 async function runSpaceSearch(priorityOverride = null, options = {}) {
-  const { autoTriggered = false, skipSafetyGuard = false, refreshSimulation = false, fromRetry = false } = options;
+  const { autoTriggered = false, skipSafetyGuard = false, refreshSimulation = false,
+    fromRetry = false, excludedSpaceUid = null } = options;
   // 通信を待つ前に依頼元を固定し、戻る操作・施設変更・再検索で無効化する。
   const requestId = ++state.searchRequestId;
   const facility = state.selectedFacility;
@@ -2470,8 +2471,12 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       state.currentSpaces = prepared.spaces;
       state.guideEntrance = prepared.entrance;
       const useRandomGuidance = !state.resultLive && RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id);
+      // 「ほかの車だった」区画は、この再探索で同じ番号を二度案内しない。
+      const searchCandidates = excludedSpaceUid
+        ? prepared.spaces.filter(space => space.uid !== excludedSpaceUid)
+        : prepared.spaces;
       state.recommendedSpace = selectRecommendedSpace(
-        prepared.spaces,
+        searchCandidates,
         priority,
         state.requestedSpaceType,
         useRandomGuidance,
@@ -4226,7 +4231,10 @@ function endGuidance() {
 function resetApplication() {
   cancelSpeech();
   window.parkingSafety?.resetConfirmation?.();
+  // 駐車中画面へ移動したマップを元の結果画面に戻す。
+  if (resultMapSlot && parkingMapSection) resultMapSlot.append(parkingMapSection);
   state.searchRequestId += 1;
+  state.parkedSpace = null;
   state.selectedFacility = null;
   state.selectedDestination = null;
   state.voiceTestRun = null;
@@ -4239,6 +4247,7 @@ function resetApplication() {
   state.pendingPrivateTestCalibration = false;
   state.recommendedSpace = null;
   state.arrivalCheck = null;
+  state.parkedSpace = null;
   state.searchOutcome = null;
   state.resultLive = false;
   state.currentSpaces = [];
@@ -4266,6 +4275,7 @@ facilityList.addEventListener("click", (event) => {
 
   state.selectedFacility = facility;
   state.arrivalCheck = null;
+  state.parkedSpace = null;
   state.pendingPrivateTestCalibration = false;
   state.searchOutcome = null;
   state.resultLive = false;
@@ -4551,11 +4561,17 @@ window.addEventListener("popstate", (event) => {
   }
 
   const requestedScreen = event.state?.screen;
+  // 駐車中は出庫操作まで区画とマップを保持し、戻る履歴で検索へ戻さない。
+  if (state.currentScreen === "parked" && state.parkedSpace) {
+    window.history.pushState({ screen: "parked" }, "", "#parked");
+    return;
+  }
   const canOpenScreen =
     requestedScreen === "facility" ||
     (requestedScreen === "condition" && state.selectedFacility) ||
     (requestedScreen === "waiting" && state.selectedFacility && state.autoProximityArmed) ||
     (requestedScreen === "result" && state.searchOutcome) ||
+    (requestedScreen === "parked" && state.parkedSpace) ||
     (requestedScreen === "voice-test" && state.selectedFacility?.isVoiceTest && state.voiceTestRun) ||
     (requestedScreen === "voice-test-complete" && state.selectedFacility?.isVoiceTest && state.voiceTestRun);
 
