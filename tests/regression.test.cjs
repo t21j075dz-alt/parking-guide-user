@@ -1320,3 +1320,86 @@ test('駐車位置データが破損していてもホーム画面の初期表�
   assert.equal(run('restoreParkedSession()'),false);
   assert.equal(run('state.currentScreen'),'facility');
 });
+
+
+test("iPhoneの端末音声では文章を一度に発話し、1文目だけで終了しない", () => {
+  const {run,context}=app();
+  context.navigator={userAgent:"Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 Mobile Safari/604.1"};
+  const spoken=[];
+  context.SpeechSynthesisUtterance=class {
+    constructor(text){this.text=text;this.handlers={};}
+    addEventListener(k,fn){this.handlers[k]=fn;}
+  };
+  context.window.SpeechSynthesisUtterance=context.SpeechSynthesisUtterance;
+  context.window.speechSynthesis.getVoices=()=>[{name:"iPhone 日本語",lang:"ja-JP",localService:true}];
+  context.window.speechSynthesis.speak=u=>spoken.push(u);
+  run("state.cloudVoiceEnabled=false;state.voiceEnabled=true;");
+  const text="ご案内する駐車枠です。繰り返します。A列の12番です。";
+  context.textToSpeak=text;
+  const started=run("speakText(textToSpeak,{parts:['ご案内する駐車枠です。','繰り返します。','A列の12番です。']})");
+  assert.equal(started,true);
+  assert.equal(spoken.length,1,"iOS should use one long utterance instead of separate sentences");
+  assert.ok(spoken[0].text.includes("繰り返します"));
+  assert.ok(spoken[0].text.includes("ばんです"));
+  spoken[0].handlers.end();
+  assert.equal(spoken.length,1);
+  assert.equal(run("activeDeviceSpeechUtterance"),null);
+});
+
+test("保存済み4部品を1本の音源へ連結し、先頭の音声だけで終了しない",async()=>{
+  const {run,context}=app();
+  const started=[],sources=[];
+  context.navigator={audioSession:{type:"ambient"}};
+  context.window.speechSynthesis.getVoices=()=>[];
+  context.window.speechSynthesis.speak=()=>{throw new Error("saved clips should not use device TTS");};
+  const audioBuffer=(length=800)=>{
+    const data=[new Float32Array(length).fill(.2)];
+    return {numberOfChannels:1,length,sampleRate:8000,duration:length/8000,
+      getChannelData(c){return data[c];}};
+  };
+  context.window.AudioContext=class {
+    constructor(){this.destination={};this.currentTime=0;this.sampleRate=8000;this.state="running";}
+    createOscillator(){return {frequency:{setValueAtTime(){}},connect(){},start(){},stop(){}};}
+    createGain(){return {gain:{setValueAtTime(){}},connect(){} };}
+    decodeAudioData(){return Promise.resolve(audioBuffer());}
+    createBuffer(channels,length,rate){
+      assert.equal(rate,8000);
+      const data=Array.from({length:channels},()=>new Float32Array(length));
+      return {numberOfChannels:channels,length,sampleRate:rate,duration:length/rate,
+        getChannelData(c){return data[c];}};
+    }
+    createBufferSource(){
+      const source={connect(){},playbackRate:{setValueAtTime(){}},
+        addEventListener(type,fn){if(type==="ended")this.onEnd=fn;},
+        start(at){started.push(at);sources.push(this);},stop(){}};
+      return source;
+    }
+    resume(){return Promise.resolve();}
+    close(){return Promise.resolve();}
+  };
+  context.window.ParkingVoiceAudioCache={
+    get:async()=>({bytes:new ArrayBuffer(10),source:"saved"})
+  };
+  vm.runInContext(fs.readFileSync(path.join(__dirname,"../voice-continuous-playback.js"),"utf8"),context);
+  run("state.cloudVoiceEnabled=true;state.voiceEnabled=true;");
+  const parts=["案内します。","A列12番です。","繰り返します。","A列12番です。"];
+  context.partsToRead=parts;
+  assert.equal(run("speakText(partsToRead.join(''),{parts:partsToRead})"),true);
+  for(let i=0;i<6;i++) await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(started.length,1,"multiple MP3s must be scheduled as a single AudioBufferSource");
+  assert.ok(sources[0].buffer.duration>.4,"one output contains all four clips");
+  sources[0].onEnd();
+  assert.equal(run("activeSpeechAudioRoute"),null);
+});
+
+test("iPhone画面復帰で一時停止したWeb Audioのみでもresumeする",async()=>{
+  const {run,context}=app();
+  let resumed=0;
+  context.document.hidden=false;
+  context.window.speechSynthesis.paused=false;
+  context.navigator={audioSession:{type:"ambient"}};
+  run("state.voiceEnabled=true;activeSpeechAudioRoute={context:{state:'suspended',resume(){return Promise.resolve();}}};");
+  context.activeSpeechAudioRoute=null;
+  run("resumePausedSpeechOnReturn()");
+  assert.equal(run("Boolean(activeSpeechAudioRoute)"),true);
+});
