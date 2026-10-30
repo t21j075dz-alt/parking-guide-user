@@ -3118,7 +3118,7 @@ function getAudioFileGain(buffer) {
 }
 
 /** 端末に事前保存された音声を優先し、未保存の場合のみ生成して保存する。 */
-async function playCloudVoiceAudio(message, requestId, isPreview = false, parts = null, roles = null) {
+async function playCloudVoiceAudio(message, requestId, isPreview = false, parts = null, roles = null, onComplete = null) {
   const route = activeSpeechAudioRoute;
   if (!route || !route.context.decodeAudioData || !route.context.createBufferSource
       || !window.ParkingVoiceAudioCache) {
@@ -3190,6 +3190,8 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
           stopSpeechAudioRoute();
           releasePriorityAudioSession();
           updateVoiceStatus();
+          // 音声ファイルの最後の部品が終わった場合だけ完了通知する。
+          onComplete?.();
         }, { once: true });
       }
       source.start(cursor);
@@ -3245,7 +3247,7 @@ function publishGuidanceTranscript(message, mode = "") {
  * 1部品ごとに音声合成しないため不自然な声の切れ目を減らす。
  * 外部のtts.questへは一切アクセスしない。
  */
-function speakDeviceAssembledParts(message, parts, requestId) {
+function speakDeviceAssembledParts(message, parts, requestId, onComplete = null, onError = null) {
   const speech = window.speechSynthesis;
   if (!speech || !window.SpeechSynthesisUtterance) return false;
   const chunks = window.ParkingVoiceAssembler?.segments?.(parts)
@@ -3281,6 +3283,7 @@ function speakDeviceAssembledParts(message, parts, requestId) {
         stopSpeechAudioRoute();
         releasePriorityAudioSession();
         updateVoiceStatus(ui("端末の音声が開始できません。画面の案内文をご確認ください。", "Device speech did not start. Follow the visible text."), "error");
+        onError?.();
       }
     }, 5000);
     utterance.addEventListener("start", () => {
@@ -3303,6 +3306,7 @@ function speakDeviceAssembledParts(message, parts, requestId) {
         releasePriorityAudioSession();
         updateVoiceStatus();
         publishGuidanceTranscript("", ui("案内の読み上げが完了しました。", "Guidance announcement finished."));
+        onComplete?.();
       }
     });
     utterance.addEventListener("error", event => {
@@ -3317,6 +3321,7 @@ function speakDeviceAssembledParts(message, parts, requestId) {
         stopSpeechAudioRoute();
         releasePriorityAudioSession();
         updateVoiceStatus(ui("端末の音声が中断されました。画面の案内をご確認ください。", "Device speech was interrupted. Follow the visible text."), "error");
+        onError?.();
       }
     });
     try { speech.speak(utterance); }
@@ -3325,6 +3330,7 @@ function speakDeviceAssembledParts(message, parts, requestId) {
       stopSpeechAudioRoute();
       releasePriorityAudioSession();
       updateVoiceStatus(ui("端末音声を開始できません。画面の案内をご確認ください。", "Device speech failed to start."), "error");
+      onError?.();
     }
   }
   configureVoiceAudioSession();
@@ -3334,7 +3340,7 @@ function speakDeviceAssembledParts(message, parts, requestId) {
 }
 
 /** Web Speech APIで無料読み上げを行う。 */
-function speakText(message, { preview = false, userGesture = false, parts = null, roles = null } = {}) {
+function speakText(message, { preview = false, userGesture = false, parts = null, roles = null, onComplete = null, onError = null } = {}) {
   if (!message) return false;
   if (!preview) publishGuidanceTranscript(message, ui("読み上げの準備中", "Preparing guidance"));
   if (getGuidanceSpeechLocale() === "ja-JP" && typeof normalizeJapaneseSpeech === "function") {
@@ -3352,32 +3358,36 @@ function speakText(message, { preview = false, userGesture = false, parts = null
     prepareSpeechAudioRoute(true);
     const requestId = ++speechRequestId;
     window.speechSynthesis?.cancel?.();
-    void playCloudVoiceAudio(message, requestId, preview, parts, roles).then((played) => {
+    void playCloudVoiceAudio(message, requestId, preview, parts, roles, onComplete).then((played) => {
       if (played || requestId !== speechRequestId) return;
       stopSpeechAudioRoute();
       releasePriorityAudioSession();
       if ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window) {
         updateVoiceStatus(ui("音声を端末で再生しています。", "Playing guidance with device speech."), "active");
-        if (parts?.length) speakDeviceAssembledParts(message, parts, requestId);
-        else void speakTextWhenVoicesReady(message, requestId);
+        if (parts?.length) speakDeviceAssembledParts(message, parts, requestId, onComplete, onError);
+        else void speakTextWhenVoicesReady(message, requestId, false, false, onComplete, onError);
       } else {
         updateVoiceStatus(ui(
           "このブラウザーで音声を再生できません。画面の案内文をご確認ください。",
           "This browser cannot play speech. Follow the visible guidance text.",
         ), "error");
+        onError?.();
       }
     });
     return true;
   }
 
-  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return false;
+  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+    onError?.();
+    return false;
+  }
   /* 保存部品がなくてもPDF台本から組み立て、端末の声で一文ずつ再生。 */
   cancelSpeech();
   prepareSpeechAudioRoute();
   if (parts?.length) {
-    speakDeviceAssembledParts(message, parts, ++speechRequestId);
+    speakDeviceAssembledParts(message, parts, ++speechRequestId, onComplete, onError);
   } else {
-    void speakTextWhenVoicesReady(message, undefined, userGesture);
+    void speakTextWhenVoicesReady(message, undefined, userGesture, false, onComplete, onError);
   }
   return true;
 }
@@ -3387,7 +3397,7 @@ function localeForSpeechMessage(message) {
 }
 
 /** 音声一覧の読み込みを待ってからGoogle音声を指定して読み上げる。 */
-async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, userGesture = false, localRetry = false) {
+async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, userGesture = false, localRetry = false, onComplete = null, onError = null) {
   const initialVoices = getSpeechVoices();
   // iPhoneでは最初の音声をタップ操作内で要求する。音声一覧が未取得でもOS標準音声で開始する。
   const voices = initialVoices.length || userGesture ? initialVoices : await waitForSpeechVoices();
@@ -3428,12 +3438,13 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
   const startWatchdog = setTimeout(() => {
     if (started || requestId !== speechRequestId) return;
     if (!localRetry && localVoice && localVoice !== voice) {
-      void speakTextWhenVoicesReady(message, requestId, false, true);
+      void speakTextWhenVoicesReady(message, requestId, false, true, onComplete, onError);
     } else {
       window.speechSynthesis.cancel();
       stopSpeechAudioRoute();
       releasePriorityAudioSession();
       updateVoiceStatus(ui("音声を開始できません。案内内容：", "Voice did not start. Guidance: ") + message, "error");
+      onError?.();
     }
   }, 6000);
   utterance.addEventListener("start", () => {
@@ -3454,12 +3465,13 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
     stopSpeechAudioRoute();
     releasePriorityAudioSession();
     updateVoiceStatus();
+    onComplete?.();
   });
   utterance.addEventListener("error", (event) => {
     clearTimeout(startWatchdog);
     if (requestId !== speechRequestId) return;
     if (!localRetry && localVoice && localVoice !== voice && !["canceled", "interrupted", "not-allowed"].includes(event.error)) {
-      void speakTextWhenVoicesReady(message, requestId, false, true);
+      void speakTextWhenVoicesReady(message, requestId, false, true, onComplete, onError);
       return;
     }
     stopSpeechAudioRoute();
@@ -3468,6 +3480,7 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
       ui("音声を再生できません。案内内容：", "Voice unavailable. Guidance: ") + message,
       "error",
     );
+    onError?.();
   });
 
   /* Web Audio のチャイムと端末音声の聞こえ方を同じ案内内で比較できる。 */
