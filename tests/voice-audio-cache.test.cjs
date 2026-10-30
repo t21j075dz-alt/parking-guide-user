@@ -7,7 +7,7 @@ const { webcrypto, createHash } = require("node:crypto");
 
 const source = fs.readFileSync(path.join(__dirname, "../voice-audio-cache.js"), "utf8");
 
-function createAudioHarness({ rateLimited = false, remoteEnabled = false, hangManifest = false, failManifest = false } = {}) {
+function createAudioHarness({ rateLimited = false, remoteEnabled = false, hangManifest = false, failManifest = false, extraHashes = [] } = {}) {
   const entries = new Map();
   let calls = 0;
   const storageValues = new Map();
@@ -33,11 +33,11 @@ function createAudioHarness({ rateLimited = false, remoteEnabled = false, hangMa
     navigator, caches: { async open() { return cache; } },
     fetch: async (url) => {
       calls++;
-      if (url.includes("/rest/v1/parking_voice_ready")) {
+      if (url.includes("/rest/v1/rpc/parking_voice_ready_hashes")) {
         if (failManifest) return { ok:false, status:503 };
         if (hangManifest) return new Promise(() => {});
         const hash = createHash("sha256").update("voice-cache-v1:8:らむー おかやまてん").digest("hex");
-        return { ok:true, json:async()=>[{audio_hash:hash}] };
+        return { ok:true, json:async()=>[...extraHashes,hash] };
       }
       if (url.includes("/storage/v1/object/public/parking-voice/ja-JP/"))
         return { ok: true, headers: {get: () => "512"}, arrayBuffer: async () => fakeBytes.slice(0) };
@@ -170,4 +170,14 @@ test("an unavailable manifest never guesses unknown audio links", async () => {
     /not prepared/,
   );
   assert.equal(h.getCalls(), 1, "no blind Storage download after a manifest failure");
+});
+
+
+test("shared voice manifest keeps facility hashes beyond 1000 entries accessible", async () => {
+  const extraHashes = Array.from({length:1200}, (_,i) =>
+    createHash("sha256").update("unrelated-voice-" + i).digest("hex"));
+  const h = createAudioHarness({remoteEnabled:true,extraHashes});
+  const clip = await h.api.get("らむー おかやまてん", {remote:true,cachedOnly:true});
+  assert.equal(clip.source, "shared");
+  assert.equal(h.getCalls(), 2, "one full-manifest request and one MP3 request");
 });
