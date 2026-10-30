@@ -783,12 +783,14 @@ function rejectOtherCar() {
 
 parkingArrivalConfirm?.addEventListener("click", confirmOwnParking);
 parkingArrivalOther?.addEventListener("click", rejectOtherCar);
-parkedDepartureButton?.addEventListener("click", () => {
-  if (state.currentScreen !== "parked" || !state.parkedSpace) return;
-  if (window.parkingSafety && !window.parkingSafety.guardOperation()) return;
-  // 出庫ボタンを押すまで駐車番号と位置図を保持する。
+function departParkedLocation() {
+  if (state.currentScreen !== "parked" || !state.parkedSpace) return false;
+  if (window.parkingSafety && !window.parkingSafety.guardOperation()) return false;
+  // 出庫を本人が明示してから位置図を破棄し、ホームへ戻る。
   endGuidance();
-});
+  return true;
+}
+parkedDepartureButton?.addEventListener("click", departParkedLocation);
 
 /* =========================================================
    施設一覧・絞り込み・距離
