@@ -1217,6 +1217,8 @@ test('自分の車なら案内を停止し、駐車番号と地図を出庫ま�
   run("state.selectedFacility={id:'home-test-001',name:'実験用駐車場'};");
   run("state.recommendedSpace={uid:'p',id:'A列 12',isOccupied:true,spaceType:'standard'};");
   run("state.currentSpaces=[state.recommendedSpace];state.currentLayout=null;");
+  // DOMの簡易モックはinnerHTMLやquerySelectorを再現しないため、地図の再描画は既存のレンダラーテストで担保。
+  run("renderParkingMap=()=>{};");
   run("state.arrivalCheck={facilityId:'home-test-001',uid:'p',confirmed:true};");
   assert.equal(run('confirmOwnParking()'),true);
   assert.equal(run('state.currentScreen'),'parked');
