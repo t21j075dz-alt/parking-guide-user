@@ -103,6 +103,8 @@ window.ParkingLiveStatus = (() => {
         && (phaseByStatus[status] || []).includes(row?.occupancy_phase)
         && fresh && correctSource ? row.occupancy_phase : null;
       return { ...space, occupancyStatus: status, occupancyPhase: phase,
+        isMonitoringTarget: facilityId === "nikko-test-001" && fresh && correctSource
+          && ["available","occupied","blocked","unknown"].includes(row?.status),
         isOccupied: status !== "available", liveCheckedAt: fresh ? row.checked_at : null };
     });
   }
