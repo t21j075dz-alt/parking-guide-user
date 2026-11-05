@@ -11,7 +11,7 @@ test('福岡県100店舗を4地域・47市町に配置し、全件に接近案�
   assert.ok(nikko);
   assert.equal(nikko.requiresLocalCalibration,true);
   assert.equal(nikko.isRecordedExperiment,true);
-  assert.equal(nikko.researchSpaceCount,8);
+  assert.equal(Object.hasOwn(nikko,'researchSpaceCount'),false);
   assert.equal(nikko.recordedCameraId,'nikko-recording-01');
   assert.equal('latitude' in nikko,false);
   assert.equal('longitude' in nikko,false);
