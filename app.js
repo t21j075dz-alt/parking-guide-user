@@ -2505,7 +2505,13 @@ function getFacilityOccupancy(facility) {
     return {level:"closed",preOpening:operatingStatus.preOpening===true, available:0, total:0, unknown:0};
   }
   const prepared = prepareSpaces(facility);
-  return { ...summarizeOccupancy(prepared.spaces, prepared.isSimulation, prepared.isLive),
+  // 道の駅日光は全駐車場マップを保持する一方、録画カメラの画角に
+  // 入った区画だけを集計。画角外や古い判定は件数の分母にも含めない。
+  const observed = facility?.id === NIKKO_REPLAY_FACILITY_ID
+    ? prepared.spaces.filter(space=>space.isMonitoringTarget===true)
+    : prepared.spaces;
+  return { ...summarizeOccupancy(observed, prepared.isSimulation, prepared.isLive),
+    registeredSpaces: prepared.spaces.length,
     recordedExperiment: facility?.isRecordedExperiment === true,
     videoDemo: isRecordedReplayFacility(facility),
     voiceTest: facility?.id === VOICE_TEST_FACILITY_ID };
