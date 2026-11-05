@@ -31,7 +31,7 @@
         !Object.prototype.hasOwnProperty.call(RECORDING_FACILITIES, data.facility_id) ||
         typeof data.duration !== "number" || !Number.isFinite(data.duration) ||
         data.duration <= 0 || data.duration > 86400 ||
-        !Array.isArray(data.spaces) || !data.spaces.length || data.spaces.length > 100 ||
+        !Array.isArray(data.spaces) || !data.spaces.length || data.spaces.length > 999 ||
         !data.spaces.every(s => typeof s === "string" && /^space_[A-Za-z0-9_-]{1,40}$/.test(s)) ||
         new Set(data.spaces).size !== data.spaces.length ||
         !Array.isArray(data.events) || data.events.length > MAX_EVENTS) {

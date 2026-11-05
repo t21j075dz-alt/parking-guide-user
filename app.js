@@ -45,6 +45,12 @@ const DEMO_FACILITY = Object.freeze({
 // 録画動画をYOLOで解析しながら案内する研究実演施設。
 // 実際の「自宅テスト用」とは別IDなので、現地の現在の空き情報を書き換えない。
 const VIDEO_REPLAY_FACILITY_ID = "home-video-demo-001";
+const NIKKO_REPLAY_FACILITY_ID = "nikko-test-001";
+const RECORDED_REPLAY_FACILITY_IDS = new Set([VIDEO_REPLAY_FACILITY_ID,NIKKO_REPLAY_FACILITY_ID]);
+function isRecordedReplayFacility(facility){
+  return facility?.isRecordedExperiment === true
+    && RECORDED_REPLAY_FACILITY_IDS.has(facility?.id);
+}
 const VIDEO_REPLAY_FACILITY = Object.freeze({
   id: VIDEO_REPLAY_FACILITY_ID,
   name: "実験用駐車場（自宅駐車場録画用）",
@@ -677,8 +683,7 @@ const parkedDepartureButton = document.querySelector("#parked-departure-button")
    ========================================================= */
 function startArrivalCheck(facility, space, live) {
   // 録画と実カメラは別の証拠として扱う。録画から実際の駐車完了は確定しない。
-  const recorded = facility?.id === VIDEO_REPLAY_FACILITY_ID
-    && facility?.isRecordedExperiment === true;
+  const recorded = isRecordedReplayFacility(facility);
   state.arrivalCheck = (live && facility && !facility.isVoiceTest && space?.uid
       && (!facility.isRecordedExperiment || recorded))
     ? { facilityId: facility.id, uid: space.uid, recorded, startedAt: Date.now(),
@@ -873,7 +878,7 @@ function restoreParkedSession() {
 
 /** 録画結果と実際の駐車位置を画面で混同しない。 */
 function updateParkedScreenCopy() {
-  const recorded = state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID;
+  const recorded = isRecordedReplayFacility(state.selectedFacility);
   const title = document.querySelector("#parked-title");
   const label = document.querySelector("#parked-screen .parked-location-card .result-label");
   const detail = document.querySelector("#parked-screen .parked-location-card .muted");
@@ -1318,7 +1323,7 @@ function renderFacilities() {
       badge.className = `availability-badge availability-${occupancy.level}`;
       badge.textContent = isEnglish() ? ({rest:"Day off",closed:"Closed",full:"Full",busy:"Busy",open:"Open",unknown:"—"}[occupancy.level]) : ({rest:"休",closed:"閉",full:"満",busy:"混",open:"空",unknown:"—"}[occupancy.level]);
       const source = document.createElement("small");
-      source.textContent = facility.id === VIDEO_REPLAY_FACILITY_ID
+      source.textContent = isRecordedReplayFacility(facility)
         ? ui("録画YOLO実演・現在の空きではありません", "Recorded YOLO demo · not current") :
         facility.isRecordedExperiment && !occupancy.live
         ? ui("録画実験・現在未確認", "Recorded experiment") :
@@ -1576,6 +1581,10 @@ function getDemoParkingSpaces(facility) {
 
 /** 日光の過去録画は8区画。現在の映像がないときは全区画を未確認にする。 */
 function getRecordedExperimentUnknownSpaces(facility) {
+  // The old eight fictional stalls would incorrectly imply that a video
+  // covers the whole Nikko parking area. Only real management-map slots
+  // may be used for route guidance.
+  if (facility?.id === NIKKO_REPLAY_FACILITY_ID) return [];
   const count = Number.isInteger(facility?.researchSpaceCount)
     && facility.researchSpaceCount > 0 && facility.researchSpaceCount <= 100
     ? facility.researchSpaceCount : 8;
@@ -1926,7 +1935,7 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         item.classList.toggle("is-blocked", displayStatus === "blocked");
         item.classList.toggle("is-recommended", isRecommended && (!isOccupied || isParked));
         item.classList.toggle("is-parked", isParked);
-        const phase = state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID
+        const phase = isRecordedReplayFacility(state.selectedFacility)
           ? visibleSpacePhases.get(object.uid) : null;
         if (phase && videoPhaseLabels[phase]) {
           const phaseTag = document.createElement("span");
@@ -2459,7 +2468,7 @@ function beginLiveUpdates(facility) {
   // 動画実演も公開OFF→ONの切替をユーザー画面に反映する。
   // 現在の自宅駐車場とは別施設なので、録画を実ライブとは表示しない。
   if ((!state.resultLive && facility.id !== PRIVATE_TEST_FACILITY_ID
-       && facility.id !== VIDEO_REPLAY_FACILITY_ID)
+       && !isRecordedReplayFacility(facility))
       || !window.ParkingLiveStatus) return;
   window.ParkingLiveStatus.watch(facility.id, () => {
     if (state.currentScreen !== "result" || state.selectedFacility !== facility) return;
@@ -2496,9 +2505,15 @@ function getFacilityOccupancy(facility) {
     return {level:"closed",preOpening:operatingStatus.preOpening===true, available:0, total:0, unknown:0};
   }
   const prepared = prepareSpaces(facility);
-  return { ...summarizeOccupancy(prepared.spaces, prepared.isSimulation, prepared.isLive),
+  // 道の駅日光は全駐車場マップを保持する一方、録画カメラの画角に
+  // 入った区画だけを集計。画角外や古い判定は件数の分母にも含めない。
+  const observed = facility?.id === NIKKO_REPLAY_FACILITY_ID
+    ? prepared.spaces.filter(space=>space.isMonitoringTarget===true)
+    : prepared.spaces;
+  return { ...summarizeOccupancy(observed, prepared.isSimulation, prepared.isLive),
+    registeredSpaces: prepared.spaces.length,
     recordedExperiment: facility?.isRecordedExperiment === true,
-    videoDemo: facility?.id === VIDEO_REPLAY_FACILITY_ID,
+    videoDemo: isRecordedReplayFacility(facility),
     voiceTest: facility?.id === VOICE_TEST_FACILITY_ID };
 }
 function getOccupancyLabel(occupancy) {
@@ -2540,14 +2555,14 @@ function updateSearchResultNotice() {
         ? ui("カメラとの通信を確認できません。最新の空きを案内できません。", "Cannot reach the camera status service. Live availability is unverified.")
         : (state.searchOutcome === "not-found" ? ui("駐車場全体：", "Entire parking lot: ") : "")
           + getOccupancyLabel(occupancy)
-          + (state.resultLive && state.selectedFacility?.id !== VIDEO_REPLAY_FACILITY_ID
+          + (state.resultLive && !isRecordedReplayFacility(state.selectedFacility)
               ? ui("（数秒ごとに更新・現地優先）", " (updates every few seconds; follow on-site signs)")
               : ui("（実際の空き情報ではありません）", " (not live availability)")));
   if (state.selectedFacility?.id === VOICE_TEST_FACILITY_ID) {
     searchStatus.textContent = ui("【音声テスト・模擬空き区画】", "[Voice test — simulated spaces] ")
       + " " + searchStatus.textContent;
   }
-  if (state.selectedFacility?.id === VIDEO_REPLAY_FACILITY_ID) {
+  if (isRecordedReplayFacility(state.selectedFacility)) {
     // ここは結果・案内画面でも常に「録画再生中」と明示する。
     searchStatus.textContent = ui(
       "【録画YOLO実演・現在の駐車場ではありません】",

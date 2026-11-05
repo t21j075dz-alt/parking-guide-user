@@ -120,3 +120,36 @@ test("録画実演に実カメラの行や古い判定を混ぜない", async ()
   await client.refresh("home-video-demo-001");
   assert.equal(client.apply("home-video-demo-001", [space])[0].occupancyPhase,null);
 });
+
+
+test("日光の録画は映像内の区画だけ判定し、画角外と実カメラの行を空きにしない", async () => {
+  let rows = [{space_uid:"space_002",status:"available",source:"recorded_video_demo",
+               occupancy_phase:"available",checked_at:new Date().toISOString()}];
+  const mockWindow = {
+    PARKING_REMOTE_CONFIG: {enabled:true,supabaseUrl:"https://example.supabase.co",publishableKey:"public-example-key"},
+    addEventListener() {},
+  };
+  const sandbox = {
+    window:mockWindow, document:{hidden:false},setInterval(){},clearInterval(){},
+    AbortSignal:{timeout(){return undefined;}},
+    fetch: async url => ({ok:true,json:async()=>String(url).includes("visibility")
+      ? [{facility_id:"nikko-test-001"}] : rows}),
+  };
+  vm.runInNewContext(source,sandbox);
+  const client=mockWindow.ParkingLiveStatus;
+  const spaces=["space_002","space_009","space_044"].map(uid=>({
+    uid,occupancyStatus:"available",isOccupied:false
+  }));
+  await client.refresh("nikko-test-001");
+  let applied=client.apply("nikko-test-001",spaces);
+  assert.equal(applied[0].occupancyStatus,"available");
+  assert.equal(applied[0].occupancyPhase,"available");
+  assert.equal(applied[1].occupancyStatus,"unknown");
+  assert.equal(applied[2].occupancyStatus,"unknown");
+  assert.equal(applied[1].isOccupied,true);
+  rows=[{space_uid:"space_009",status:"available",source:"yolo",
+        occupancy_phase:"available",checked_at:new Date().toISOString()}];
+  await client.refresh("nikko-test-001");
+  applied=client.apply("nikko-test-001",spaces);
+  assert.equal(applied[1].occupancyStatus,"unknown","unrelated live-source data must be rejected");
+});
