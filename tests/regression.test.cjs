@@ -754,12 +754,12 @@ function loadFacilityCatalog() {
   return JSON.parse(vm.runInContext('JSON.stringify(FACILITY_CATALOG)',context));
 }
 
-test('道の駅日光は過去録画だけでは8区画すべて未確認で案内しない',()=>{
-  const nikko={id:'nikko-test-001',name:'道の駅日光',isRecordedExperiment:true,researchSpaceCount:8,requiresLocalCalibration:true};
+test('道の駅日光は管理マップ未登録なら架空の8区画を作らず案内しない',()=>{
+  const nikko={id:'nikko-test-001',name:'道の駅日光',isRecordedExperiment:true,requiresLocalCalibration:true};
   const {run,context}=app([nikko]);
   context.nikko=nikko;
   assert.equal(run('getFacilityOccupancy(nikko).level'),'unknown');
-  assert.equal(run('prepareSpaces(nikko).spaces.length'),8);
+  assert.equal(run('prepareSpaces(nikko).spaces.length'),0);
   assert.equal(run('prepareSpaces(nikko).spaces.every(s=>s.occupancyStatus==="unknown"&&s.isOccupied)'),true);
   assert.equal(run('selectRecommendedSpace(prepareSpaces(nikko).spaces,"near","standard")'),null);
   context.window.PARKING_LAYOUTS['nikko-test-001']={
