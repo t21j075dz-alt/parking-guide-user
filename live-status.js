@@ -91,15 +91,15 @@ window.ParkingLiveStatus = (() => {
       const checkedAt = Date.parse(row?.checked_at || "");
       const fresh = Number.isFinite(checkedAt) && checkedAt <= now + 5000
         && now - checkedAt <= STALE_MS && now - checkedAt >= -5000;
-      const correctSource = facilityId !== "home-video-demo-001"
-        || row?.source === "recorded_video_demo";
+      const isRecordedFacility = ["home-video-demo-001", "nikko-test-001"].includes(facilityId);
+      const correctSource = !isRecordedFacility || row?.source === "recorded_video_demo";
       const status = fresh && correctSource && ["available", "occupied", "blocked", "unknown"].includes(row.status)
         ? row.status : "unknown";
       const phaseByStatus = {
         available: ["available"], occupied: ["parking_in", "stopped", "exiting"],
         unknown: ["unknown"],
       };
-      const phase = facilityId === "home-video-demo-001"
+      const phase = isRecordedFacility
         && (phaseByStatus[status] || []).includes(row?.occupancy_phase)
         && fresh && correctSource ? row.occupancy_phase : null;
       return { ...space, occupancyStatus: status, occupancyPhase: phase,
