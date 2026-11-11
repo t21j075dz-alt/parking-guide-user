@@ -2129,6 +2129,9 @@ function showScreen(screenName, options = {}) {
   });
 
   state.currentScreen = screenName;
+  if (["facility", "condition"].includes(screenName)) {
+    document.querySelectorAll?.(".guidance-audio-message")?.forEach(node => { node.textContent = ""; });
+  }
   if (screenName === "facility") {
     renderFacilities();
   }
@@ -2658,6 +2661,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
   const priority = state.selectedPriority;
   cancelSpeech();
   state.searchOutcome = null;
+  document.querySelectorAll?.(".guidance-audio-message")?.forEach(node => { node.textContent = ""; });
   state.recommendedSpace = null;
   noSpaceContent.hidden = true;
   congestionNotice.hidden = true;
@@ -3544,9 +3548,14 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
   }
 }
 
-/** 通常画面は音声の状態だけ表示。全文は音声テスト専用画面に限定する。 */
+/** 音声の有効・無効にかかわらず、同じ案内文を画面にも表示する。 */
 let lastGuidanceMode = "";
-function publishGuidanceTranscript(_message, mode = "") {
+function publishGuidanceTranscript(message, mode = "") {
+  if (message) {
+    for (const node of document.querySelectorAll?.(".guidance-audio-message") || []) {
+      node.textContent = message;
+    }
+  }
   if (mode) lastGuidanceMode = mode;
   for (const node of document.querySelectorAll?.(".guidance-audio-mode") || []) {
     node.textContent = lastGuidanceMode || ui("音声案内は待機中です。", "Voice guidance is ready.");
@@ -4743,6 +4752,7 @@ conditionForm.addEventListener("submit", async (event) => {
   state.autoProximityArmed = true;
   state.autoTriggeredFacilityId = null;
   state.searchOutcome = null;
+  document.querySelectorAll?.(".guidance-audio-message")?.forEach(node => { node.textContent = ""; });
   state.recommendedSpace = null;
 
   /* Safariではユーザー操作から離れて音声を開始すると無音になる場合がある。

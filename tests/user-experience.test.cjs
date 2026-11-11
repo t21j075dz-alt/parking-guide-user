@@ -8,10 +8,10 @@ const read = (name) => fs.readFileSync(path.join(__dirname, "..", name), "utf8")
 test("利用者画面とPWAが同じUIファイルを参照する", () => {
   const html = read("index.html");
   const sw = read("service-worker.js");
-  assert.match(html, /user-experience\.css\?v=20261030-driver-first-1/);
-  assert.match(html, /user-experience\.js\?v=20261030-driver-first-1/);
-  assert.match(sw, /user-experience\.css\?v=20261030-driver-first-1/);
-  assert.match(sw, /user-experience\.js\?v=20261030-driver-first-1/);
+  assert.match(html, /user-experience\.css\?v=20261111-clear-guidance-1/);
+  assert.match(html, /user-experience\.js\?v=20261111-clear-guidance-1/);
+  assert.match(sw, /user-experience\.css\?v=20261111-clear-guidance-1/);
+  assert.match(sw, /user-experience\.js\?v=20261111-clear-guidance-1/);
 });
 
 test("利用者画面に研究者向けの説明を常時表示しない", () => {
@@ -22,11 +22,12 @@ test("利用者画面に研究者向けの説明を常時表示しない", () =>
   assert.match(html, /<details class="app-about">/);
 });
 
-test("区画番号は既存の要素を再利用し、通常画面の読み上げ全文を非表示にする", () => {
+test("区画番号は既存の要素を再利用し、通常画面にも案内文を表示する", () => {
   const js = read("user-experience.js");
   const css = read("user-experience.css");
   assert.match(js, /result\.prepend\(hero\)/);
-  assert.match(js, /transcript\?\.remove\(\)/);
+  assert.doesNotMatch(js, /transcript\?\.remove\(\)/);
+  assert.match(read("app.js"), /node.textContent = message/);
   assert.match(js, /#waiting-screen \.guidance-audio-card, #result-screen \.guidance-audio-card/);
   assert.match(css, /#space-number/);
   assert.match(css, /position: sticky/);
