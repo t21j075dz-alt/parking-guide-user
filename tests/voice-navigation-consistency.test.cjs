@@ -42,10 +42,10 @@ test("駐車枠の案内は同じ番号を必ず2回読み、現地標識の案�
   }
 });
 
-test("通常画面には読み上げ全文を表示せず、音声確認専用画面だけに残す", () => {
+test("通常画面と音声確認画面の両方に案内文を残す", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.doesNotMatch(html, /class="guidance-audio-message"/);
+  assert.match(html, /class="guidance-audio-message"/);
   assert.match(html, /id="voice-test-transcript"/);
   assert.match(html, /class="[^"]*guidance-audio-replay/);
   assert.doesNotMatch(app, /node\.textContent = lastGuidanceTranscript/);
@@ -57,4 +57,20 @@ test("保存音声の取得を待ち過ぎないようにし、取得失敗時�
   assert.match(app, /Prepared audio retrieval timed out/);
   assert.match(app, /isPreview \? 2400 : 1700/);
   assert.match(app, /speakDeviceAssembledParts\(message, parts, requestId/);
+});
+
+test('案内更新後も再生状態の通知で文章を消さず、次の区画の文章へ更新する', () => {
+  const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const start = source.indexOf('let lastGuidanceMode =');
+  const end = source.indexOf('/**', start);
+  const messages = [{textContent:''}, {textContent:''}, {textContent:''}];
+  const modes = [{textContent:''}];
+  const sandbox = {document:{querySelectorAll: selector => selector === '.guidance-audio-message' ? messages : modes},ui: ja=>ja};
+  vm.runInNewContext(source.slice(start,end), sandbox);
+  sandbox.publishGuidanceTranscript('B-12へ進んでください。', '準備中');
+  sandbox.publishGuidanceTranscript('', '読み上げ完了');
+  assert.ok(messages.every(node => node.textContent === 'B-12へ進んでください。'));
+  sandbox.publishGuidanceTranscript('C-3へ変更しました。', '音声OFF');
+  assert.ok(messages.every(node => node.textContent === 'C-3へ変更しました。'));
+  assert.equal(modes[0].textContent,'音声OFF');
 });

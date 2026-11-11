@@ -137,10 +137,8 @@
   }
 
   function setupAudioCard(card) {
-    // 読み上げ全文は「音声テスト用駐車場」でだけ確認する。
-    // 通常の案内には再生状況と、停車中に使う聞き直しボタンだけ残す。
-    const transcript = card.querySelector(".guidance-audio-message");
-    transcript?.remove();
+    // 案内文は常時表示し、聞き直す操作だけを折りたたむ。
+
     const replay = card.querySelector(".guidance-audio-replay");
     if (!replay) return;
     let details = card.querySelector(".guidance-replay-details");
@@ -161,6 +159,29 @@
   }
 
   const footer = $(".site-footer");
+  const controls = $(".display-controls");
+  if (controls) {
+    const menu = document.createElement("details");
+    menu.className = "display-menu";
+    const summary = document.createElement("summary");
+    summary.textContent = t("表示設定", "Display settings");
+    controls.replaceWith(menu);
+    menu.append(summary, controls);
+  }
+  if (footer) {
+    const location = $(".location-panel");
+    if (location) {
+      const settings = document.createElement("details");
+      settings.className = "location-settings";
+      const summary = document.createElement("summary");
+      summary.textContent = t("現在地・位置情報の設定", "Location settings");
+      settings.append(summary, location);
+      footer.append(settings);
+    }
+    const key = $(".availability-key");
+    if (key) footer.querySelector(".app-about")?.append(key);
+  }
+
   if (footer) {
     const footerIntro = footer.querySelector(":scope > p");
     if (footerIntro) footerIntro.textContent = t(
@@ -263,9 +284,7 @@
   const updateScreen = () => {
     const current = screens.find((screen) => !screen.hidden)?.dataset.screen || "facility";
     document.body.dataset.guidanceScreen = current;
-    // 音声確認用以外では全文の書き起こしを表示しない。
-    document.querySelectorAll("#waiting-screen .guidance-audio-message, #result-screen .guidance-audio-message")
-      .forEach((node) => node.remove());
+
   };
   screens.forEach((screen) => {
     new MutationObserver(updateScreen).observe(screen, { attributes: true, attributeFilter: ["hidden"] });
@@ -283,6 +302,10 @@
       const summary = footer.querySelector(".app-about summary");
       if (summary) summary.textContent = t("ご利用上の注意・アプリについて", "Important information about this app");
     }
+    const displaySummary = $(".display-menu > summary");
+    if (displaySummary) displaySummary.textContent = t("表示設定", "Display settings");
+    const locationSummary = $(".location-settings > summary");
+    if (locationSummary) locationSummary.textContent = t("現在地・位置情報の設定", "Location settings");
     if (title) title.textContent = t("駐車区画のご案内", "Parking guidance");
     if (hero) {
       const label = hero.querySelector(".result-label");

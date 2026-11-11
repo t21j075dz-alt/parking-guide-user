@@ -33,12 +33,12 @@
   <script src="./voice-continuous-playback.js?v=20261030-voice-no-cutoff-1" defer></script>
   <script src="./voice-audio-cache.js?v=20261030-rpc-manifest-1" defer></script>
   <script src="./voice-test-scenarios.js?v=20261030-recorded-voice-standard-2" defer></script>
-  <script src="./app.js?v=20261030-recorded-voice-standard-1" defer></script>
+  <script src="./app.js?v=20261111-clear-guidance-1" defer></script>
     <script src="./pwa.js?v=20261010-pwa" defer></script>
   <link href="./experience.css" rel="stylesheet">
-  <link href="./user-experience.css?v=20261030-driver-first-1" rel="stylesheet">
+  <link href="./user-experience.css?v=20261111-clear-guidance-1" rel="stylesheet">
 <script defer src="./camera-view.js"></script>
-  <script defer src="./user-experience.js?v=20261030-driver-first-1"></script>
+  <script defer src="./user-experience.js?v=20261111-clear-guidance-1"></script>
 </head>
 
   <body>
@@ -116,25 +116,7 @@
 
     <main id="main-content" class="main-content" tabindex="-1">
       <!-- 5画面構成：施設 → 条件 → 待機 → 区画 → 駐車中。 -->
-      <nav class="progress" aria-label="案内の進行状況">
-        <ol class="progress-list">
-          <li class="progress-item is-current" data-progress="facility" aria-current="step">
-            <span class="progress-number">1</span><span>施設</span>
-          </li>
-          <li class="progress-item" data-progress="condition">
-            <span class="progress-number">2</span><span>条件</span>
-          </li>
-          <li class="progress-item" data-progress="waiting">
-            <span class="progress-number">3</span><span>待機</span>
-          </li>
-          <li class="progress-item" data-progress="result">
-            <span class="progress-number">4</span><span>区画</span>
-          </li>
-          <li class="progress-item" data-progress="parked">
-            <span class="progress-number">5</span><span>駐車</span>
-          </li>
-        </ol>
-      </nav>
+
 
 
 
@@ -178,7 +160,6 @@
       <!-- 画面1：利用する施設の選択。 -->
       <section class="screen" id="facility-screen" data-screen="facility" aria-labelledby="facility-title">
         <div class="screen-heading">
-          <p class="step-label">1 / 4</p>
           <h1 id="facility-title" tabindex="-1">利用する施設を選択</h1>
           <p>目的の店舗を選んでください。</p>
         </div>
@@ -218,7 +199,6 @@
       <section class="screen" id="condition-screen" data-screen="condition" aria-labelledby="condition-title" hidden>
         <button class="back-button" type="button" data-back="facility">← 施設選択へ戻る</button>
         <div class="screen-heading">
-          <p class="step-label">2 / 4</p>
           <h1 id="condition-title" tabindex="-1">駐車区画の条件</h1>
           <p id="selected-facility-name" class="selected-place"></p>
           <section id="private-test-location-panel" class="private-test-location-panel" hidden aria-labelledby="private-test-location-title">
@@ -415,7 +395,6 @@
       <section class="screen" id="waiting-screen" data-screen="waiting" aria-labelledby="waiting-title" hidden>
         <button class="back-button" type="button" data-back="condition">← 条件選択へ戻る</button>
         <div class="screen-heading waiting-heading">
-          <p class="step-label">3 / 4</p>
           <p class="waiting-kicker"><span class="waiting-pulse" aria-hidden="true"></span> 自動案内中</p>
           <h1 id="waiting-title" tabindex="-1">目的施設への接近を待っています</h1>
           <p>約250m以内に入ると、空き区画を自動で検索して表示します。</p>
@@ -458,6 +437,7 @@
             <strong>音声案内</strong>
             <span class="guidance-audio-mode" role="status" aria-live="polite">案内待機中</span>
           </div>
+          <p class="guidance-audio-message" aria-live="off"></p>
           <button class="secondary-button guidance-audio-replay" type="button">安全な場所で案内を聞き直す</button>
         </section>
         <div class="safety-note waiting-safety" role="note">
@@ -469,7 +449,6 @@
       <section class="screen" id="result-screen" data-screen="result" aria-labelledby="result-title" hidden>
         <button class="back-button" type="button" data-back="condition">← 条件選択へ戻る</button>
         <div class="screen-heading">
-          <p class="step-label">4 / 4</p>
           <h1 id="result-title" tabindex="-1">案内先の駐車区画</h1>
         </div>
 
@@ -480,13 +459,14 @@
             <strong>音声案内</strong>
             <span class="guidance-audio-mode" role="status" aria-live="polite">案内待機中</span>
           </div>
+          <p class="guidance-audio-message" aria-live="off"></p>
           <button class="secondary-button guidance-audio-replay" type="button">安全な場所で案内を聞き直す</button>
         </section>
         <p id="congestion-notice" class="congestion-notice" role="status" hidden></p>
         <section id="no-space-content" class="no-space-card" hidden aria-labelledby="no-space-title">
           <span class="no-space-symbol" aria-hidden="true">—</span>
           <h2 id="no-space-title">空き区画が見つかりませんでした</h2>
-          <p id="no-space-description"></p>
+          <p id="no-space-description"></p><p class="guidance-audio-message" aria-live="off"></p>
           <p class="pass-through">公道で順番待ちをせず、周囲の安全を確認してそのまま通過してください。</p>
           <p>別の駐車場をご利用ください。</p>
           <div class="button-group">
@@ -548,7 +528,6 @@
       <!-- 車両検知後に本人が確認した駐車位置を、出庫操作まで保持する。 -->
       <section class="screen parked-screen" id="parked-screen" data-screen="parked" aria-labelledby="parked-title" hidden>
         <div class="screen-heading">
-          <p class="step-label">駐車完了</p>
           <h1 id="parked-title" tabindex="-1">駐車位置を記録しました</h1>
         </div>
         <section class="parked-location-card" aria-label="現在の駐車場所">
@@ -588,7 +567,6 @@
 
       <section class="screen" id="voice-test-complete-screen" data-screen="voice-test-complete" aria-labelledby="voice-test-complete-title" hidden>
         <div class="screen-heading">
-          <p class="step-label">音声テスト完了</p>
           <h1 id="voice-test-complete-title" tabindex="-1">すべての案内が終了しました</h1>
           <p id="voice-test-complete-count">テストした音声を確認できます。</p>
         </div>
