@@ -114,7 +114,7 @@ test('入口未登録のレイアウトを距離比較したと説明しない',
   run(`state.selectedFacility = { id: 'a', name: 'test' }; state.currentScreen = 'result';
     state.voiceEnabled = false; saveSearchConditions = () => {}; renderParkingMap = () => {};`);
   await run('runSpaceSearch()');
-  assert.match(nodes.get('#space-description').textContent, /入口が未登録/);
+  assert.match(nodes.get('#space-description').textContent, /入口までの距離を表示できません/);
 });
 
 test('AudioSession対応ブラウザーでは音楽との混合再生を指定する', async () => {
