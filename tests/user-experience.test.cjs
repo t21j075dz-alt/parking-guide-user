@@ -75,11 +75,13 @@ test("録画再生画面は過去の結果と明示し、内部IDを要約に出
 test("主画面から段階ナビと現在地カードを除外し、必要な位置情報操作だけ設定内に残す", () => {
   const html = read("index.html");
   const main = html.split('<main id="main-content"')[1].split("</main>")[0];
+  const header = html.split('<header class="site-header">')[1].split("</header>")[0];
   const footer = html.split('<footer class="site-footer">')[1];
   assert.doesNotMatch(main, /class="progress"|data-progress=|class="location-panel"/);
-  assert.match(footer, /<details class="location-settings"/);
-  assert.match(footer, /id="location-button"/);
-  assert.match(footer, /id="location-status"/);
+  assert.doesNotMatch(footer, /class="location-settings"|class="location-panel"/);
+  assert.match(header, /<details class="location-settings"/);
+  assert.match(header, /id="location-button"/);
+  assert.match(header, /id="location-status"/);
   assert.match(read("user-experience.css"), /\.progress \{ display: none !important; \}/);
 });
 
@@ -87,4 +89,16 @@ test("録画中の各区画は内部IDではなく一覧番号を表示する", 
   const js = read("recorded-demo.js");
   assert.match(js, /heading\.textContent = "区画 " \+ \(i \+ 1\)/);
   assert.doesNotMatch(js, /heading\.textContent = uid;/);
+});
+
+test("位置情報のパネルを画面1・2の共通表示ではなくヘッダー設定へ移す", () => {
+  const html = read("index.html");
+  const header = html.split('<header class="site-header">')[1].split("</header>")[0];
+  const beforeFirstScreen = html.split('id="facility-screen"')[0];
+  assert.match(header, /class="display-controls"[\s\S]*id="location-settings"/);
+  assert.equal((html.match(/id="location-settings"/g) || []).length, 1);
+  assert.doesNotMatch(beforeFirstScreen.split("</header>")[1], /id="location-settings"|class="location-panel"/);
+  const css = read("user-experience.css");
+  assert.match(css, /\.display-menu \.location-settings:not\(\[open\]\) \.location-panel/);
+  assert.doesNotMatch(css, /\.site-footer \.location-settings > summary/);
 });

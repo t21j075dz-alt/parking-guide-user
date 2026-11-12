@@ -52,15 +52,7 @@ body {
 .primary-button, .secondary-button { min-height: 3rem; border-radius: .7rem; }
 .primary-button { letter-spacing: .01em; }
 
-/* 案内中には施設検索や現在地設定の情報より結果を優先する。
-   待機画面には専用の位置情報表示がある。 */
-body[data-guidance-screen="waiting"] .location-panel,
-body[data-guidance-screen="result"] .location-panel,
-body[data-guidance-screen="parked"] .location-panel,
-body[data-guidance-screen="voice-test"] .location-panel,
-body[data-guidance-screen="voice-test-complete"] .location-panel {
-  display: none !important;
-}
+/* 現在地の詳細は表示設定を開いたときのみ表示する。 */
 .research-note, .launch-note, #random-guidance-note,
 #waiting-google-maps-note { display: none !important; }
 
@@ -264,15 +256,44 @@ body[data-guidance-screen="waiting"] .header-inner { min-height: 3.5rem; }
 
 /* 段階ナビと位置情報カードを主画面に常駐させない。 */
 .progress { display: none !important; }
-.site-footer .location-settings > summary {
+/* 施設選択・条件選択には常設カードを置かず、位置情報は設定メニュー内だけに残す。 */
+.display-menu[open] .display-controls {
+  max-height: min(75vh, 35rem);
+  overflow-y: auto;
+}
+.display-menu .location-settings {
+  flex: 1 0 100%;
+  width: 100%;
+  min-width: 0;
+  margin: .35rem 0 0;
+  padding-top: .45rem;
+  border-top: 1px solid var(--color-border);
+}
+.display-menu .location-settings > summary {
   cursor: pointer;
-  padding: .8rem 0;
+  padding: .55rem .25rem;
+  font-size: .86rem;
   font-weight: 650;
 }
-.site-footer .location-settings:not([open]) .location-panel {
+.display-menu .location-settings:not([open]) .location-panel {
   display: none;
 }
-.site-footer .location-settings .location-panel {
-  margin-top: .55rem;
+.display-menu .location-settings .location-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  max-width: 100%;
+  margin: .35rem 0 0;
+  padding: .75rem;
+  border: 1px solid var(--color-border);
   box-shadow: none;
+  gap: .75rem;
+}
+.display-menu .location-settings .location-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+.display-menu .location-settings .location-actions button {
+  max-width: 100%;
 }
