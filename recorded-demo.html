@@ -37,10 +37,10 @@ input[type=range] {flex:1;min-width:180px;accent-color:#0672b7}
 <script src="./recorded-demo.js" defer></script>
 </head>
 <body>
-<header><a href="./index.html">← 通常の駐車場案内へ戻る</a><h1>録画した駐車場の状況</h1><p>過去の映像から記録した区画の状態を表示します。</p></header>
+<header><a href="./index.html">← 通常の駐車場案内へ戻る</a><h1>録画の駐車場を見る</h1><p>撮影した時点の駐車状況を再生します。</p></header>
 <main>
-<div class="notice" role="note"><strong>これは過去に撮影した映像の判定結果です。現在の空き状況ではありません。</strong>
-録画の閲覧専用です。この画面から駐車枠への案内やリアルタイムの空き確認はできません。録画そのもの・車両ID・ナンバープレートは共有リンクに含まれません。</div>
+<div class="notice" role="note"><strong>過去の録画です。現在の空き状況ではありません。</strong>
+この画面では駐車区画の変化を確認できます。実際の駐車には現地の表示を優先してください。</div>
 <section class="panel">
 <h2>録画を選択</h2>
 <p id="summary" class="muted">録画の共有リンクから開くと、区画の変化を確認できます。</p>
@@ -53,11 +53,11 @@ input[type=range] {flex:1;min-width:180px;accent-color:#0672b7}
 <span id="time-display" aria-live="off">0:00 / 0:00</span>
 </div>
 <div class="row"><label for="seek">動画の経過時間</label><input id="seek" type="range" min="0" max="1000" value="0" aria-label="録画の再生位置"></div>
-<p class="muted">再生位置を動かすと、過去に記録された区画判定が更新されます。</p>
+<p class="muted">再生位置を動かすと、その時点の駐車状況が表示されます。</p>
 </div>
 </section>
 <section class="panel" id="results" hidden>
-<h2>駐車枠ごとの判定</h2>
+<h2>駐車区画の状態</h2>
 <p id="totals" role="status" aria-live="polite"></p>
 <div id="spaces"></div>
 </section>

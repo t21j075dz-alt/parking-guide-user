@@ -689,7 +689,7 @@ test('満車では通常の結果を隠し、通過表示と音声・再検索�
   assert.equal(run('state.searchOutcome'), 'not-found');
   assert.equal(nodes.get('#result-content').hidden, true);
   assert.equal(nodes.get('#no-space-content').hidden, false);
-  assert.match(nodes.get('#search-status').textContent, /満車.*登録データ.*実際の空き情報ではありません/);
+  assert.match(nodes.get('#search-status').textContent, /登録情報.*現在の空きは未確認/);
   assert.match(nodes.get('#no-space-description').textContent, /満車/);
   assert.equal(run('speechCalls.length'), 1);
   assert.match(run('speechCalls[0]'), /まんしゃ.*こうどうでじゅんばんまちをせず.*つうか/);
@@ -825,7 +825,7 @@ test('一覧・検索は同じ抽選を保持し、再抽選は選択施設だ�
   await run('runSpaceSearch(null,{refreshSimulation:true})');
   assert.equal(run('state.searchOutcome'),'not-found');
   assert.equal(run('getFacilityOccupancy(state.selectedFacility).level'),'full');
-  assert.match(nodes.get('#no-space-description').textContent,/デモ.*満車.*再抽選/);
+  assert.match(nodes.get('#no-space-description').textContent,/参考データ.*満車.*更新/);
   assert.equal(run('JSON.stringify(prepareSpaces(otherFacility).spaces)'),run('before'));
   const fresh=app();fresh.run("Math.random=()=>.5");
   assert.equal(fresh.run("getFacilityOccupancy({id:'a'}).level"),'busy');

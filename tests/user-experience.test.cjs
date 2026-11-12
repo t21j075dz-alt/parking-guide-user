@@ -38,11 +38,36 @@ test("区画番号は既存の要素を再利用し、通常画面にも案内�
 
 test("録画映像を現在の空き状況と誤認させない", () => {
   const js = read("user-experience.js");
-  assert.match(js, /録画映像（現在の空きではありません）/);
-  assert.match(js, /録画映像を再生中（現在の空きではありません）/);
+  assert.match(js, /録画の結果です。現在の空き状況は未確認です。/);
+  assert.match(read("app.js"), /録画の結果です。現在の空き状況は未確認です。/);
 });
 
 test("区画の判定や音声再生ロジックはUI専用ファイルに置かない", () => {
   const js = read("user-experience.js");
   assert.doesNotMatch(js, /runSpaceSearch\(|speakCurrentGuidance\(|ParkingLiveStatus\.refresh\(/);
+});
+
+test("利用者向け全画面は、操作と状態を短い日本語で示す", () => {
+  const html = read("index.html");
+  const ux = read("user-experience.js");
+  const app = read("app.js");
+  for (const screen of ["facility", "condition", "waiting", "result", "parked", "voice-test", "voice-test-complete"]) {
+    assert.match(html, new RegExp('data-screen="' + screen + '"'));
+  }
+  for (const expected of ["行き先を選ぶ", "駐車場の写真を見る", "もう一度探す", "駐車位置を保存しました"]) {
+    assert.ok(ux.includes(expected), expected);
+  }
+  const resultText = app.slice(app.indexOf("function updateSearchResultNotice()"),
+    app.indexOf("function getFacilitySpokenName(locale)"));
+  assert.match(resultText, /現在の空き状況は未確認です/);
+  assert.doesNotMatch(resultText, /YOLO|管理者アプリ|公開OFF/);
+  assert.match(resultText, /現地の表示/);
+});
+
+test("録画再生画面は過去の結果と明示し、内部IDを要約に出さない", () => {
+  const html = read("recorded-demo.html");
+  const js = read("recorded-demo.js");
+  assert.match(html, /過去の録画です。現在の空き状況ではありません/);
+  assert.match(js, /録画（現在の空きではありません）/);
+  assert.doesNotMatch(js, /" \(" \+ payload\.facility_id/);
 });

@@ -23,31 +23,19 @@
       return source;
     }
     if (kind === "result-status") {
-      if (/録画YOLO|Recorded YOLO/i.test(source)) {
-        const remaining = source
-          .replace(/^【[^】]+】\s*/, "")
-          .replace(/^\[[^\]]+\]\s*/, "")
-          .replace(/（実際の空き情報ではありません）/g, "")
-          .replace(/\(not live availability\)/gi, "")
-          .trim();
-        const title = t("録画映像（現在の空きではありません）", "Recorded footage (not current)");
-        return remaining ? title + " · " + remaining : title;
-      }
-      if (/音声テスト・模擬|Voice test.*simulat/i.test(source)) {
-        const remaining = source.replace(/^【[^】]+】\s*/, "").replace(/^\[[^\]]+\]\s*/, "").trim();
-        const title = t("音声確認中（参考情報）", "Voice preview (sample data)");
-        return remaining ? title + " · " + remaining : title;
-      }
-      if (/公開OFF|not published to users/i.test(source)) {
-        return t("空き状況を確認できません。", "Parking availability is unavailable.");
-      }
-      if (/研究用として|this prototype randomly/i.test(source)) {
-        return t("案内先を表示しています。", "Showing your parking space.");
-      }
-      if (/実際の空き情報ではありません|not live availability/i.test(source)) {
-        return source.replace(/（実際の空き情報ではありません）/g, "（参考情報）")
-          .replace(/\(not live availability\)/gi, "(sample data)");
-      }
+      // 古い画面や保存状態から出た説明も、現在の状況と誤解されない短文に統一する。
+      if (/録画YOLO|Recorded YOLO|録画映像を逐次|YOLO replay/i.test(source))
+        return t("録画の結果です。現在の空き状況は未確認です。",
+          "Recorded results. Current availability is unknown.");
+      if (/音声テスト・模擬|Voice test.*simulat/i.test(source))
+        return t("音声確認用です。実際の空き状況ではありません。",
+          "Voice preview. This is not current availability.");
+      if (/公開OFF|not published to users|カメラ空き情報|administrator app/i.test(source))
+        return t("現在の空き状況を確認できません。",
+          "Current availability cannot be checked.");
+      if (/研究用として|this prototype randomly/i.test(source))
+        return t("参考情報を表示しています。現地でご確認ください。",
+          "Showing sample data. Check on-site.");
       return source;
     }
     if (kind === "no-space") {
@@ -70,19 +58,18 @@
       return source;
     }
     if (kind === "recorded") {
-      if (/通信を確認できません|connection unavailable|status unavailable/i.test(source)) {
-        return t("録画映像：通信を確認できません", "Recorded footage: connection unavailable");
-      }
-      if (/共有停止中|sharing is off/i.test(source)) {
-        return t("録画映像：情報の更新を待っています", "Recorded footage: awaiting updates");
-      }
-      if (/未確認|unavailable|fresh results/i.test(source)) {
-        return t("録画映像：新しい情報がありません", "Recorded footage: no recent updates");
-      }
-      if (/連携中|connected/i.test(source)) {
-        return t("録画映像を再生中（現在の空きではありません）",
-          "Playing recorded footage (not current availability)");
-      }
+      if (/通信|connection unavailable|status unavailable/i.test(source))
+        return t("録画を確認できません。現在の空きは未確認です。",
+          "Recording unavailable. Current availability is unknown.");
+      if (/共有停止|sharing is off/i.test(source))
+        return t("録画の更新を待っています。現在の空きは未確認です。",
+          "Waiting for recorded data. Current availability is unknown.");
+      if (/未確認|unavailable|fresh results/i.test(source))
+        return t("録画の情報を確認中です。現在の空きは未確認です。",
+          "Checking recorded data. Current availability is unknown.");
+      if (/連携中|connected/i.test(source))
+        return t("録画データを表示中です。現在の空きではありません。",
+          "Showing recorded data, not current availability.");
       return source;
     }
     if (kind === "pwa") {
@@ -129,9 +116,10 @@
       if (after !== node.textContent) node.textContent = after;
     });
     list.querySelectorAll(".facility-status").forEach((node) => {
-      // 施設名（実験用駐車場など）は維持し、開発用の説明だけ省略する。
-      if (/研究|実験|模擬|YOLO|試作|プロトタイプ|音声テスト|録画実演|デモ/i.test(node.textContent || "")) {
-        node.hidden = true;
+      // 案内に必要な注意まで非表示にせず、技術的な説明だけ平易にする。
+      if (/YOLO|プロトタイプ|録画実演|研究用として/i.test(node.textContent || "")) {
+        node.textContent = t("参考情報です。現在の空きは現地でご確認ください。",
+          "Sample information. Check current availability on-site.");
       }
     });
   }
@@ -156,6 +144,32 @@
     note.className = "guidance-replay-note";
     note.textContent = t("停車してから操作してください。", "Only use while safely parked.");
     details.append(note);
+  }
+
+  // 施設選択・条件選択・待機・結果・駐車完了・音声確認の見出しを共通化する。
+  const pageHeadings = [
+    ["#facility-title", "行き先を選ぶ", "Choose a destination"],
+    ["#condition-title", "駐車区画の条件を選ぶ", "Choose a parking space"],
+    ["#waiting-title", "施設に近づくと案内します", "Guidance starts near your destination"],
+    ["#parked-title", "駐車位置を保存しました", "Parking location saved"],
+    ["#voice-test-title", "音声案内の確認", "Voice guidance preview"],
+    ["#voice-test-complete-title", "音声の確認が終わりました", "Voice preview complete"],
+  ];
+  const applyHeadings = () => pageHeadings.forEach(([selector, ja, en]) => {
+    const heading = $(selector);
+    if (heading) heading.textContent = t(ja, en);
+  });
+  applyHeadings();
+
+  // 写真は確認したいときだけ開く。撮影画像の取得や安全判定は変更しない。
+  const cameraPanel = $("#facility-camera");
+  if (cameraPanel && !cameraPanel.parentElement?.classList.contains("optional-photo-details")) {
+    const details = document.createElement("details");
+    details.className = "optional-photo-details";
+    const summary = document.createElement("summary");
+    summary.textContent = t("駐車場の写真を見る", "View parking photos");
+    cameraPanel.before(details);
+    details.append(summary, cameraPanel);
   }
 
   const footer = $(".site-footer");
@@ -203,6 +217,13 @@
   hide("#random-guidance-note");
   hide("#waiting-google-maps-note");
   hide("#voice-test-screen .safety-note");
+  // 「再探索」が古い結果を更新する操作だと分かるようにする。
+  ["#retry-button", "#no-space-retry"].forEach((selector) => {
+    const button = $(selector);
+    if (button) button.textContent = t("もう一度探す", "Search again");
+  });
+  const findNow = $("#search-now-button");
+  if (findNow) findNow.textContent = t("今すぐ空きを探す", "Find parking now");
 
   const positionPanel = $("#private-test-location-panel");
   if (positionPanel) {
@@ -284,6 +305,15 @@
 
   function updateLanguage() {
     document.title = t("駐車場空き区画案内", "Parking Space Guide");
+    applyHeadings();
+    const photoSummary = $(".optional-photo-details > summary");
+    if (photoSummary) photoSummary.textContent = t("駐車場の写真を見る", "View parking photos");
+    ["#retry-button", "#no-space-retry"].forEach((selector) => {
+      const button = $(selector);
+      if (button) button.textContent = t("もう一度探す", "Search again");
+    });
+    const findNow = $("#search-now-button");
+    if (findNow) findNow.textContent = t("今すぐ空きを探す", "Find parking now");
     if (footer) {
       const intro = footer.querySelector(":scope > p");
       if (intro) intro.textContent = t(

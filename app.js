@@ -68,7 +68,7 @@ const VIDEO_REPLAY_FACILITY = Object.freeze({
   requiresLocalCalibration: true,
   isRecordedExperiment: true,
   researchSpaceCount: 6,
-  statusNote: "過去の録画をYOLOが逐次解析する実演。実際の現在の空きではありません",
+  statusNote: "録画を使った案内です。現在の空き情報ではありません。",
 });
 
 // 音声テストは実際の空き状況を使用せず、共通マップの空き区画で案内を試す。
@@ -90,7 +90,7 @@ const VOICE_TEST_FACILITY = Object.freeze({
   requiresLocalCalibration: true,
   isVoiceTest: true,
   researchSpaceCount: 6,
-  statusNote: "音声案内の操作試験専用。現在の駐車場の空き状況ではありません",
+  statusNote: "音声案内の確認用です。実際の空き情報ではありません。",
 });
 
 // sampleRole は研究上の分類に使用し、一覧の表示条件にはしない。
@@ -450,7 +450,7 @@ function applyLanguage(language) {
   if (state.recommendedSpace) {
     const random = RANDOM_GUIDANCE_FACILITY_IDS.has(state.selectedFacility?.id);
     priorityBadge.textContent = random
-      ? `${getSpaceTypeLabel(state.requestedSpaceType)} / ${ui("ランダム", "Random")}`
+      ? `${getSpaceTypeLabel(state.requestedSpaceType)} / ${ui("おまかせ", "Suggested")}`
       : `${getSpaceTypeLabel(state.requestedSpaceType)} / ${getPriorityLabel(state.selectedPriority)}`;
     if (Number.isFinite(state.recommendedSpace.entranceDistanceMeters)) {
       spaceDescription.textContent = ui(
@@ -1320,13 +1320,20 @@ function renderFacilities() {
       action.className = "facility-action facility-availability";
       const badge = document.createElement("span");
       badge.className = `availability-badge availability-${occupancy.level}`;
-      badge.textContent = isEnglish() ? ({rest:"Day off",closed:"Closed",full:"Full",busy:"Busy",open:"Open",unknown:"—"}[occupancy.level]) : ({rest:"休",closed:"閉",full:"満",busy:"混",open:"空",unknown:"—"}[occupancy.level]);
+      // 録画や模擬データの「空き」を現時点の空車と誤認させない。
+      const sampleOnly = isRecordedReplayFacility(facility) ||
+        facility.id === VOICE_TEST_FACILITY_ID || occupancy.simulation;
+      badge.textContent = sampleOnly ? "—" : isEnglish()
+        ? ({rest:"Day off",closed:"Closed",full:"Full",busy:"Busy",open:"Open",unknown:"—"}[occupancy.level])
+        : ({rest:"休",closed:"閉",full:"満",busy:"混",open:"空",unknown:"—"}[occupancy.level]);
       const source = document.createElement("small");
-      source.textContent = isRecordedReplayFacility(facility)
-        ? ui("録画YOLO実演・現在の空きではありません", "Recorded YOLO demo · not current") :
-        facility.isRecordedExperiment && !occupancy.live
-        ? ui("録画実験・現在未確認", "Recorded experiment") :
-        occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
+      source.textContent = isRecordedReplayFacility(facility) || (facility.isRecordedExperiment && !occupancy.live)
+        ? ui("録画・現在の空きは未確認", "Recording · not current")
+        : facility.id === VOICE_TEST_FACILITY_ID
+          ? ui("音声確認用", "Voice preview")
+          : occupancy.live ? ui("現在の情報", "Current data")
+          : occupancy.simulation ? ui("参考情報", "Sample data")
+          : ui("登録情報", "Saved data");
       action.append(badge, source);
       action.title = getOccupancyLabel(occupancy);
     }
@@ -1336,7 +1343,7 @@ function renderFacilities() {
     const operation = getOperatingStatus(facility,null);
     hours.textContent = ui("営業時間：", "Hours: ") + (operation?.hours || ui("未登録", "Not provided"));
     main.append(name, meta, hours);
-    if (facility.statusNote) {
+    if (facility.statusNote && !isRecordedReplayFacility(facility) && facility.id !== VOICE_TEST_FACILITY_ID) {
       const status = document.createElement("span");
       status.className = "facility-status";
       status.textContent = facility.statusNote;
@@ -2115,7 +2122,6 @@ function showScreen(screenName, options = {}) {
     screen.hidden = screen.dataset.screen !== screenName;
   });
 
-
   state.currentScreen = screenName;
   if (["facility", "condition"].includes(screenName)) {
     document.querySelectorAll?.(".guidance-audio-message")?.forEach(node => { node.textContent = ""; });
@@ -2508,16 +2514,23 @@ function getFacilityOccupancy(facility) {
     voiceTest: facility?.id === VOICE_TEST_FACILITY_ID };
 }
 function getOccupancyLabel(occupancy) {
-  const source = occupancy.voiceTest
-    ? ui("音声テスト・空き状況は模擬データ", "Voice test · simulated availability")
-    : occupancy.videoDemo
-    ? ui("録画映像を逐次YOLO判定・実際の空きではありません",
-         "Recorded YOLO replay · not current availability")
-    : occupancy.live ? ui("カメラ確認", "Camera verified")
-    : occupancy.recordedExperiment ? ui("録画実験・現在未確認", "Recorded experiment · not live")
-    : occupancy.simulation ? ui("デモ", "Demo") : ui("登録データ", "Saved data");
-  const label = {rest:ui("休業日（休）", "Day off"),closed:occupancy.preOpening?ui("開店前（閉）・案内可能", "Before opening · early guidance available"):ui("営業時間外（閉）", "Closed outside opening hours"),full:ui("満車", "Full"),busy:ui("混雑", "Busy"),open:ui("空きあり", "Spaces available"),unknown:ui("空き状況未確認", "Availability unknown")}[occupancy.level];
-  return `${label} · ${source}${!["unknown", "closed", "rest"].includes(occupancy.level) ? ui(` · 空き${occupancy.available}区画`, ` · ${occupancy.available} free spaces`) : ""}`;
+  // 未確認を「満車」や「空きあり」と同一視しない。
+  if (occupancy.videoDemo || occupancy.recordedExperiment)
+    return ui("録画の情報（現在の空きは未確認）", "Recorded data (current availability unknown)");
+  if (occupancy.voiceTest)
+    return ui("音声確認用（現在の空きは未確認）", "Voice preview (not current availability)");
+  const label = {
+    rest:ui("休業日", "Closed today"),
+    closed:ui("営業時間外", "Outside opening hours"),
+    full:ui("満車", "Full"), busy:ui("混雑", "Busy"),
+    open:ui("空きあり", "Spaces available"),
+    unknown:ui("空き状況未確認", "Availability unknown"),
+  }[occupancy.level] || ui("空き状況未確認", "Availability unknown");
+  if (["rest", "closed", "unknown"].includes(occupancy.level)) return label;
+  const count = ui(`空き${occupancy.available}区画`, `${occupancy.available} spaces free`);
+  return occupancy.live ? `${label} · ${count}`
+    : ui(`登録情報：${label}（現在の空きは未確認）`,
+         `Saved information: ${label} (current availability unknown)`);
 }
 function updateSearchResultNotice() {
   if (!state.searchOutcome) return;
@@ -2528,74 +2541,81 @@ function updateSearchResultNotice() {
   const liveNotPublished = homeTest && cameraState?.published !== true;
   const liveError = homeTest && cameraState?.published === true && cameraState.error;
   const isOperating = occupancy.level !== "rest" && occupancy.level !== "closed";
-  if (state.arrivalCheck?.confirmed && state.arrivalCheck.uid === state.recommendedSpace?.uid) {
-    searchStatus.textContent = state.arrivalCheck.recorded
-      ? ui("録画の案内先で停車を検知しました。画面で結果を確認できます。",
-           "A vehicle stopped in the recorded assigned space. Review the result on screen.")
-      : ui("案内先で駐車を検知しました。停車後に自分の車か確認してください。",
-           "Parking detected in the assigned space. Confirm your car after stopping.");
-    return;
-  }
+  const recorded = isRecordedReplayFacility(state.selectedFacility) || occupancy.recordedExperiment;
+  const voicePreview = state.selectedFacility?.id === VOICE_TEST_FACILITY_ID;
   const chosenIsUnavailable = state.resultLive && state.recommendedSpace
     && state.currentSpaces.some(space => space.uid === state.recommendedSpace.uid && space.isOccupied);
-  searchStatus.textContent = chosenIsUnavailable
-    ? ui("案内先の状況が変わりました。安全な場所に停車して「空き状況を更新」を押してください。", "The recommended space has changed. Stop safely and tap Refresh availability.")
-    : (isOperating && liveNotPublished
-      ? ui("カメラ空き情報：利用者への公開OFF。管理者アプリで公開を許可してください。", "Live camera status is not published to users. Enable sharing in the admin app.")
-      : isOperating && liveError
-        ? ui("カメラとの通信を確認できません。最新の空きを案内できません。", "Cannot reach the camera status service. Live availability is unverified.")
-        : (state.searchOutcome === "not-found" ? ui("駐車場全体：", "Entire parking lot: ") : "")
-          + getOccupancyLabel(occupancy)
-          + (state.resultLive && !isRecordedReplayFacility(state.selectedFacility)
-              ? ui("（数秒ごとに更新・現地優先）", " (updates every few seconds; follow on-site signs)")
-              : ui("（実際の空き情報ではありません）", " (not live availability)")));
-  if (state.selectedFacility?.id === VOICE_TEST_FACILITY_ID) {
-    searchStatus.textContent = ui("【音声テスト・模擬空き区画】", "[Voice test — simulated spaces] ")
-      + " " + searchStatus.textContent;
+
+  if (state.arrivalCheck?.confirmed && state.arrivalCheck.uid === state.recommendedSpace?.uid) {
+    searchStatus.textContent = recorded
+      ? ui("録画の中で駐車を確認しました。現在の空き状況ではありません。",
+           "Parking was detected in the recording. This is not current availability.")
+      : ui("案内先で駐車を確認しました。安全に停車して自分の車か確認してください。",
+           "Parking detected. Stop safely and confirm whether it is your car.");
+  } else if (chosenIsUnavailable) {
+    searchStatus.textContent = ui("案内先の状況が変わりました。停車後に空き状況を更新してください。",
+      "The space has changed. Stop safely and refresh availability.");
+  } else if (recorded) {
+    searchStatus.textContent = ui("録画の結果です。現在の空き状況は未確認です。",
+      "Recorded results. Current availability is unknown.");
+  } else if (voicePreview) {
+    searchStatus.textContent = ui("音声案内の確認用です。実際の空き状況ではありません。",
+      "Voice guidance preview. These are not real-time spaces.");
+  } else if (isOperating && (liveNotPublished || liveError)) {
+    searchStatus.textContent = ui("現在の空き状況を確認できません。",
+      "Current availability cannot be checked.");
+  } else if (occupancy.level === "unknown") {
+    searchStatus.textContent = ui("空き状況は未確認です。現地の表示をご確認ください。",
+      "Availability is unknown. Follow on-site signs.");
+  } else if (occupancy.level === "rest" || occupancy.level === "closed") {
+    searchStatus.textContent = getOccupancyLabel(occupancy);
+  } else if (!occupancy.live) {
+    searchStatus.textContent = ui("登録情報をもとに案内しています。現在の空きは未確認です。",
+      "Guidance uses saved information. Current availability is unknown.");
+  } else {
+    searchStatus.textContent = ui("現在の空き状況をもとに案内しています。現地の表示を優先してください。",
+      "Guidance uses current data. Follow on-site signs.");
   }
-  if (isRecordedReplayFacility(state.selectedFacility)) {
-    // ここは結果・案内画面でも常に「録画再生中」と明示する。
-    searchStatus.textContent = ui(
-      "【録画YOLO実演・現在の駐車場ではありません】",
-      "[Recorded YOLO demo — not current parking conditions] "
-    ) + " " + searchStatus.textContent;
-  }
+
   congestionNotice.hidden = occupancy.level !== "busy" || state.searchOutcome !== "found";
-  congestionNotice.textContent = ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: only ${occupancy.available} spaces remain.`);
+  congestionNotice.textContent = occupancy.live
+    ? ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: ${occupancy.available} spaces left.`)
+    : ui(`参考情報では残り${occupancy.available}区画です。現地でご確認ください。`,
+         `Sample information shows ${occupancy.available} free spaces. Check on-site.`);
   noSpaceContent.hidden = state.searchOutcome !== "not-found";
-  if (noSpaceTitle) noSpaceTitle.textContent = isOperating && liveNotPublished
-    ? ui("カメラの空き情報が非公開です", "Camera parking data is not published")
-    : isOperating && liveError
-      ? ui("カメラとの接続を確認できません", "Live camera status unavailable")
-      : occupancy.level === "unknown"
-        ? ui("空き区画を確認できません", "Available parking not yet confirmed")
-        : ui("空き区画が見つかりませんでした", "No available space found");
+  if (noSpaceTitle) noSpaceTitle.textContent = (isOperating && (liveNotPublished || liveError))
+    || (recorded && occupancy.level !== "full") || occupancy.level === "unknown"
+      ? ui("空き状況を確認できません", "Availability unavailable")
+      : ui("案内できる駐車区画がありません", "No suitable parking space");
   noSpaceDescription.textContent = occupancy.level === "rest"
-    ? ui("本日は定休日・臨時休業です。別の施設を選んでください。", "This facility is closed for the day. Choose another facility.")
+    ? ui("本日は休業日です。別の施設をご利用ください。",
+         "This facility is closed today. Please choose another.")
     : occupancy.level === "closed"
-    ? (occupancy.preOpening
-        ? ui("開店前のため「閉」です。開店60分前から案内可能ですが、実際の入庫は現地の表示を優先してください。", "Before opening. Early guidance is available within 60 minutes; follow on-site parking access signs.")
-        : ui("営業時間外のため「閉」です。別の施設を選んでください。", "Outside opening hours. Choose another facility."))
-    : isOperating && liveNotPublished
-    ? ui("YOLOの判定結果を受け取る設定がOFFです。管理者アプリで「カメラによる空き状況・車両追跡」を開き、状況を確認したうえで「利用者アプリへ最新の空き状況を公開」をONにしてください。設定を変えた後、「空き状況を更新」を押してください。空きの確認なしに案内は行いません。",
-         "Camera status sharing is disabled. An administrator must check the camera monitor and enable user sharing, then refresh availability.")
-    : isOperating && liveError
-    ? ui("カメラの状態を取得できません。通信や公開設定を確認してください。過去の空き情報で案内しません。",
-         "Camera status could not be retrieved. Check connectivity and sharing settings; stale free spaces are not used.")
-    : occupancy.recordedExperiment && !occupancy.live
-    ? ui("ここは過去録画の研究用施設です。現在の空きが確認できないため、ライブ案内はできません。",
-         "This is a recorded research facility. Current spaces cannot be verified for live guidance.")
+      ? (occupancy.preOpening
+        ? ui("開店前です。入庫できるかは現地の表示をご確認ください。",
+             "Not yet open. Follow on-site parking access signs.")
+        : ui("営業時間外です。別の施設をご利用ください。",
+             "The facility is closed. Please choose another."))
+    : isOperating && (liveNotPublished || liveError)
+      ? ui("最新の空き状況がわかりません。時間をおいて再度お試しください。",
+           "Current availability is unavailable. Please try again later.")
+    : recorded
+      ? ui("過去の録画からは、現在の空き状況を確認できません。",
+           "Recorded footage cannot confirm current availability.")
     : occupancy.level === "full"
-    ? (state.resultSimulation
-        ? ui("デモでは満車です。空き状況を更新すると再抽選します。", "The demo parking lot is full. Refresh availability to draw again.")
-        : ui("登録データでは満車です。", "The saved data shows a full parking lot."))
-    : state.resultLive
-      ? (occupancy.unknown > 0
-          ? ui(`カメラが${occupancy.unknown}区画を確認できていません。これは満車を意味しません。現地で空車確認した区画の登録と、YOLOの車両停止判定を確認してください。`,
-               `Camera status is unknown for ${occupancy.unknown} spaces; this does not mean the lot is full. Check camera calibration and verified-empty settings.`)
-          : ui(`${getSpaceTypeLabel(state.requestedSpaceType)}で案内できる空き区画はありません。区画の種類と実際の空き状況をご確認ください。`,
-               `No confirmed free ${getSpaceTypeLabel(state.requestedSpaceType)} space is available. Check the selected space type.`))
-      : ui(`${getSpaceTypeLabel(state.requestedSpaceType)}の空き区画が見つかりませんでした。`, `No available ${getSpaceTypeLabel(state.requestedSpaceType)} space was found.`);
+      ? (state.resultSimulation
+        ? ui("参考データでは満車です。更新すると内容が変わる場合があります。",
+             "Sample data shows a full parking lot. Refresh to see a new sample.")
+        : occupancy.live
+          ? ui("現在確認できる区画は満車です。現地の表示をご確認ください。",
+               "Verified spaces are full. Check on-site signs.")
+          : ui("登録情報では満車です。現地でご確認ください。",
+               "Saved information shows full occupancy. Confirm on-site."))
+    : occupancy.level === "unknown"
+      ? ui("空き状況が未確認です。現地の表示をご確認ください。",
+           "Availability is unknown. Please check on-site.")
+    : ui(`${getSpaceTypeLabel(state.requestedSpaceType)}の空き区画が見つかりませんでした。条件を変更するか、現地でご確認ください。`,
+         `No suitable ${getSpaceTypeLabel(state.requestedSpaceType)} space was found. Try another type or check on-site.`);
 }
 function getFacilitySpokenName(locale) {
   const facility = state.selectedFacility;
@@ -2715,8 +2735,8 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
 
       if (prepared.isSimulation) {
         spaceDescription.textContent = ui(
-          `入口まで約${Math.round(state.recommendedSpace.entranceDistanceMeters)}m · デモ`,
-          `About ${Math.round(state.recommendedSpace.entranceDistanceMeters)} m to entrance · Demo`,
+          `入口まで約${Math.round(state.recommendedSpace.entranceDistanceMeters)}m · 参考`,
+          `About ${Math.round(state.recommendedSpace.entranceDistanceMeters)} m to entrance · sample`,
         );
       } else if (!prepared.entrance) {
         spaceDescription.textContent = ui("入口が未登録のため距離は未表示です。", "Distance unavailable: no entrance registered.");

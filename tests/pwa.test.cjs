@@ -120,7 +120,7 @@ async function ui({ offline = false, secure = true, waiting = false, standalone 
 test('通信切断・再接続と英語表示を画面に反映する', async () => {
   const u = await ui({ offline: true });
   assert.equal(u.nodes.get('#pwa-offline-status').hidden, false);
-  assert.match(u.nodes.get('#pwa-offline-status').textContent, /最新の管理データは取得できません/);
+  assert.match(u.nodes.get('#pwa-offline-status').textContent, /現在の空き状況は確認できません/);
   u.document.documentElement.lang = 'en'; u.listeners['parking:languagechange']();
   assert.match(u.nodes.get('#pwa-offline-status').textContent, /You are offline/);
   u.context.navigator.onLine = true; u.listeners.online();

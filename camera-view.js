@@ -62,6 +62,8 @@
     }
     const screen = document.querySelector("#condition-screen");
     if (!id || document.hidden || (admin ? !admin.open : screen?.hidden)) return;
+    const optional = !admin ? panel.closest(".optional-photo-details") : null;
+    if (optional && !optional.open) return;
     if (admin && !token) {
       clear();
       status.textContent = text("管理者ログインが必要です", "Administrator sign-in required");
@@ -122,6 +124,10 @@
   select.addEventListener("change", show);
   panel.querySelector("button").addEventListener("click", () => void refresh(true));
   if (admin) admin.addEventListener("toggle", () => void refresh(true));
+  document.addEventListener("toggle", (event) => {
+    if (event.target?.classList?.contains("optional-photo-details") && event.target.open)
+      void refresh(true);
+  }, true);
   setInterval(() => void refresh(), 1000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {

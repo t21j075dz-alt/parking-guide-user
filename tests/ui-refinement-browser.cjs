@@ -25,7 +25,14 @@ const fs=require('node:fs'),path=require('node:path'),http=require('node:http');
     publishGuidanceTranscript('B-12番へ進んでください。','音声OFF・文章で確認');
    });
    const number=await page.locator('#space-number').boundingBox();
-   assert.ok(number.y>=0 && number.y+number.height<500,'number visible without scrolling');
+   assert.ok(number.y>=0 && number.y+number.height<500,
+      'number visible without scrolling: '+JSON.stringify({
+        width, number,
+        result: await page.locator('#result-screen').boundingBox(),
+        status: await page.locator('#search-status').boundingBox(),
+        hero: await page.locator('#result-screen .result-summary').boundingBox(),
+        errors,
+      }));
    assert.equal(await page.locator('#result-content .guidance-audio-message').textContent(),'B-12番へ進んでください。');
    await page.screenshot({path:'/tmp/user-guidance-'+width+'.png'});
    await page.evaluate(()=>{
