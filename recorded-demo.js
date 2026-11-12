@@ -19,7 +19,7 @@
   }
   function fromHash() {
     if (!location.hash.startsWith("#recorded=") || location.hash.length > 120000) {
-      throw new Error("有効な録画デモのリンクが指定されていません。");
+      throw new Error("録画のリンクを確認してください。");
     }
     let data;
     try {
@@ -35,7 +35,7 @@
         !data.spaces.every(s => typeof s === "string" && /^space_[A-Za-z0-9_-]{1,40}$/.test(s)) ||
         new Set(data.spaces).size !== data.spaces.length ||
         !Array.isArray(data.events) || data.events.length > MAX_EVENTS) {
-      throw new Error("録画の施設ID・区画・記録形式が正しくありません。");
+      throw new Error("録画データを開けませんでした。リンクをご確認ください。");
     }
     let previous = -1;
     for (const event of data.events) {
@@ -43,7 +43,7 @@
           !Number.isFinite(event[0]) || event[0] < previous || event[0] > data.duration ||
           !Number.isInteger(event[1]) || event[1] < 0 || event[1] >= data.spaces.length ||
           !Number.isInteger(event[2]) || event[2] < 0 || event[2] >= VALID.length) {
-        throw new Error("録画の判定記録が不正です。");
+        throw new Error("録画データを読み取れませんでした。");
       }
       previous = event[0];
     }
@@ -100,10 +100,9 @@
   }
   try {
     payload = fromHash();
-    qs("#summary").textContent = "施設：" + RECORDING_FACILITIES[payload.facility_id] +
-      " (" + payload.facility_id + ")｜記録 " +
-      payload.spaces.length + "区画｜長さ " + timecode(payload.duration) +
-      "｜過去の録画デモ（ライブではありません）";
+    qs("#summary").textContent = RECORDING_FACILITIES[payload.facility_id] +
+      "｜" + payload.spaces.length + "区画｜" + timecode(payload.duration) +
+      " の録画（現在の空きではありません）";
     qs("#controls").hidden = false;
     qs("#results").hidden = false;
     qs("#play").addEventListener("click", start);
