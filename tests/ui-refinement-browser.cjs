@@ -18,8 +18,20 @@ const fs=require('node:fs'),path=require('node:path'),http=require('node:http');
 
    await page.locator('#launch-screen').waitFor({state:'detached'});
    assert.equal(await page.locator('.progress').count(),0);
-   assert.equal(await page.locator('.location-panel').isVisible(),false,'location panel must not appear at the top of the app');
-   assert.equal(await page.locator('#location-settings').count(),1,'location controls remain available in settings');
+   for(const screenName of ['facility','condition']) {
+    await page.evaluate(name=>showScreen(name),screenName);
+    assert.equal(await page.locator('#location-settings').isVisible(),false,
+      'screen '+screenName+': location settings must not show without opening the menu');
+    assert.equal(await page.locator('.location-panel').isVisible(),false,
+      'screen '+screenName+': current location card must be hidden');
+   }
+   await page.locator('.display-menu > summary').click();
+   assert.equal(await page.locator('#location-settings').isVisible(),true);
+   assert.equal(await page.locator('.location-panel').isVisible(),false);
+   await page.locator('#location-settings > summary').click();
+   assert.equal(await page.locator('.location-panel').isVisible(),true,
+     'location controls must remain available by explicit choice');
+   await page.locator('.display-menu > summary').click();
    await page.evaluate(()=>{
     showScreen('result');
     document.querySelector('#result-content').hidden=false;

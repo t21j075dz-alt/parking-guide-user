@@ -36,7 +36,7 @@
   <script src="./app.js?v=20261112-plain-language-1" defer></script>
     <script src="./pwa.js?v=20261112-plain-language-1" defer></script>
   <link href="./experience.css" rel="stylesheet">
-  <link href="./user-experience.css?v=20261112-no-top-location-1" rel="stylesheet">
+  <link href="./user-experience.css?v=20261112-settings-not-visible-1" rel="stylesheet">
 <script defer src="./camera-view.js?v=20261112-plain-language-1"></script>
   <script defer src="./user-experience.js?v=20261112-no-top-location-1"></script>
 </head>
@@ -110,6 +110,28 @@
           <button class="display-button" id="language-button" type="button" aria-label="表示言語を切り替える">
             English
           </button>
+          <details class="location-settings" id="location-settings">
+            <summary>位置情報の設定</summary>
+            <section class="location-panel" aria-labelledby="location-title">
+                    <div class="location-summary">
+                      <h2 id="location-title" class="panel-title">現在地</h2>
+                      <p id="location-status" class="location-status" role="status" aria-live="polite">まだ取得していません</p>
+                      <p id="location-details" class="location-details"></p>
+                      <p id="motion-status" class="motion-status" role="status" aria-live="polite">
+                        移動状態：未確認
+                      </p>
+                    </div>
+                    <div class="location-actions">
+                      <button class="secondary-button" id="location-button" type="button">現在地を取得</button>
+                      <button class="secondary-button" id="location-stop-button" type="button" hidden>取得を停止</button>
+                    </div>
+                    <details class="location-help">
+                      <summary>位置情報について</summary>
+                      <p>現在地は距離表示と移動状態の確認に使用します。位置情報はこのページ内で処理し、保存・送信しません。</p>
+                      <p>ブラウザー版のため、画面を閉じた後やバックグラウンドでの常時取得は行いません。</p>
+                    </details>
+                  </section>
+          </details>
         </div>
       </div>
     </header>
@@ -585,28 +607,6 @@
         <p>公開写真は5分間隔の静止画で、連続映像ではありません。端末の消音、OSの制限、音声の未導入や通信障害により音声が使えない場合は画面の案内をご確認ください。</p>
         <p>録画・参考データは現在の空き状況ではありません。更新が途切れた区画は「未確認」とし、空きとして案内しません。実際に駐車できるかは現地の表示をご確認ください。</p>
         <p>「満」は満車、「混」は混雑、「空」は空きあり、「—」は未確認です。参考データの表示は、現地の空き状況を保証するものではありません。</p>
-      </details>
-      <details class="location-settings" id="location-settings">
-        <summary>位置情報の設定</summary>
-        <section class="location-panel" aria-labelledby="location-title">
-                <div class="location-summary">
-                  <h2 id="location-title" class="panel-title">現在地</h2>
-                  <p id="location-status" class="location-status" role="status" aria-live="polite">まだ取得していません</p>
-                  <p id="location-details" class="location-details"></p>
-                  <p id="motion-status" class="motion-status" role="status" aria-live="polite">
-                    移動状態：未確認
-                  </p>
-                </div>
-                <div class="location-actions">
-                  <button class="secondary-button" id="location-button" type="button">現在地を取得</button>
-                  <button class="secondary-button" id="location-stop-button" type="button" hidden>取得を停止</button>
-                </div>
-                <details class="location-help">
-                  <summary>位置情報について</summary>
-                  <p>現在地は距離表示と移動状態の確認に使用します。位置情報はこのページ内で処理し、保存・送信しません。</p>
-                  <p>ブラウザー版のため、画面を閉じた後やバックグラウンドでの常時取得は行いません。</p>
-                </details>
-              </section>
       </details>
     </footer>
   </body>
