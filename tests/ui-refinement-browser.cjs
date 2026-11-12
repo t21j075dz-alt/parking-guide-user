@@ -18,6 +18,8 @@ const fs=require('node:fs'),path=require('node:path'),http=require('node:http');
 
    await page.locator('#launch-screen').waitFor({state:'detached'});
    assert.equal(await page.locator('.progress').count(),0);
+   assert.equal(await page.locator('.location-panel').isVisible(),false,'location panel must not appear at the top of the app');
+   assert.equal(await page.locator('#location-settings').count(),1,'location controls remain available in settings');
    await page.evaluate(()=>{
     showScreen('result');
     document.querySelector('#result-content').hidden=false;
