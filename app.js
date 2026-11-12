@@ -1409,6 +1409,7 @@ async function loadRemoteParkingLayouts() {
       }
     });
     window.PARKING_LAYOUTS = layouts;
+    window.ParkingTrafficSafety?.refresh?.();
     renderFacilities();
   } catch {
     /* 通信できない場合は同梱の parking-layouts.js を使う。 */
@@ -2123,6 +2124,7 @@ function showScreen(screenName, options = {}) {
   });
 
   state.currentScreen = screenName;
+  window.ParkingTrafficSafety?.refresh?.();
   if (["facility", "condition"].includes(screenName)) {
     document.querySelectorAll?.(".guidance-audio-message")?.forEach(node => { node.textContent = ""; });
   }
@@ -3969,8 +3971,15 @@ function getAutomaticGuidanceStartMessage(locale = getGuidanceSpeechLocale()) {
 
 function speakAutomaticGuidanceStartMessage({ userGesture = false } = {}) {
   const script = getGuidanceSpeechLocale() === "ja-JP" ? startScript() : null;
-  const spoken = script ? speakText(script.text, { userGesture, parts:script.parts, roles:script.roles })
-    : speakText(getAutomaticGuidanceStartMessage(), { userGesture });
+  // 入口への接近前に、現地確認済みの右折・Uターン等の注意を1回案内。
+  const warnings = state.voiceEnabled
+    ? window.ParkingTrafficSafety?.takeStaticWarnings?.("approach") || [] : [];
+  const message = script?.text || getAutomaticGuidanceStartMessage();
+  const prefix = warnings.join("");
+  const spoken = script
+    ? speakText(prefix + message, { userGesture,
+        parts: [...warnings, ...script.parts], roles: [...warnings.map(() => "fixed"), ...script.roles] })
+    : speakText(prefix + message, { userGesture });
   if(spoken)lastClosingAnnouncementKey=getClosingAnnouncementKey();
   return spoken;
 }
@@ -4019,7 +4028,13 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale(), options =
 /** 自動探索、手動探索、再案内で同じ案内文を使う。 */
 function speakCurrentGuidance() {
   const script = getGuidanceSpeechLocale() === "ja-JP" ? parkingScript() : null;
-  const spoken = script ? speakText(script.text, { parts:script.parts, roles:script.roles }) : speakText(getCurrentGuidanceMessage());
+  const warnings = state.voiceEnabled
+    ? window.ParkingTrafficSafety?.takeStaticWarnings?.("onsite") || [] : [];
+  const prefix = warnings.join("");
+  const spoken = script
+    ? speakText(prefix + script.text, { parts:[...warnings, ...script.parts],
+        roles:[...warnings.map(() => "fixed"), ...script.roles] })
+    : speakText(prefix + getCurrentGuidanceMessage());
   if(spoken)lastClosingAnnouncementKey=getClosingAnnouncementKey();
   return spoken;
 }
@@ -4881,3 +4896,14 @@ setInterval(() => { if (state.currentScreen === "facility") renderFacilities(); 
 
 // 待機・案内中の時刻変化も確認する。
 setInterval(announceClosingTimeIfNeeded,30000);
+
+/** 交通案内コンポーネントには必要最小限の状態と既存の音声出力だけ公開する。 */
+window.ParkingTrafficSafetyContext = () => ({
+  facility: state.selectedFacility,
+  destinationId: state.selectedDestination?.id || "",
+  screen: state.currentScreen,
+  voiceEnabled: state.voiceEnabled,
+  locale: getGuidanceSpeechLocale(),
+  speaking: Boolean(window.speechSynthesis?.speaking || window.ParkingVoiceContinuous?.isPlaying?.()),
+  speak: message => (state.voiceEnabled ? speakText(message) : false),
+});

@@ -1,0 +1,17 @@
+/* 利用者が理解できる短い交通・安全注意のみを表示する。 */
+.traffic-safety-notice {
+  margin: 14px 0;
+  padding: 14px 16px;
+  background: #fff8e8;
+  border: 1px solid #e8bd69;
+  border-left: 4px solid #b56c00;
+  border-radius: 12px;
+  color: #4b350e;
+}
+.traffic-safety-notice[hidden] { display: none !important; }
+.traffic-safety-notice-title { display: block; font-size: 1rem; margin-bottom: 6px; }
+.traffic-safety-notice-list { margin: 0; padding-left: 1.35rem; line-height: 1.6; }
+.traffic-safety-notice-list li + li { margin-top: 5px; }
+[data-theme="dark"] .traffic-safety-notice {
+  background: #34290e; border-color: #735a24; color: #fff1c9;
+}
