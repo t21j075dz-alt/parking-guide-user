@@ -3971,15 +3971,10 @@ function getAutomaticGuidanceStartMessage(locale = getGuidanceSpeechLocale()) {
 
 function speakAutomaticGuidanceStartMessage({ userGesture = false } = {}) {
   const script = getGuidanceSpeechLocale() === "ja-JP" ? startScript() : null;
-  // 入口への接近前に、現地確認済みの右折・Uターン等の注意を1回案内。
-  const warnings = state.voiceEnabled
-    ? window.ParkingTrafficSafety?.takeStaticWarnings?.("approach") || [] : [];
-  const message = script?.text || getAutomaticGuidanceStartMessage();
-  const prefix = warnings.join("");
+  // ナビ開始時点では施設から離れている可能性がある。交通規制はまだ読まない。
   const spoken = script
-    ? speakText(prefix + message, { userGesture,
-        parts: [...warnings, ...script.parts], roles: [...warnings.map(() => "fixed"), ...script.roles] })
-    : speakText(prefix + message, { userGesture });
+    ? speakText(script.text, { userGesture, parts:script.parts, roles:script.roles })
+    : speakText(getAutomaticGuidanceStartMessage(), { userGesture });
   if(spoken)lastClosingAnnouncementKey=getClosingAnnouncementKey();
   return spoken;
 }
@@ -4025,11 +4020,21 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale(), options =
   return specialNotice + (crowded && locale !== "ja-JP" ? crowdMessages[locale] ?? crowdMessages["en-US"] : "") + (messages[locale] ?? messages["en-US"]);
 }
 
-/** 自動探索、手動探索、再案内で同じ案内文を使う。 */
+/** 交通規制を「この先」と案内する前に、少なくとも施設へ接近していることを確認する。 */
+function isNearSelectedFacilityForSafety() {
+  if (!state.selectedFacility) return false;
+  if (state.lastSearchWasAuto === true) return true; // 自動探索の距離判定通過
+  if (!state.userLocation) return false; // デモ上の参考距離を実際の接近と誤認しない
+  const distance = getFacilityDistance(state.selectedFacility);
+  return Number.isFinite(distance) && distance <= AUTO_GUIDANCE_DISTANCE_KM;
+}
+
+/** 施設接近時だけ交通規制を案内し、続けて通常の駐車枠案内を行う。 */
 function speakCurrentGuidance() {
   const script = getGuidanceSpeechLocale() === "ja-JP" ? parkingScript() : null;
-  const warnings = state.voiceEnabled
-    ? window.ParkingTrafficSafety?.takeStaticWarnings?.("onsite") || [] : [];
+  const warnings = state.voiceEnabled && isNearSelectedFacilityForSafety()
+    ? [...(window.ParkingTrafficSafety?.takeStaticWarnings?.("approach") || []),
+       ...(window.ParkingTrafficSafety?.takeStaticWarnings?.("onsite") || [])] : [];
   const prefix = warnings.join("");
   const spoken = script
     ? speakText(prefix + script.text, { parts:[...warnings, ...script.parts],
