@@ -183,15 +183,6 @@
     menu.append(summary, controls);
   }
   if (footer) {
-    const location = $(".location-panel");
-    if (location) {
-      const settings = document.createElement("details");
-      settings.className = "location-settings";
-      const summary = document.createElement("summary");
-      summary.textContent = t("現在地・位置情報の設定", "Location settings");
-      settings.append(summary, location);
-      footer.append(settings);
-    }
     const key = $(".availability-key");
     if (key) footer.querySelector(".app-about")?.append(key);
   }
@@ -326,7 +317,7 @@
     const displaySummary = $(".display-menu > summary");
     if (displaySummary) displaySummary.textContent = t("表示設定", "Display settings");
     const locationSummary = $(".location-settings > summary");
-    if (locationSummary) locationSummary.textContent = t("現在地・位置情報の設定", "Location settings");
+    if (locationSummary) locationSummary.textContent = t("位置情報の設定", "Location settings");
     if (title) title.textContent = t("駐車区画のご案内", "Parking guidance");
     if (hero) {
       const label = hero.querySelector(".result-label");

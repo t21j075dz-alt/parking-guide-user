@@ -216,7 +216,6 @@ body[data-guidance-screen="voice-test-complete"] .location-panel {
 .display-menu[open] .display-controls { position: absolute; right: 0; top: 100%; width: min(21rem, 88vw); padding: .8rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .8rem; box-shadow: 0 8px 30px #0002; z-index: 30; display: flex; flex-wrap: wrap; }
 .location-settings { margin-block: 1rem; }
 .location-settings summary { cursor: pointer; padding-block: .7rem; }
-body .site-footer .location-panel { display: block !important; }
 .guidance-audio-message { margin: .7rem 0; font-size: clamp(1.05rem, 3.5vw, 1.25rem); font-weight: 650; line-height: 1.7; overflow-wrap: anywhere; }
 .guidance-audio-message:empty { display: none; }
 #waiting-screen .guidance-audio-card { border-left: 4px solid var(--color-primary); }
@@ -261,4 +260,19 @@ body[data-guidance-screen="waiting"] .header-inner { min-height: 3.5rem; }
 @media (max-width: 650px) {
   #result-screen #search-status { font-size: .94rem; }
   .optional-photo-details > summary { min-height: 3rem; }
+}
+
+/* 段階ナビと位置情報カードを主画面に常駐させない。 */
+.progress { display: none !important; }
+.site-footer .location-settings > summary {
+  cursor: pointer;
+  padding: .8rem 0;
+  font-weight: 650;
+}
+.site-footer .location-settings:not([open]) .location-panel {
+  display: none;
+}
+.site-footer .location-settings .location-panel {
+  margin-top: .55rem;
+  box-shadow: none;
 }
