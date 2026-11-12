@@ -116,7 +116,7 @@ window.ParkingTrafficSafety = (() => {
     if (!Array.isArray(rows)) return { known:false, pedestrian:false, bicycle:false };
     const current = rows.filter(row => {
       const ms = Date.parse(row?.checked_at || "");
-      return Number.isFinite(ms) && ms <= now + 5000 && now - ms >= 0
+      return Number.isFinite(ms) && ms <= now + 5000 && now - ms >= -5000
         && now - ms <= 20000;
     });
     // 監視範囲に関係するカメラに警告が出た場合のみ、集計をONにする。

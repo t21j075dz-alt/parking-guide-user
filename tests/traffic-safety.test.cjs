@@ -25,7 +25,7 @@ test("only manually verified matching safety messages are exposed",()=>{
 });
 test("voice warnings are announced once per stage",()=>{
  const w=setup();
- assert.deepEqual(w.ParkingTrafficSafety.takeStaticWarnings("approach"),["右折入場禁止です。"]);
+ assert.deepEqual(Array.from(w.ParkingTrafficSafety.takeStaticWarnings("approach")),["右折入場禁止です。"]);
  assert.equal(w.ParkingTrafficSafety.takeStaticWarnings("approach").length,0);
 });
 test("live alerts must be fresh and explicit",()=>{

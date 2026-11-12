@@ -4904,6 +4904,6 @@ window.ParkingTrafficSafetyContext = () => ({
   screen: state.currentScreen,
   voiceEnabled: state.voiceEnabled,
   locale: getGuidanceSpeechLocale(),
-  speaking: Boolean(window.speechSynthesis?.speaking || window.ParkingVoiceContinuous?.isPlaying?.()),
+  speaking: Boolean(activeSpeechAudioRoute || activeDeviceSpeechUtterance || window.speechSynthesis?.speaking),
   speak: message => (state.voiceEnabled ? speakText(message) : false),
 });
