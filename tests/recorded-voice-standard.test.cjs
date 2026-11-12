@@ -52,5 +52,5 @@ test("録画結果を現在の駐車位置として保存せず、画面では�
   const screen = section("function updateParkedScreenCopy()", "function confirmOwnParking");
   assert.match(confirm, /if \(!recorded\) saveParkedSession\(space\)/);
   assert.match(screen, /録画で駐車を確認しました/);
-  assert.match(app, /録画YOLO実演・現在の駐車場ではありません/);
+  assert.match(app, /録画の結果です。現在の空き状況は未確認です/);
 });
