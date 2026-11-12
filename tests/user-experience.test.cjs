@@ -72,6 +72,17 @@ test("録画再生画面は過去の結果と明示し、内部IDを要約に出
   assert.doesNotMatch(js, /" \(" \+ payload\.facility_id/);
 });
 
+test("主画面から段階ナビと現在地カードを除外し、必要な位置情報操作だけ設定内に残す", () => {
+  const html = read("index.html");
+  const main = html.split('<main id="main-content"')[1].split("</main>")[0];
+  const footer = html.split('<footer class="site-footer">')[1];
+  assert.doesNotMatch(main, /class="progress"|data-progress=|class="location-panel"/);
+  assert.match(footer, /<details class="location-settings"/);
+  assert.match(footer, /id="location-button"/);
+  assert.match(footer, /id="location-status"/);
+  assert.match(read("user-experience.css"), /\.progress \{ display: none !important; \}/);
+});
+
 test("録画中の各区画は内部IDではなく一覧番号を表示する", () => {
   const js = read("recorded-demo.js");
   assert.match(js, /heading\.textContent = "区画 " \+ \(i \+ 1\)/);
