@@ -54,11 +54,6 @@ body {
 
 /* 案内中には施設検索や現在地設定の情報より結果を優先する。
    待機画面には専用の位置情報表示がある。 */
-body[data-guidance-screen="waiting"] > .main-content .progress,
-body[data-guidance-screen="result"] > .main-content .progress,
-body[data-guidance-screen="parked"] > .main-content .progress,
-body[data-guidance-screen="voice-test"] > .main-content .progress,
-body[data-guidance-screen="voice-test-complete"] > .main-content .progress,
 body[data-guidance-screen="waiting"] .location-panel,
 body[data-guidance-screen="result"] .location-panel,
 body[data-guidance-screen="parked"] .location-panel,

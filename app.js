@@ -280,7 +280,6 @@ const STATIC_JA_EN = Object.freeze({
   "案内先が決まったときに端末の音声で読み上げます。": "Read the selected parking space aloud when guidance is ready.",
   "音声": "Voice",
   "自動（聞き取りやすい音声）": "Automatic (clear voice)",
-  "音声を試す": "Preview voice",
   "この条件で自動案内を開始": "Start automatic guidance",
   "今すぐ空き区画を確認": "Check available space now",
   "マルナカ 中井町店では現在、条件に合う空き区画から研究用にランダムで1区画を案内します。":
@@ -2116,17 +2115,6 @@ function showScreen(screenName, options = {}) {
     screen.hidden = screen.dataset.screen !== screenName;
   });
 
-  const currentIndex = SCREEN_ORDER.indexOf(screenName);
-  document.querySelectorAll("[data-progress]").forEach((item) => {
-    const itemIndex = SCREEN_ORDER.indexOf(item.dataset.progress);
-    item.classList.toggle("is-current", itemIndex === currentIndex);
-    item.classList.toggle("is-complete", itemIndex < currentIndex);
-    if (itemIndex === currentIndex) {
-      item.setAttribute("aria-current", "step");
-    } else {
-      item.removeAttribute("aria-current");
-    }
-  });
 
   state.currentScreen = screenName;
   if (["facility", "condition"].includes(screenName)) {
