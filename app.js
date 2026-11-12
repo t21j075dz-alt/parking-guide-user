@@ -4024,6 +4024,7 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale(), options =
 function isNearSelectedFacilityForSafety() {
   if (!state.selectedFacility) return false;
   if (state.lastSearchWasAuto === true) return true; // 自動探索の距離判定通過
+  if (!state.userLocation) return false; // デモ上の参考距離を実際の接近と誤認しない
   const distance = getFacilityDistance(state.selectedFacility);
   return Number.isFinite(distance) && distance <= AUTO_GUIDANCE_DISTANCE_KM;
 }
