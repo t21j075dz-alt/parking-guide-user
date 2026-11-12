@@ -233,3 +233,32 @@ body[data-guidance-screen="waiting"] .header-inner { min-height: 3.5rem; }
   .display-menu > summary { white-space: nowrap; font-size: .85rem; }
   .display-menu .display-controls { width: min(21rem,88vw); }
 }
+
+/* 状態は短く表示し、写真や補足は開いたときにだけ見せる。 */
+#result-screen #search-status {
+  font-size: clamp(.92rem, 2.6vw, 1rem);
+  font-weight: 650;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.optional-photo-details {
+  margin-block: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: .85rem;
+  background: var(--color-surface);
+}
+.optional-photo-details > summary {
+  cursor: pointer;
+  padding: .9rem 1rem;
+  color: var(--color-primary);
+  font-weight: 700;
+}
+.optional-photo-details .camera-card {
+  border: 0;
+  box-shadow: none;
+  margin: 0;
+}
+@media (max-width: 650px) {
+  #result-screen #search-status { font-size: .94rem; }
+  .optional-photo-details > summary { min-height: 3rem; }
+}
