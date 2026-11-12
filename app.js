@@ -416,6 +416,7 @@ function translateStaticPage() {
     const replacement = map[trimmed];
     if (!replacement) return;
     node.nodeValue = raw.replace(trimmed, replacement);
+  });
 
   document.documentElement.lang = isEnglish() ? "en" : "ja";
   document.title = ui(
@@ -456,6 +457,7 @@ function applyLanguage(language) {
         `建物入口まで約${Math.round(state.recommendedSpace.entranceDistanceMeters)}m`,
         `About ${Math.round(state.recommendedSpace.entranceDistanceMeters)} m to the entrance`,
       );
+    }
     searchStatus.textContent = random
       ? ui(
           `${getFacilityDisplayName(state.selectedFacility)}では研究用として、条件に合う空き区画からランダムに案内しています。`,
@@ -772,6 +774,7 @@ function updateParkingArrivalPanel() {
              "Monitoring the assigned space in the recording.")
         : ui("案内中の駐車枠をカメラで確認しています。車を検知するとお知らせします。",
              "Monitoring your assigned space. We will notify you when a vehicle is detected.");
+    } else {
       // 同じ更新時刻を何度受け取っても連続検知には数えない。
       if (timestamp > check.lastCheckedAt) {
         if (check.occupiedSince === null) check.occupiedSince = now;
@@ -2117,10 +2120,6 @@ function showScreen(screenName, options = {}) {
 
   document.querySelectorAll("[data-screen]").forEach((screen) => {
     screen.hidden = screen.dataset.screen !== screenName;
-  });
-
-    } else {
-    }
   });
 
   state.currentScreen = screenName;
