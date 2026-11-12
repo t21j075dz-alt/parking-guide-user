@@ -1397,7 +1397,6 @@ test("保存済み4部品を1本の音源へ連結し、先頭の音声だけで
 
 test("iPhone画面復帰で一時停止したWeb Audioのみでもresumeする",async()=>{
   const {run,context}=app();
-  let resumed=0;
   context.document.hidden=false;
   context.window.speechSynthesis.paused=false;
   context.navigator={audioSession:{type:"ambient"}};

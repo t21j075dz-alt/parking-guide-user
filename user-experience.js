@@ -270,15 +270,6 @@
     new MutationObserver(tidyFacilities).observe(list, { childList: true, subtree: true });
     tidyFacilities();
   }
-  document.querySelectorAll(".recorded-demo-link-status").forEach((panel) => {
-    const normalize = () => {
-      const value = panel.textContent;
-      const next = formatStatus(value, "recorded");
-      if (value !== next) panel.textContent = next;
-    };
-    new MutationObserver(normalize).observe(panel, { childList: true, characterData: true, subtree: true });
-    normalize();
-  });
 
   const screens = [...document.querySelectorAll("[data-screen]")];
   const updateScreen = () => {

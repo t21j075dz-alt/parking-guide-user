@@ -8,10 +8,12 @@ const read = (name) => fs.readFileSync(path.join(__dirname, "..", name), "utf8")
 test("利用者画面とPWAが同じUIファイルを参照する", () => {
   const html = read("index.html");
   const sw = read("service-worker.js");
-  assert.match(html, /user-experience\.css\?v=20261111-clear-guidance-1/);
-  assert.match(html, /user-experience\.js\?v=20261111-clear-guidance-1/);
-  assert.match(sw, /user-experience\.css\?v=20261111-clear-guidance-1/);
-  assert.match(sw, /user-experience\.js\?v=20261111-clear-guidance-1/);
+  for (const extension of ["css", "js"]) {
+    const pattern = new RegExp(`\\./user-experience\\.${extension}\\?v=[^"\\s]+`);
+    const reference = html.match(pattern)?.[0];
+    assert.ok(reference, `HTMLにバージョン付き${extension}参照が必要`);
+    assert.ok(sw.includes(`"${reference}"`), `PWAとHTMLの参照が不一致: ${reference}`);
+  }
 });
 
 test("利用者画面に研究者向けの説明を常時表示しない", () => {
