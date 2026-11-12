@@ -2580,8 +2580,8 @@ function updateSearchResultNotice() {
   congestionNotice.hidden = occupancy.level !== "busy" || state.searchOutcome !== "found";
   congestionNotice.textContent = occupancy.live
     ? ui(`混雑しています。空きは残り${occupancy.available}区画です。`, `Busy: ${occupancy.available} spaces left.`)
-    : ui(`参考情報：残り${occupancy.available}区画です。現地でご確認ください。`,
-         `Sample data: ${occupancy.available} spaces left. Check on-site.`);
+    : ui(`参考情報では残り${occupancy.available}区画です。現地でご確認ください。`,
+         `Sample information shows ${occupancy.available} free spaces. Check on-site.`);
   noSpaceContent.hidden = state.searchOutcome !== "not-found";
   if (noSpaceTitle) noSpaceTitle.textContent = (isOperating && (liveNotPublished || liveError))
     || (recorded && occupancy.level !== "full") || occupancy.level === "unknown"
