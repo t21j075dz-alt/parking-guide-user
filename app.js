@@ -420,8 +420,8 @@ function translateStaticPage() {
 
   document.documentElement.lang = isEnglish() ? "en" : "ja";
   document.title = ui(
-    "駐車場空き区画案内｜卒業研究",
-    "Parking Space Guide | Graduation Research",
+    "駐車場空き区画案内",
+    "Parking Space Guide",
   );
 
   languageButton.textContent = isEnglish() ? "日本語" : "English";
@@ -2030,11 +2030,11 @@ function renderDemoParkingMap(spaces, recommendedSpace) {
   mapViewControls.hidden = true;
   delete parkingMap.dataset.viewMode;
   delete parkingMap.dataset.cropped;
-  parkingMap.setAttribute("aria-label", ui("デモ駐車区画", "Demo parking spaces"));
+  parkingMap.setAttribute("aria-label", ui("参考の駐車区画", "Sample parking spaces"));
   parkingMap.replaceChildren();
   parkingMap.className = "parking-map parking-map--demo";
   parkingMap.removeAttribute("style");
-  parkingMapTitle.textContent = ui("デモ区画図", "Demo parking spaces");
+  parkingMapTitle.textContent = ui("参考の駐車場マップ", "Sample parking map");
 
   spaces.forEach((space) => {
     const item = document.createElement("div");
@@ -2270,13 +2270,13 @@ function updateWaitingScreen() {
   waitingFacilityName.textContent = getFacilityDisplayName(facility);
   waitingFacilityAddress.textContent = isPrivateTestFacility(facility)
     ? ui(
-        "現在地を実験用所在地として端末内に登録（実施設の住所ではありません）",
-        "Current position is the device-local test location, not the real facility address",
+        "この端末で設定する場所（施設の住所ではありません）",
+        "Location set on this device (not the facility address)",
       )
     : (facility.address || ui("住所未登録", "Address not registered"));
   waitingSpaceType.textContent = getSpaceTypeLabel(state.requestedSpaceType);
   waitingPriority.textContent = RANDOM_GUIDANCE_FACILITY_IDS.has(facility.id)
-    ? ui("ランダム", "Random")
+    ? ui("おまかせ", "Suggested")
     : getPriorityLabel(state.selectedPriority);
   const destinationName = getSelectedDestinationName();
   waitingDestinationRow.hidden = !destinationName;
@@ -2358,12 +2358,12 @@ function updateProximityStatus() {
   if (distanceKm === null) {
     setProximityMessage(isPrivateTestFacility(state.selectedFacility)
       ? ui(
-          "現在地をこの端末に実験地点として登録すると、250m接近時の自動案内を利用できます。",
-          "Save the current position as the test point to use automatic guidance within 250 m.",
+          "現在地を登録すると、近づいたときに案内を開始できます。",
+          "Save your current location to start guidance automatically as you approach.",
         )
       : ui(
-          "この施設の位置座標を確認できないため、自動案内を開始できません。",
-          "Automatic guidance cannot start because this facility does not have a confirmed coordinate.",
+          "施設の場所が確認できないため、自動案内を開始できません。",
+          "Guidance cannot start because the facility location is unavailable.",
         ));
     return;
   }
@@ -2739,14 +2739,14 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
           `About ${Math.round(state.recommendedSpace.entranceDistanceMeters)} m to entrance · sample`,
         );
       } else if (!prepared.entrance) {
-        spaceDescription.textContent = ui("入口が未登録のため距離は未表示です。", "Distance unavailable: no entrance registered.");
+        spaceDescription.textContent = ui("入口までの距離を表示できません。", "Distance to the entrance is unavailable.");
       } else if (Number.isFinite(state.recommendedSpace.entranceDistanceMeters)) {
         spaceDescription.textContent = ui(
           `${prepared.entrance.name || "建物入口"}まで約${Math.round(state.recommendedSpace.entranceDistanceMeters)}m`,
           `About ${Math.round(state.recommendedSpace.entranceDistanceMeters)} m to ${prepared.entrance.name || "entrance"}`,
         );
       } else {
-        spaceDescription.textContent = ui("レイアウト上の入口との距離で選択", "Selected by layout distance to entrance");
+        spaceDescription.textContent = ui("区画の位置をもとに案内しています。", "Guidance uses the space location.");
       }
 
       updatedTime.textContent = new Intl.DateTimeFormat(isEnglish() ? "en-US" : "ja-JP", {

@@ -5,9 +5,9 @@
   const NAMES = ["未確認", "空き", "駐車中", "障害物あり"];
   const MAX_EVENTS = 4000;
   const RECORDING_FACILITIES = Object.freeze({
-    "home-test-001": "実験用駐車場（自宅駐車場リアルタイム用）",
-    "home-video-demo-001": "実験用駐車場（自宅駐車場録画用）",
-    "nikko-test-001": "道の駅日光（日光街道ニコニコ本陣）",
+    "home-test-001": "自宅駐車場の記録",
+    "home-video-demo-001": "自宅駐車場の録画",
+    "nikko-test-001": "道の駅日光",
   });
   const qs = selector => document.querySelector(selector);
   let payload, current = 0, previousTick = 0, timer = null;
@@ -68,7 +68,7 @@
       const item = document.createElement("div");
       item.className = "space " + VALID[code];
       const heading = document.createElement("b");
-      heading.textContent = uid;
+      heading.textContent = "区画 " + (i + 1); // 録画データの内部IDではなく一覧番号を表示
       const label = document.createElement("span");
       label.textContent = NAMES[code];
       item.append(heading, label);

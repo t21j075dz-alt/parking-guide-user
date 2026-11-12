@@ -71,3 +71,9 @@ test("録画再生画面は過去の結果と明示し、内部IDを要約に出
   assert.match(js, /録画（現在の空きではありません）/);
   assert.doesNotMatch(js, /" \(" \+ payload\.facility_id/);
 });
+
+test("録画中の各区画は内部IDではなく一覧番号を表示する", () => {
+  const js = read("recorded-demo.js");
+  assert.match(js, /heading\.textContent = "区画 " \+ \(i \+ 1\)/);
+  assert.doesNotMatch(js, /heading\.textContent = uid;/);
+});
