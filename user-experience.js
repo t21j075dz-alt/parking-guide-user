@@ -98,11 +98,14 @@
   function watchText(selector, kind) {
     const node = $(selector);
     if (!node) return;
+    const normalize = () => {
       const before = node.textContent || "";
       const after = formatStatus(before, kind);
       if (after !== before) node.textContent = after;
+    };
     const observer = new MutationObserver(normalize);
     observer.observe(node, { childList: true, characterData: true, subtree: true });
+    normalize();
   }
 
   function tidyFacilities() {
@@ -155,6 +158,7 @@
   const applyHeadings = () => pageHeadings.forEach(([selector, ja, en]) => {
     const heading = $(selector);
     if (heading) heading.textContent = t(ja, en);
+  });
   applyHeadings();
 
   // 写真は確認したいときだけ開く。撮影画像の取得や安全判定は変更しない。
@@ -287,10 +291,6 @@
     new MutationObserver(tidyFacilities).observe(list, { childList: true, subtree: true });
     tidyFacilities();
   }
-    const normalize = () => {
-    };
-    normalize();
-  });
 
   const screens = [...document.querySelectorAll("[data-screen]")];
   const updateScreen = () => {
