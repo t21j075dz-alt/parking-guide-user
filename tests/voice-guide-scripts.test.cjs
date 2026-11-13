@@ -84,6 +84,6 @@ test("all 38 English announcements retain their dynamic parking labels and punct
   for (const id of ["space_found", "space_alternative", "retry_found", "parked_location"]) {
     const text = bank.build(id,values,"en-US").text;
     assert.equal(text.split("B 42").length - 1, 2, id);
-    assert.match(text,/B 42\\. I repeat, B 42\\./,id);
+    assert.ok(text.includes("B 42. I repeat, B 42."),id);
   }
 });
