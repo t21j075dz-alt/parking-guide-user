@@ -144,6 +144,13 @@ test("日光の録画は映像内の区画だけ判定し、画角外と実カ�
   let applied=client.apply("nikko-test-001",spaces);
   assert.equal(applied[0].occupancyStatus,"available");
   assert.equal(applied[0].occupancyPhase,"available");
+  const excluded=client.apply("nikko-test-001",[
+    {...spaces[0],sourceObject:{cameraCoverage:"outside"}}
+  ])[0];
+  assert.equal(excluded.occupancyStatus,"unknown",
+    "manual outside-camera label must override even a fresh available row");
+  assert.equal(excluded.isMonitoringTarget,false);
+  assert.equal(excluded.isOccupied,true);
   assert.equal(applied[1].occupancyStatus,"unknown");
   assert.equal(applied[2].occupancyStatus,"unknown");
   assert.equal(applied[1].isOccupied,true);
