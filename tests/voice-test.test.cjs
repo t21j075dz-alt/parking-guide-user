@@ -209,3 +209,10 @@ test("English audio test covers every Japanese case and uses current example lab
     {space:"C 29"},"en-US").text;
   assert.equal(assigned.split("C 29").length-1,2);
 });
+
+test("English parking row and area labels are pronounced without Japanese suffixes", () => {
+  const {run}=testApp();
+  assert.equal(run('getSpokenSpaceId({sourceObject:{spaceGroup:"B",spaceGroupKind:"row",spaceNumber:"042"}},"en-US")'),"Row B, space 42");
+  assert.equal(run('getSpokenSpaceId({sourceObject:{spaceGroup:"C",spaceGroupKind:"area",spaceNumber:"009"}},"en-GB")'),"Area C, space 9");
+  assert.equal(run('getSpokenSpaceId({sourceObject:{spaceNumber:"007"}},"en-US")'),"7");
+});
