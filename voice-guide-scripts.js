@@ -127,7 +127,7 @@ window.ParkingVoiceGuideScripts = (() => {
         if (!value) throw new Error("Voice value missing: " + placeholder[1]);
         parts.push({ role: placeholder[1], text: value });
       } else {
-        const phrases = piece.match(english ? /[^.!?]+[.!?]?/g : /[^。！？]+[。！？]?/g) || [];
+        const phrases = piece.match(english ? /[^.!?]+[.!?]?|[.!?]+/g : /[^。！？]+[。！？]?/g) || [];
         for (const phrase of phrases)
           if (phrase.trim()) parts.push({ role: "fixed", text: phrase });
       }
