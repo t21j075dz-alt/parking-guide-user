@@ -788,7 +788,7 @@ function updateParkingArrivalPanel() {
         if (state.voiceEnabled) {
           if (recorded) {
             // 録画の注記は画面に残し、通常のナビと同じ調子で停車検知を案内する。
-            if (getGuidanceSpeechLocale() === "ja-JP")
+            if (["ja-JP", "en-US", "en-GB"].includes(getGuidanceSpeechLocale()))
               speakPreparedScript("arrival_video_confirm");
             else
               speakText(ui("ご案内した駐車枠に車を検知しました。安全に停車してから画面をご確認ください。",
@@ -931,16 +931,8 @@ function confirmOwnParking() {
   if (parkedMapSlot && parkingMapSection) parkedMapSlot.append(parkingMapSection);
   renderParkingMap(state.currentSpaces, space, state.currentLayout);
   if (state.voiceEnabled) {
-    if (recorded) {
-      // 録画の結果表示と現在の駐車位置を保存しない制御は継続する。
-      // 音声は他の施設と同じ駐車完了の案内を使う。
-      if (getGuidanceSpeechLocale() === "ja-JP")
-        speakPreparedScript("parking_completed", {}, { userGesture: true });
-      else
-        speakText(ui("駐車が完了しました。ご利用ありがとうございました。",
-          "Parking completed. Thank you for using the parking guide."),
-          { userGesture: true });
-    } else if (getGuidanceSpeechLocale() === "ja-JP") {
+    if (["ja-JP", "en-US", "en-GB"].includes(getGuidanceSpeechLocale())) {
+      // 録画利用時も同一の完了台本を使用し、言語別の音声を選ぶ。
       speakPreparedScript("parking_completed", {}, { userGesture: true });
     } else {
       speakText(ui("駐車完了を記録しました。出庫時は出庫ボタンを押してください。",
@@ -2166,7 +2158,8 @@ function announceClosingTimeIfNeeded() {
   if(document.hidden || !state.voiceEnabled || !["waiting","result"].includes(state.currentScreen))return false;
   const key=getClosingAnnouncementKey();
   if(!key || key===lastClosingAnnouncementKey || window.speechSynthesis?.speaking)return false;
-  const spoken = getGuidanceSpeechLocale() === "ja-JP" && window.ParkingVoiceGuideScripts
+  const locale = getGuidanceSpeechLocale();
+  const spoken = (locale === "ja-JP" || /^en(?:-|$)/i.test(locale)) && window.ParkingVoiceGuideScripts
     ? speakPreparedScript("closing_soon")
     : speakText(getClosingAnnouncement());
   if(spoken)lastClosingAnnouncementKey=key;
@@ -2723,7 +2716,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
         beginLiveUpdates(facility);
         updateParkingArrivalPanel();
         if (!state.voiceEnabled) {
-          const script = getGuidanceSpeechLocale() === "ja-JP" ? parkingScript() : null;
+          const script = ["ja-JP","en-US","en-GB"].includes(getGuidanceSpeechLocale()) ? parkingScript() : null;
           publishGuidanceTranscript(script?.text || getCurrentGuidanceMessage(),
             ui("音声案内OFF・文章で確認", "Voice off – read guidance"));
         }
@@ -2769,7 +2762,7 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
       state.lastSearchWasRetry = fromRetry;
 
       if (!state.voiceEnabled) {
-        const script = getGuidanceSpeechLocale() === "ja-JP" ? parkingScript() : null;
+        const script = ["ja-JP","en-US","en-GB"].includes(getGuidanceSpeechLocale()) ? parkingScript() : null;
         publishGuidanceTranscript(script?.text || getCurrentGuidanceMessage(),
           ui("音声案内OFF・文章で確認", "Voice off – read guidance"));
       } else {
@@ -3882,13 +3875,14 @@ async function speakTextWhenVoicesReady(message, requestId = ++speechRequestId, 
 function makePreparedScript(id, values = {}) {
   const bank = window.ParkingVoiceGuideScripts;
   if (!bank) return null;
-  const result = bank.build(id, values);
+  const locale = getGuidanceSpeechLocale();
+  const result = bank.build(id, values, locale);
   const prefixes = [];
   if (getOperatingStatus()?.closingSoon && id !== "closing_soon")
-    prefixes.push(...bank.build("closing_soon").parts);
+    prefixes.push(...bank.build("closing_soon", {}, locale).parts);
   if (state.selectedFacility?.id === VOICE_TEST_FACILITY_ID &&
       ["start_single", "start_complex", "space_found", "space_none", "retry_found", "retry_none"].includes(id))
-    prefixes.unshift(...bank.build("voice_test_notice").parts);
+    prefixes.unshift(...bank.build("voice_test_notice", {}, locale).parts);
   const sourceParts = [...prefixes, ...result.parts];
   const parts = sourceParts.map(x => x.text);
   const roles = sourceParts.map(x => x.role);
@@ -3901,31 +3895,38 @@ function speakPreparedScript(id, values = {}, options = {}) {
 }
 function startScript() {
   if (!window.ParkingVoiceGuideScripts || !state.selectedFacility) return null;
-  const facility = getFacilitySpokenName("ja-JP") || "目的施設";
-  const destination = state.selectedDestination?.nameReading || state.selectedDestination?.name;
+  const locale = getGuidanceSpeechLocale();
+  const facility = getFacilitySpokenName(locale) || (locale === "ja-JP" ? "目的施設" : "the destination");
+  const destination = (locale === "ja-JP" && state.selectedDestination?.nameReading)
+    || state.selectedDestination?.name;
   const level = getFacilityOccupancy(state.selectedFacility).level;
-  const occupancy = {
-    open:"比較的空いています",busy:"混雑しています",
+  const messages = locale === "ja-JP" ? {
+    open:"比較的空いています", busy:"混雑しています",
     full:"満車と判定されています", unknown:"空き状況を確認できていません",
     closed:"営業時間外です", rest:"休業しています",
-  }[level] || "空き状況を確認できていません";
+  } : {
+    open:"spaces are available", busy:"busy", full:"full",
+    unknown:"availability is not confirmed", closed:"closed", rest:"closed today",
+  };
+  const occupancy = messages[level] || messages.unknown;
   return destination
     ? makePreparedScript("start_complex", { "目的施設名":facility, "目的店舗名":destination, "混雑状況":occupancy })
     : makePreparedScript("start_single", { "目的店舗名":facility, "混雑状況":occupancy });
 }
 function parkingScript() {
+  const locale = getGuidanceSpeechLocale();
   if (state.searchOutcome === "not-found") {
     const level = getFacilityOccupancy(state.selectedFacility).level;
     if (level === "rest" || level === "closed")
       return makePreparedScript(level === "rest" ? "rest" : "closed_unknown", {
-        "施設名":getFacilitySpokenName("ja-JP") || "目的施設",
+        "施設名":getFacilitySpokenName(locale) || (locale === "ja-JP" ? "目的施設" : "the destination"),
       });
     if (level === "unknown") return makePreparedScript("recognition_unknown");
     return makePreparedScript(state.lastSearchWasRetry ? "retry_none" : "space_none");
   }
   if (!state.recommendedSpace) return null;
   return makePreparedScript(state.lastSearchWasRetry ? "retry_found" : "space_found", {
-    "駐車枠":getSpokenSpaceId(state.recommendedSpace, "ja-JP"),
+    "駐車枠":getSpokenSpaceId(state.recommendedSpace, locale),
   });
 }
 
@@ -4008,7 +4009,8 @@ function getAutomaticGuidanceStartMessage(locale = getGuidanceSpeechLocale()) {
 }
 
 function speakAutomaticGuidanceStartMessage({ userGesture = false } = {}) {
-  const script = getGuidanceSpeechLocale() === "ja-JP" ? startScript() : null;
+  const locale = getGuidanceSpeechLocale();
+  const script = locale === "ja-JP" || /^en(?:-|$)/i.test(locale) ? startScript() : null;
   // ナビ開始時点では施設から離れている可能性がある。交通規制はまだ読まない。
   const spoken = script
     ? speakText(script.text, { userGesture, parts:script.parts, roles:script.roles })
@@ -4069,14 +4071,16 @@ function isNearSelectedFacilityForSafety() {
 
 /** 施設接近時だけ交通規制を案内し、続けて通常の駐車枠案内を行う。 */
 function speakCurrentGuidance() {
-  const script = getGuidanceSpeechLocale() === "ja-JP" ? parkingScript() : null;
+  const locale = getGuidanceSpeechLocale();
+  const script = ["ja-JP","en-US","en-GB"].includes(locale) ? parkingScript() : null;
   const warnings = state.voiceEnabled && isNearSelectedFacilityForSafety()
     ? [...(window.ParkingTrafficSafety?.takeStaticWarnings?.("approach") || []),
        ...(window.ParkingTrafficSafety?.takeStaticWarnings?.("onsite") || [])] : [];
-  const prefix = warnings.join("");
+  const spokenWarnings = locale === "ja-JP" ? warnings : warnings.map(message => message.trim() + " ");
+  const prefix = spokenWarnings.join("");
   const spoken = script
-    ? speakText(prefix + script.text, { parts:[...warnings, ...script.parts],
-        roles:[...warnings.map(() => "fixed"), ...script.roles] })
+    ? speakText(prefix + script.text, { parts:[...spokenWarnings, ...script.parts],
+        roles:[...spokenWarnings.map(() => "fixed"), ...script.roles] })
     : speakText(prefix + getCurrentGuidanceMessage());
   if(spoken)lastClosingAnnouncementKey=getClosingAnnouncementKey();
   return spoken;
