@@ -87,6 +87,12 @@ window.ParkingLiveStatus = (() => {
     }
     const now = Date.now();
     return spaces.map((space) => {
+      // 管理マップで「カメラ範囲外」とした区画は、過去の録画行が残っていても
+      // 必ず未確認にする。空き案内・録画の満空集計へ混ぜない。
+      if(facilityId==="nikko-test-001" && space.sourceObject?.cameraCoverage==="outside"){
+        return {...space,occupancyStatus:"unknown",occupancyPhase:null,
+          isOccupied:true,isMonitoringTarget:false,liveCheckedAt:null};
+      }
       const row = current.rows.get(space.uid);
       const checkedAt = Date.parse(row?.checked_at || "");
       const fresh = Number.isFinite(checkedAt) && checkedAt <= now + 5000

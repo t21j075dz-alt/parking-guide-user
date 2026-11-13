@@ -1942,21 +1942,23 @@ function renderRegisteredLayout(layout, recommendedSpace) {
         item.classList.toggle("is-blocked", displayStatus === "blocked");
         item.classList.toggle("is-recommended", isRecommended && (!isOccupied || isParked));
         item.classList.toggle("is-parked", isParked);
-        const phase = isRecordedReplayFacility(state.selectedFacility)
+        const cameraOutside = state.selectedFacility?.id === NIKKO_REPLAY_FACILITY_ID
+          && object.cameraCoverage === "outside";
+        const phase = !cameraOutside && isRecordedReplayFacility(state.selectedFacility)
           ? visibleSpacePhases.get(object.uid) : null;
-        if (phase && videoPhaseLabels[phase]) {
+        if (cameraOutside || (phase && videoPhaseLabels[phase])) {
           const phaseTag = document.createElement("span");
           phaseTag.className = "replay-phase-badge";
-          phaseTag.dataset.phase = phase;
-          phaseTag.textContent = videoPhaseLabels[phase];
+          phaseTag.dataset.phase = cameraOutside ? "outside" : phase;
+          phaseTag.textContent = cameraOutside ? ui("カメラ外", "Outside camera") : videoPhaseLabels[phase];
           phaseTag.setAttribute("aria-hidden", "true");
           item.append(phaseTag);
-          item.dataset.replayPhase = phase;
+          item.dataset.replayPhase = cameraOutside ? "outside" : phase;
         }
         item.setAttribute("role", "listitem");
         item.setAttribute(
           "aria-label",
-          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isParked ? ui("自分の駐車位置","Your parked space") : phase && videoPhaseLabels[phase] ? videoPhaseLabels[phase] : isRecommended && !isOccupied ? ui("案内先","Destination") : displayStatus === "occupied" ? ui("使用中","Occupied") : displayStatus === "blocked" ? ui("障害物あり","Blocked") : displayStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
+          `${mapDisplay.displaySpaceName(object) || ui("区画","Space")}、${isParked ? ui("自分の駐車位置","Your parked space") : cameraOutside ? ui("カメラ範囲外・空き未確認","Outside camera · availability unknown") : phase && videoPhaseLabels[phase] ? videoPhaseLabels[phase] : isRecommended && !isOccupied ? ui("案内先","Destination") : displayStatus === "occupied" ? ui("使用中","Occupied") : displayStatus === "blocked" ? ui("障害物あり","Blocked") : displayStatus === "unavailable" ? ui("利用不可","Unavailable") : isOccupied ? ui("未確認","Unknown") : ui("空き","Available")}`,
         );
       } else if (object.objectType === "buildingEntrance") {
         mapDisplay.appendEntrance(item,object);
