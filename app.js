@@ -2795,6 +2795,18 @@ function getSpokenSpaceId(space, locale = getGuidanceSpeechLocale()) {
   if (locale === "ja-JP" && typeof japaneseSpaceReading === "function") {
     return space.sourceObject?.spaceNumberReading || space.sourceObject?.nameReading || japaneseSpaceReading(raw);
   }
+  if (/^en(?:-|$)/i.test(locale) && space.sourceObject) {
+    // 日本語の「A列 12」を英語の音声へそのまま渡さない。
+    const object = space.sourceObject;
+    const number = mapDisplay.spaceNumber(object);
+    const group = String(object.spaceGroup || "").normalize("NFKC")
+      .trim().replace(/(?:区画|列)$/u, "");
+    if (group) {
+      const label = object.spaceGroupKind === "area" ? "Area" : "Row";
+      return `${label} ${group}, space ${number}`;
+    }
+    return number;
+  }
   return mapDisplay.normalizeNumber(raw);
 }
 
@@ -4012,8 +4024,8 @@ function getParkingGuidanceMessage(locale = getGuidanceSpeechLocale(), options =
   const approaching = (options.autoTriggered ?? state.lastSearchWasAuto) && facility;
   const messages = {
     "ja-JP": `${approaching ? `${facility}にせっきんしました。` : facility ? `${facility}のごあんないです。` : ""}${crowded ? `こんざつしています。あきは、のこり${remaining}くかくです。` : ""}ごあんないするくかくは、${number}ばんです。くりかえします。${number}ばんです。しゅういのあんぜんと、げんちのひょうじをかくにんしてください。くかくがみつからないばあいは、こうどうでまつことなく、あんぜんにつうかしてください。`,
-    "en-US": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is number ${number}. I repeat, number ${number}. Check your surroundings and on-site signs before parking. If no space can be found, do not queue on the public road; safely continue past the entrance.`,
-    "en-GB": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is number ${number}. I repeat, number ${number}. Check your surroundings and on-site signs before parking. If no space can be found, do not queue on the public road; safely continue past the entrance.`,
+    "en-US": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is ${number}. I repeat, ${number}. Check your surroundings and on-site signs before parking. If no space can be found, do not queue on the public road; safely continue past the entrance.`,
+    "en-GB": `${approaching ? `You are approaching ${facility}. ` : facility ? `Parking guidance for ${facility}. ` : ""}Your recommended parking space is ${number}. I repeat, ${number}. Check your surroundings and on-site signs before parking. If no space can be found, do not queue on the public road; safely continue past the entrance.`,
     "zh-CN": `${approaching ? `已接近${facility}。` : facility ? `为您提供${facility}的停车位指引。` : ""}推荐的停车位是${number}号。重复一遍，${number}号。请确认周围安全及现场标识后停车。若找不到车位，请勿在公共道路排队等候，确认安全后继续通过。`,
     "ko-KR": `${approaching ? `${facility}에 가까워졌습니다. ` : facility ? `${facility}의 주차 공간을 안내합니다. ` : ""}안내할 주차 공간은 ${number}번입니다. 다시 말씀드립니다. ${number}번입니다. 주변의 안전과 현장 표지판을 확인한 후 주차해 주세요. 주차 공간이 없으면 공공 도로에서 기다리지 말고 안전하게 통과해 주세요.`,
     "es-ES": `${approaching ? `Se está acercando a ${facility}. ` : facility ? `Guía de aparcamiento para ${facility}. ` : ""}La plaza recomendada es la número ${number}. Repito, número ${number}. Compruebe la seguridad de su entorno y las señales antes de aparcar. Si no encuentra una plaza, no espere en la vía pública; continúe de forma segura.`,
@@ -4093,7 +4105,7 @@ function voiceTestScript(item) {
   const locale = getGuidanceSpeechLocale();
   const spokenSpace = space ? getSpokenSpaceId(space, locale) : (locale === "ja-JP" ? "ご" : "5");
   return bank.build(item, {
-    facility: getFacilitySpokenName(locale) || (locale === "ja-JP" ? "テスト施設" : "Test facility"),
+    facility: locale === "ja-JP" ? getFacilitySpokenName(locale) || "テスト施設" : "Test facility",
     space: spokenSpace,
     destination: locale === "ja-JP" ? "サンプル店舗" : "Sample store",
   }, locale);
