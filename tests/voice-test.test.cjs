@@ -190,3 +190,22 @@ test("保存済み音声は最後のMP3のendedでのみ完了する",async()=>{
   lastSource.onEnded();
   assert.equal(context.window.__finished,1);
 });
+
+test("English audio test covers every Japanese case and uses current example labels", () => {
+  const ctx = vm.createContext({window:{}});
+  loadScript(ctx,"voice-guide-scripts.js");
+  loadScript(ctx,"voice-test-scenarios.js");
+  const api=ctx.window.ParkingVoiceTestScenarios;
+  assert.equal(api.scenarios("en-US").length,38);
+  assert.equal(api.scenarios("en-GB").length,38);
+  for (const item of api.scenarios("en-US")) {
+    const result=api.build(item,{
+      facility:"Example mall",space:"C 29",destination:"Example store"
+    },"en-US");
+    assert.doesNotMatch(result.text,/［[^］]+］|テスト施設/);
+    assert.equal(result.parts,null);
+  }
+  const assigned=api.build(api.scenarios("en-US").find(x=>x.id==="space_found"),
+    {space:"C 29"},"en-US").text;
+  assert.equal(assigned.split("C 29").length-1,2);
+});
