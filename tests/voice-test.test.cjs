@@ -257,3 +257,40 @@ test("combined parking-space audio missing: reuse letter and number clips and re
   sources[sources.length-1].onEnded();
   assert.equal(run("window.__done"),1);
 });
+
+test("English live parking guidance uses the same 38-script bank as the voice test", () => {
+  const {run,context}=testApp();
+  run(`state.language="en"; state.guidanceVoiceLanguage="en-GB";
+    state.selectedFacility={id:"example",name:"Example mall"};
+    state.selectedDestination={name:"Sample store",nameReading:"さんぷる"};
+    state.searchOutcome="found"; state.lastSearchWasRetry=false;
+    state.lastSearchWasAuto=false; state.userLocation=null;
+    state.recommendedSpace={id:"B12",sourceObject:{spaceNumber:"012",spaceGroup:"B",spaceGroupKind:"row"}};
+    getFacilityOccupancy=()=>({level:"open"}); getOperatingStatus=()=>null;`);
+  const start=run("startScript().text");
+  assert.match(start,/Parking guidance is set for Sample store at Example mall/);
+  assert.match(start,/spaces are available/);
+  assert.doesNotMatch(start,/さんぷる|駐車/);
+  const parking=run("parkingScript().text");
+  assert.match(parking,/Row B, space 12/);
+  assert.equal(parking.split("Row B, space 12").length-1,2);
+  assert.doesNotMatch(parking,/まもなく|繰り返します/);
+  assert.equal(run("speakCurrentGuidance()"),true);
+  assert.equal(context.window.__currentVoice.message,parking);
+  run('state.searchOutcome="not-found"; state.recommendedSpace=null;');
+  const unavailable=run("parkingScript().text");
+  assert.match(unavailable,/No parking space is available/);
+  assert.doesNotMatch(unavailable,/空き枠/);
+});
+
+test("English guidance displays the bilingual script even with audio disabled", () => {
+  const {run}=testApp();
+  run(`state.language="en"; state.guidanceVoiceLanguage="en-US";
+    state.selectedFacility={id:"example",name:"Test centre"};
+    state.searchOutcome="not-found"; state.recommendedSpace=null;
+    state.lastSearchWasRetry=true;
+    getFacilityOccupancy=()=>({level:"open"});
+    getOperatingStatus=()=>null;`);
+  assert.match(run("parkingScript().text"),/Sorry, no parking space is available/);
+  assert.match(run("makePreparedScript('closing_soon').text"),/The facility will close within one hour/);
+});
