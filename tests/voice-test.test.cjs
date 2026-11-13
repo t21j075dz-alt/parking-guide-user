@@ -216,3 +216,44 @@ test("English parking row and area labels are pronounced without Japanese suffix
   assert.equal(run('getSpokenSpaceId({sourceObject:{spaceGroup:"C",spaceGroupKind:"area",spaceNumber:"009"}},"en-GB")'),"Area C, space 9");
   assert.equal(run('getSpokenSpaceId({sourceObject:{spaceNumber:"007"}},"en-US")'),"7");
 });
+
+test("combined parking-space audio missing: reuse letter and number clips and replay twice", async () => {
+  const {run,context}=testApp();
+  loadScript(context,"voice-guide-playback.js");
+  const requests=[], sources=[];
+  const audioContext={
+    currentTime:0,state:"running",destination:{},
+    decodeAudioData:async()=>({duration:.15}),
+    createBufferSource(){
+      const source={
+        playbackRate:{setValueAtTime(){}},connect(){},start(){},stop(){},
+        addEventListener(event,handler){if(event==="ended")this.onEnded=handler;}
+      };
+      sources.push(source);
+      return source;
+    },
+    createGain(){return {gain:{setValueAtTime(){}},connect(){}};},
+    close:async()=>{},
+  };
+  context.window.ParkingVoiceAudioCache={
+    async get(text){
+      requests.push(text);
+      if(text==="えー、れつ じゅうに") throw new Error("not prepared");
+      return {bytes:new ArrayBuffer(300),source:"saved"};
+    },
+  };
+  context.window.__route={context:audioContext,oscillator:{stop(){}},voiceSources:[]};
+  run("speechRequestId=18; activeSpeechAudioRoute=window.__route; window.__done=0;");
+  const played=await run(`playCloudVoiceAudio(
+    "前えー、れつ じゅうに後えー、れつ じゅうに",18,false,
+    ["前","えー、れつ じゅうに","後","えー、れつ じゅうに"],
+    ["fixed","駐車枠","fixed","駐車枠"],()=>window.__done++
+  )`);
+  assert.equal(played,true);
+  assert.equal(sources.length,8);
+  for(const text of ["えー、れつ じゅうに","えー","れつ","じゅうに"])
+    assert.equal(requests.filter(x=>x===text).length,1,text);
+  assert.equal(run("window.__done"),0);
+  sources[sources.length-1].onEnded();
+  assert.equal(run("window.__done"),1);
+});

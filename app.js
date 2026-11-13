@@ -3449,27 +3449,41 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
     setCloudVoiceDiagnostic(ui("保存済みの音声を確認しています。", "Checking saved audio."));
     const clips = [];
     let fromSavedParts = false;
+    let playbackParts = parts;
     if (Array.isArray(parts) && parts.length > 0) {
       // 保存済み部品だけで構築する。1つでも不足するなら従来の全文合成へ戻す。
       // 案内の最中に大量の部品を生成して遅延させない。
       try {
         // 重複するエリア名・番号は1回だけ取得し、個々の音声は並列で取り出す。
         // 再生の順序は元のpartsで維持する（同じ駐車枠を2回案内する仕様）。
-        const unique = [...new Set(parts)];
-        // 施設名・店舗名・駐車枠番号・固定文を共有MP3として組み立てる。
-        // 準備完了リストに無い部品は通信せず端末音声に切り替える。
-        // 通信が弱い場所ではMP3を待ち続けず、端末音声へ素早く切り替える。
-        // 保存済みの部品なら即座に再生でき、時間切れの取得は中止する。
+        // 既存の「A列12」の全文部品があればそれを優先する。
+        // 欠けている駐車枠だけ「えー」「れつ」「じゅうに」などを組み立てる。
+        // 施設名や注意文の独自の読みは分割しない。
+        const requests = new Map();
+        parts.forEach((piece, index) => {
+          const role = roles?.[index] || "fixed";
+          const key = role + "\u0000" + piece;
+          if (!requests.has(key)) requests.set(key, { piece, role });
+        });
+        const savedOptions = { signal: controller.signal, cachedOnly: true, remote: true };
+        async function fetchSpaceOrOriginal({ piece, role }) {
+          try {
+            return [{ text: piece, audio: await window.ParkingVoiceAudioCache.get(piece, savedOptions) }];
+          } catch (error) {
+            if (role !== "駐車枠" || controller.signal.aborted) throw error;
+            const fragments = window.ParkingVoiceAssembler?.savedSpacePieces?.(piece) || [piece];
+            if (fragments.length < 2) throw error;
+            const audio = await Promise.all(fragments.map(fragment =>
+              window.ParkingVoiceAudioCache.get(fragment, savedOptions)));
+            return fragments.map((text, index) => ({ text, audio: audio[index] }));
+          }
+        }
         let preparationTimer = null;
         let saved;
         try {
           saved = await Promise.race([
-            Promise.all(unique.map(async piece => [
-              piece,
-              await window.ParkingVoiceAudioCache.get(piece, {
-                signal: controller.signal, cachedOnly: true, remote: true,
-              }),
-            ])),
+            Promise.all([...requests].map(async ([key, request]) =>
+              [key, await fetchSpaceOrOriginal(request)])),
             new Promise((_, reject) => {
               preparationTimer = setTimeout(() => {
                 controller.abort();
@@ -3481,7 +3495,14 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
           if (preparationTimer !== null) clearTimeout(preparationTimer);
         }
         const copies = new Map(saved);
-        clips.push(...parts.map(piece => copies.get(piece)));
+        playbackParts = [];
+        parts.forEach((piece, index) => {
+          const segments = copies.get((roles?.[index] || "fixed") + "\u0000" + piece);
+          for (const segment of segments) {
+            clips.push(segment.audio);
+            playbackParts.push(segment.text);
+          }
+        });
         fromSavedParts = true;
       } catch {
         clips.length = 0;
@@ -3513,7 +3534,7 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
     // iOSで短いMP3を個別予約再生すると先頭だけで終了する場合がある。
     // 全部品をひとつのAudioBufferへ連結し、1音源で最後まで再生する。
     const joined = fromSavedParts
-      ? window.ParkingContinuousVoice?.join?.(route.context, buffers, parts)
+      ? window.ParkingContinuousVoice?.join?.(route.context, buffers, playbackParts)
       : null;
     const playbackBuffers = joined ? [joined] : buffers;
     route.voiceSources = [];
@@ -3543,7 +3564,7 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
       source.start(cursor);
       // 「繰り返します」の後は聞き逃し防止のため長めに区切る。
       // 名前や番号の前後は途切れないようにする。
-      const segment = parts?.[index] || "";
+      const segment = playbackParts?.[index] || "";
       const pause = /繰り返します。|くりかえします。/.test(segment) ? 0.38
         : /[。！？]$/.test(segment) ? 0.18 : 0;
       cursor += buffer.duration / rate + (fromSavedParts && !joined ? pause : 0);
@@ -3946,9 +3967,12 @@ function preloadPreparedGuidanceClips() {
     ? normalizeJapaneseSpeech(part) : part;
   // 重要な到着案内の固定文を、最大48件の区画番号より先に準備する。
   // 言葉遣い・施設名・区画番号の読み自体には変更を加えない。
+  const reusableNumberParts = numberParts.flatMap(part =>
+    window.ParkingVoiceAssembler?.savedSpacePieces?.(normalize(part)) || [normalize(part)]);
   const parts = [...new Set([
     ...scripts.slice(0, 1).flatMap(script => script.parts),
     ...arrivalFixedParts,
+    ...reusableNumberParts,
     ...numberParts,
     ...scripts.slice(1).flatMap(script => script.parts),
   ].map(normalize))].filter(Boolean);

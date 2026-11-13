@@ -67,3 +67,23 @@ test("long facility and tenant names stay intact within an assembled sentence", 
   assert.ok(pieces.some(p=>p.text.includes(name)));
   assert.equal(pieces.map(p=>p.text).join(""),script.text);
 });
+
+test("stored A-Z and 1-99 clips can reconstruct common row and area parking IDs", () => {
+  const ctx=vm.createContext({window:{},FACILITY_CATALOG:[]});
+  vm.runInContext(fs.readFileSync(path.join(root,"speech-readings.js"),"utf8"),ctx);
+  vm.runInContext(fs.readFileSync(path.join(root,"voice-guide-playback.js"),"utf8"),ctx);
+  const split=ctx.window.ParkingVoiceAssembler.savedSpacePieces;
+  const samples=[
+    ["A列 12",["えー","れつ","じゅうに"]],
+    ["B区画 7",["びー","くかく","なな"]],
+    ["C9",["しー","きゅう"]],
+    ["Z列 99",["ぜっと","れつ","きゅうじゅうきゅう"]],
+    ["12",["じゅうに"]],
+  ];
+  for(const [label, expected] of samples) {
+    const spoken=vm.runInContext("japaneseSpaceReading("+JSON.stringify(label)+")",ctx);
+    assert.deepEqual(Array.from(split(spoken)),expected,label);
+  }
+  // 特別な読み仮名は誤変換せず、元の保存済み音声だけを検索する。
+  assert.deepEqual(Array.from(split("独自区画の名前")),["独自区画の名前"]);
+});
