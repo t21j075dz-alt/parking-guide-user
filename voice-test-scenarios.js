@@ -147,18 +147,31 @@ window.ParkingVoiceTestScenarios = (() => {
     const language = languageKey(locale);
     return CASES.filter(item =>
       (group === "all" || item.group === group) &&
-      (language === "ja" || Boolean(EXAMPLES[item.id]?.[language]))
+      (language === "ja" || language === "en" || Boolean(EXAMPLES[item.id]?.[language]))
     );
   }
-  function build(item, { facility = "テスト施設", space = "ご", destination = "サンプル店舗" } = {}, locale = "ja-JP") {
+  function build(item, { facility = "", space = "", destination = "" } = {}, locale = "ja-JP") {
     if (!item?.id || !CASES.some(entry => entry.id === item.id)) throw new Error("音声テストの種類が正しくありません。");
     const language = languageKey(locale);
-    if (language !== "ja") {
+    facility ||= language === "en" ? "Test facility" : "テスト施設";
+    space ||= language === "en" ? "5" : "ご";
+    destination ||= language === "en" ? "Sample store" : "サンプル店舗";
+    if (language !== "ja" && language !== "en") {
       const text = EXAMPLES[item.id]?.[language];
       if (!text) throw new Error("この言語に対応するテスト音声はありません。");
       return { text, parts:null, roles:null };
     }
     if (!window.ParkingVoiceGuideScripts) throw new Error("音声案内の台本を読み込めません。");
+    if (language === "en") {
+      const values = {
+        "目的施設名":facility, "目的店舗名":destination,
+        "混雑状況":"spaces are available", "駐車枠":space,
+        "施設名":facility, "時刻":"six p.m.", "駐車場名":facility,
+        "方向":"right", "エリア名":"Area A", "駐車時間":"twelve minutes",
+      };
+      const script = window.ParkingVoiceGuideScripts.build(item.id, values, locale);
+      return { text:script.text, parts:null, roles:null };
+    }
     const values = {
       "目的施設名": facility, "目的店舗名":destination,
       "混雑状況":"空きがあります", "駐車枠":space,
