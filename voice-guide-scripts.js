@@ -71,10 +71,52 @@ window.ParkingVoiceGuideScripts = (() => {
     closing_soon: "閉店まで1時間以内です。ご利用時間にご注意ください。",
   });
 
+  const ENGLISH_TEMPLATES = Object.freeze({
+  "start_complex": "Parking guidance is set for ［目的店舗名］ at ［目的施設名］. We will check for a space as you approach ［目的施設名］. Current status: ［混雑状況］. Do not operate your device while driving.",
+  "start_single": "Parking guidance is set for ［目的店舗名］. We will check for a space as you approach. Current status: ［混雑状況］. Do not operate your device while driving.",
+  "approaching": "You are approaching your destination. Checking parking availability.",
+  "space_found": "A parking space is available. Your assigned space is ［駐車枠］. I repeat, ［駐車枠］. Drive slowly and follow on-site signs and staff instructions. If the space cannot be used, stop safely before searching again.",
+  "space_alternative": "Your preferred space type is unavailable. We have assigned space ［駐車枠］. I repeat, ［駐車枠］. Drive slowly and follow on-site signs and staff instructions.",
+  "space_none": "No parking space is available for guidance right now. Do not wait on public roads. Parking guidance will end. Thank you.",
+  "space_maybe_taken": "Your assigned parking space may now be occupied. Stop in a safe place before searching again.",
+  "retry_started": "Searching for an available parking space again. Please wait.",
+  "retry_found": "A new parking space is available. Your assigned space is ［駐車枠］. I repeat, ［駐車枠］. Follow on-site signs and staff instructions.",
+  "retry_none": "Sorry, no parking space is available for guidance. Check the on-site signs.",
+  "arrival_detected": "A vehicle has been detected in your assigned space. Is it your vehicle? Stop safely before selecting Yes or No.",
+  "arrival_video_confirm": "A vehicle has been detected in your assigned space. Stop safely and check the screen.",
+  "parking_completed": "Parking is complete. Please check that you have all your belongings.",
+  "guidance_ended": "Parking guidance has ended. Thank you for using the service.",
+  "full": "The parking lot is full. Guidance is unavailable until a free space is confirmed.",
+  "rest": "［施設名］ is closed today. Please check its opening days.",
+  "closed": "［施設名］ is currently closed. The next opening is at ［時刻］.",
+  "closed_unknown": "［施設名］ is currently closed. Please check its opening hours.",
+  "space_changed": "Your assigned parking space has changed. We will guide you to the new space.",
+  "conditions_changed": "Your parking preferences have changed. Searching again with the new preferences.",
+  "conditions_unavailable": "No available space matches your preferences. Searching with alternative preferences.",
+  "destination_changed": "Your destination has been changed to ［駐車場名］.",
+  "camera_disconnected": "The camera connection has been lost. Current space availability cannot be confirmed. Follow on-site signs.",
+  "camera_recovered": "The camera connection has been restored. Updating parking availability.",
+  "recognition_unknown": "Parking availability cannot be confirmed at this time. Follow on-site signs.",
+  "location_unknown": "Your location is unavailable. Stop safely before checking location settings.",
+  "status_stale": "Parking information is no longer up to date. Follow on-site signs.",
+  "entrance_near": "You are approaching the parking entrance. Check the entrance signs.",
+  "entrance_entered": "You have entered the parking lot. Watch for pedestrians and drive slowly.",
+  "route_turn": "Continue ［方向］ toward ［エリア名］.",
+  "space_unavailable": "Your assigned space is no longer available. Searching for another space.",
+  "timer_started": "Parking time tracking has started.",
+  "timer_elapsed": "Your current parking time is ［駐車時間］.",
+  "parked_location": "Your parked location is space ［駐車枠］. I repeat, ［駐車枠］.",
+  "exit_detected": "You have left the parking lot. Thank you for using the service.",
+  "recorded_demo": "This guidance uses an earlier video recording. It does not show live availability.",
+  "voice_test_notice": "This is a voice guidance test using simulated parking information.",
+  "closing_soon": "The facility will close within one hour. Please plan your visit accordingly."
+});
+
   // 句点で切り、残りはプレースホルダー単位に分解。
   // 読み上げの間が不自然にならないように、短い句をまとめる。
-  function build(id, values = {}) {
-    const template = TEMPLATES[id];
+  function build(id, values = {}, locale = "ja-JP") {
+    const english = /^en(?:-|$)/i.test(locale);
+    const template = (english ? ENGLISH_TEMPLATES : TEMPLATES)[id];
     if (!template) throw new Error("Unknown voice script: " + id);
     const parts = [];
     const pieces = template.split(/(［[^］]+］)/g).filter(Boolean);
@@ -85,7 +127,7 @@ window.ParkingVoiceGuideScripts = (() => {
         if (!value) throw new Error("Voice value missing: " + placeholder[1]);
         parts.push({ role: placeholder[1], text: value });
       } else {
-        const phrases = piece.match(/[^。！？]+[。！？]?/g) || [];
+        const phrases = piece.match(english ? /[^.!?]+[.!?]?|[.!?]+/g : /[^。！？]+[。！？]?/g) || [];
         for (const phrase of phrases)
           if (phrase.trim()) parts.push({ role: "fixed", text: phrase });
       }

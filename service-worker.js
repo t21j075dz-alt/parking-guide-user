@@ -4,7 +4,7 @@
  * 利用者が事前生成した音声は、別のCache Storageに本人の操作で保存する。
  * 配信ファイルを変更するときはVERSIONとSHELL_FILESを一緒に更新する。
  */
-const VERSION = "20261112-traffic-safety-1";
+const VERSION = "20261113-bilingual-voice-offline-2";
 // 同じgithub.io上の管理アプリや別のパスのキャッシュを削除しない。
 const CACHE_PREFIX = `parking-guide-user:${self.registration.scope}:`;
 const CACHE_NAME = `${CACHE_PREFIX}${VERSION}`;
@@ -17,7 +17,7 @@ const SHELL_FILES = [
   "./traffic-safety.js?v=20261112-1",
   "./user-experience.js?v=20261112-no-top-location-1",
   "./facility-operations.js?v=20261028-closed-rest-1",
-  "./camera-view.js?v=20261112-plain-language-1",
+  "./camera-view.js?v=20261113-nikko-sync-1",
   "./styles.css?v=20261112-code-cleanup-1",
   "./map-display.css?v=20261029-phase-demo-2",
   "./map-display.js?v=20261014-interaction",
@@ -25,14 +25,14 @@ const SHELL_FILES = [
   "./facilities.js?v=20261030-home-experiments-1",
   "./sync-config.js",
   "./parking-layouts.js",
-  "./live-status.js?v=20261029-phase-demo-2",
+  "./live-status.js?v=20261113-nikko-sync-1",
   "./speech-readings.js?v=20261030-recorded-voice-standard-1",
-  "./voice-guide-scripts.js?v=20261112-code-cleanup-1",
+  "./voice-guide-scripts.js?v=20261113-bilingual-coverage-1",
   "./voice-guide-playback.js?v=20261030-semantic-pauses-1",
   "./voice-continuous-playback.js?v=20261030-voice-no-cutoff-1",
   "./voice-audio-cache.js?v=20261030-rpc-manifest-1",
-  "./voice-test-scenarios.js?v=20261030-recorded-voice-standard-2",
-  "./app.js?v=20261112-plain-language-1",
+  "./voice-test-scenarios.js?v=20261113-bilingual-coverage-1",
+  "./app.js?v=20261113-bilingual-coverage-2",
   "./pwa.js?v=20261112-plain-language-1",
   "./manifest.webmanifest",
   "./icons/icon-192.png",

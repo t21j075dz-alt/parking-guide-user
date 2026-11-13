@@ -64,3 +64,26 @@ test("user interface loads the script bank before the application", () => {
   assert.ok(html.includes('id="voice-prepare-names-button"'));
   assert.ok(html.includes('id="voice-prepare-cancel-button"'));
 });
+
+test("all 38 English announcements retain their dynamic parking labels and punctuation", () => {
+  const values = {
+    "目的施設名":"Example facility", "目的店舗名":"Example store",
+    "混雑状況":"spaces available", "駐車枠":"B 42",
+    "施設名":"Example facility", "時刻":"six p.m.",
+    "駐車場名":"Example car park", "方向":"left",
+    "エリア名":"Area B", "駐車時間":"20 minutes",
+  };
+  for (const id of bank.ids) {
+    for (const locale of ["en-US", "en-GB"]) {
+      const script = bank.build(id, values, locale);
+      assert.ok(script.text.length > 10, id);
+      assert.equal(script.parts.map(x=>x.text).join(""),script.text,id);
+      assert.doesNotMatch(script.text,/［[^］]+］/,id);
+    }
+  }
+  for (const id of ["space_found", "space_alternative", "retry_found", "parked_location"]) {
+    const text = bank.build(id,values,"en-US").text;
+    assert.equal(text.split("B 42").length - 1, 2, id);
+    assert.ok(text.includes("B 42. I repeat, B 42."),id);
+  }
+});
