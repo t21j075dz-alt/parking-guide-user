@@ -4090,11 +4090,13 @@ function voiceTestScript(item) {
   const layout = getFacilityLayout(state.selectedFacility);
   const spaces = layout ? createLayoutParkingSpaces(layout, state.selectedFacility) : [];
   const space = spaces.find(candidate => candidate.spaceType === "standard") || spaces[0];
-  const spokenSpace = space ? getSpokenSpaceId(space, "ja-JP") : "ご";
+  const locale = getGuidanceSpeechLocale();
+  const spokenSpace = space ? getSpokenSpaceId(space, locale) : (locale === "ja-JP" ? "ご" : "5");
   return bank.build(item, {
-    facility: getFacilitySpokenName("ja-JP") || "テスト施設",
-    space: spokenSpace, destination: "サンプル店舗",
-  }, getGuidanceSpeechLocale());
+    facility: getFacilitySpokenName(locale) || (locale === "ja-JP" ? "テスト施設" : "Test facility"),
+    space: spokenSpace,
+    destination: locale === "ja-JP" ? "サンプル店舗" : "Sample store",
+  }, locale);
 }
 
 /** 音声の開始失敗や中断時は自動で次へ移らない。 */
