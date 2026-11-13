@@ -51,5 +51,37 @@ window.ParkingVoiceAssembler = (() => {
     }));
   }
 
-  return Object.freeze({ normalizeParts, sentences, segments });
+  /**
+   * 「A列 12」「B区画 7」「C9」の読みを既存の音声部品で構成する。
+   * 施設専用に生成された全文音声が利用できない場合だけ使用する。
+   * 読みが不明な名前・独自の読み仮名は勝手に分割しない。
+   */
+  function savedSpacePieces(value) {
+    const text = String(value ?? "").trim();
+    if (!text || typeof japaneseSpaceReading !== "function"
+        || typeof japaneseNumber !== "function") return [text];
+    const numbers = new Set(Array.from({ length: 99 }, (_, i) => japaneseNumber(i + 1)));
+    for (const letter of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+      const spokenLetter = japaneseSpaceReading(letter);
+      const prefix = spokenLetter + "、";
+      if (!text.startsWith(prefix)) continue;
+      let rest = text.slice(prefix.length).trim();
+      let areaLabel = "";
+      for (const candidate of ["れつ", "くかく"]) {
+        if (!rest.startsWith(candidate)) continue;
+        const suffix = rest.slice(candidate.length).trim();
+        if (numbers.has(suffix)) {
+          areaLabel = candidate;
+          rest = suffix;
+          break;
+        }
+      }
+      if (numbers.has(rest)) {
+        return areaLabel ? [spokenLetter, areaLabel, rest] : [spokenLetter, rest];
+      }
+    }
+    return [text];
+  }
+
+  return Object.freeze({ normalizeParts, sentences, segments, savedSpacePieces });
 })();
