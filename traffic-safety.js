@@ -16,6 +16,40 @@ window.ParkingTrafficSafety = (() => {
   function context() {
     return window.ParkingTrafficSafetyContext?.() || {};
   }
+  // Verified Japanese safety text is never auto-translated. Only exact, known
+  // presets have approved English wording; site-specific custom messages
+  // require a manually verified English equivalent.
+  const safetyPresets = Object.freeze({
+    right_turn_prohibited: {
+      ja: "この駐車場は右折で入場できません。現地の標識に従ってください。",
+      en: "Right turns into this parking lot are prohibited. Follow the posted signs.",
+    },
+    uturn_prohibited_ahead: {
+      ja: "施設周辺にはUターン禁止区間があります。無理な方向転換をせず、現地標識に従ってください。",
+      en: "U-turns are prohibited on some nearby roads. Do not make unsafe turns. Follow the posted signs.",
+    },
+    exit_only_next_entrance: {
+      ja: "手前は出口専用です。その先の入口をご利用ください。",
+      en: "The first driveway is exit only. Use the entrance farther ahead.",
+    },
+    entrance_only: {
+      ja: "こちらは入口専用です。出口とお間違えのないようご注意ください。",
+      en: "This driveway is entrance only. Do not use it as an exit.",
+    },
+  });
+  const isEnglishLocale = locale => /^en(?:-|$)/i.test(String(locale || ""));
+  function messageForLocale(item, locale, spoken = false) {
+    const japanese = String(item?.message || "").trim();
+    if (!isEnglishLocale(locale)) return japanese;
+    const customEnglish = typeof item?.messageEn === "string" ? item.messageEn.trim() : "";
+    if (item?.messageEnVerified === true && customEnglish && customEnglish.length <= 180) return customEnglish;
+    const preset = safetyPresets[item?.type];
+    if (preset?.ja === japanese) return preset.en;
+    // Never claim a specific restriction in English without a verified translation.
+    return spoken
+      ? "Please check the posted parking restrictions and follow staff instructions."
+      : japanese;
+  }
   function currentAdvisories(ctx = context()) {
     const facility = ctx.facility;
     if (!facility) return [];
@@ -37,10 +71,11 @@ window.ParkingTrafficSafety = (() => {
       (item.stage === "onsite" ? "onsite" : "approach") === stage);
     const unique = [];
     for (const item of warnings) {
-      const token = [ctx.facility.id, ctx.destinationId, stage, item.id, item.message].join("|");
+      const token = [ctx.facility.id, ctx.destinationId, ctx.locale, stage, item.id, item.message].join("|");
       if (spokenStatic.has(token)) continue;
       spokenStatic.add(token);
-      unique.push(item.message.trim());
+      const warning = messageForLocale(item, ctx.locale, true);
+      if (!unique.includes(warning)) unique.push(warning);
     }
     return unique;
   }
@@ -78,15 +113,16 @@ window.ParkingTrafficSafety = (() => {
   }
   function liveMessages() {
     if (!live.known) return [];
-    if (live.pedestrian && live.bicycle) return [
-      "歩行者と自転車が多くなっています。徐行し、周囲をご確認ください。",
-    ];
-    if (live.pedestrian) return [
-      "歩行者が多くなっています。徐行し、周囲をご確認ください。",
-    ];
-    if (live.bicycle) return [
-      "自転車が多くなっています。徐行し、周囲をご確認ください。",
-    ];
+    const english = isEnglishLocale(context().locale);
+    if (live.pedestrian && live.bicycle) return [english
+      ? "More pedestrians and cyclists have been detected. Drive slowly and watch your surroundings."
+      : "歩行者と自転車が多くなっています。徐行し、周囲をご確認ください。"];
+    if (live.pedestrian) return [english
+      ? "More pedestrians have been detected. Drive slowly and watch your surroundings."
+      : "歩行者が多くなっています。徐行し、周囲をご確認ください。"];
+    if (live.bicycle) return [english
+      ? "More cyclists have been detected. Drive slowly and watch your surroundings."
+      : "自転車が多くなっています。徐行し、周囲をご確認ください。"];
     return [];
   }
   function render() {
@@ -102,12 +138,17 @@ window.ParkingTrafficSafety = (() => {
     }
     for (const screen of eligibleScreens) {
       const info = createPanel(screen, "static");
-      const staticMessages = screen === "result"
-        ? currentAdvisories(ctx).map(a => a.message.trim())
-        : currentAdvisories(ctx).filter(a => a.stage !== "onsite").map(a => a.message.trim());
-      setMessages(info, [...new Set(staticMessages)]);
+      const heading = info?.querySelector?.(".traffic-safety-notice-title");
+      if (heading) heading.textContent = isEnglishLocale(ctx.locale) ? "Parking safety notices" : "来店時の注意";
+      const notices = screen === "result"
+        ? currentAdvisories(ctx)
+        : currentAdvisories(ctx).filter(a => a.stage !== "onsite");
+      setMessages(info, [...new Set(notices.map(item => messageForLocale(item, ctx.locale)))]);
       if (liveScreens.has(screen)) {
         const dynamic = createPanel(screen, "live");
+        const liveHeading = dynamic?.querySelector?.(".traffic-safety-notice-title");
+        if (liveHeading) liveHeading.textContent = isEnglishLocale(ctx.locale)
+          ? "Watch for pedestrians and cyclists" : "周囲の安全にご注意ください";
         setMessages(dynamic, ctx.screen === screen ? liveMessages() : []);
       }
     }
