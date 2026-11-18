@@ -95,7 +95,7 @@ test("最新版を読み込むボタンは常に表示設定の左隣へ配置�
   assert.match(header, /class="pwa-update pwa-update-header"/);
   assert.match(header, /id="pwa-update-button"[^>]*>最新版を読み込む</);
   assert.equal((html.match(/id="pwa-update-button"/g) || []).length, 1);
-  assert.match(read("user-experience.css"), /\\.header-actions \\.pwa-update-header/);
+  assert.ok(read("user-experience.css").includes(".header-actions .pwa-update-header"));
 });
 
 test("録画中の各区画は内部IDではなく一覧番号を表示する", () => {
