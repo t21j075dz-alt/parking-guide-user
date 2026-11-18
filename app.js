@@ -546,7 +546,7 @@ function privateTestStorageKey(facility) {
 }
 const RANDOM_GUIDANCE_FACILITY_IDS = new Set(["target_021", PRIVATE_TEST_FACILITY_ID]);
 
-const SCREEN_ORDER = Object.freeze(["facility", "condition", "waiting", "result", "parked", "voice-test", "voice-test-complete"]);
+const SCREEN_ORDER = Object.freeze(["facility", "condition", "waiting", "result", "parked"]);
 
 const state = {
   currentScreen: "facility",
@@ -2120,7 +2120,6 @@ function showScreen(screenName, options = {}) {
   state.currentScreen = screenName;
   window.ParkingTrafficSafety?.refresh?.();
   if (["facility", "condition"].includes(screenName)) {
-    document.querySelectorAll?.(".guidance-audio-message")?.forEach(node => { node.textContent = ""; });
   }
   if (screenName === "facility") {
     renderFacilities();
@@ -2666,7 +2665,6 @@ async function runSpaceSearch(priorityOverride = null, options = {}) {
   const priority = state.selectedPriority;
   cancelSpeech();
   state.searchOutcome = null;
-  document.querySelectorAll?.(".guidance-audio-message")?.forEach(node => { node.textContent = ""; });
   state.recommendedSpace = null;
   noSpaceContent.hidden = true;
   congestionNotice.hidden = true;
@@ -3586,14 +3584,9 @@ async function playCloudVoiceAudio(message, requestId, isPreview = false, parts 
   }
 }
 
-/** 音声の有効・無効にかかわらず、同じ案内文を画面にも表示する。 */
+/** 状態だけを表示し、読み上げる文章を画面へ複製しない。 */
 let lastGuidanceMode = "";
-function publishGuidanceTranscript(message, mode = "") {
-  if (message) {
-    for (const node of document.querySelectorAll?.(".guidance-audio-message") || []) {
-      node.textContent = message;
-    }
-  }
+function publishGuidanceTranscript(_message, mode = "") {
   if (mode) lastGuidanceMode = mode;
   for (const node of document.querySelectorAll?.(".guidance-audio-mode") || []) {
     node.textContent = lastGuidanceMode || ui("音声案内は待機中です。", "Voice guidance is ready.");
@@ -4229,7 +4222,7 @@ function renderVoiceTestStep() {
     "Voice test " + (run.index + 1) + " of " + run.scenarios.length,
   );
   voiceTestGroup.textContent = group ? (isEnglish() ? group.en : group.ja) : "";
-  voiceTestTranscript.textContent = script.text;
+  // 読み上げ文章はどの画面にも表示しない。
   voiceTestStatus.textContent = ui("音声を準備しています。", "Preparing voice playback.");
   voiceTestPreviousButton.disabled = run.index === 0;
   if (voiceTestPauseButton) voiceTestPauseButton.textContent = ui(
@@ -4240,29 +4233,9 @@ function renderVoiceTestStep() {
 }
 
 /** 必ずボタン操作から第1案内を開始する。実カメラ・位置情報は開始しない。 */
+/** 音声テストは共通の実画面デモへ委譲する。 */
 function startVoiceTest() {
-  if (state.selectedFacility?.id !== VOICE_TEST_FACILITY_ID) return false;
-  if (window.parkingSafety && !window.parkingSafety.guardOperation()) return false;
-  if (!voiceEnabledInput?.checked) {
-    voiceTestCount.textContent = ui(
-      "音声案内がOFFです。上の音声案内をONにしてください。",
-      "Voice is off. Enable voice guidance in the settings.",
-    );
-    return false;
-  }
-  const bank = window.ParkingVoiceTestScenarios;
-  const scenarios = bank?.scenarios(getGuidanceSpeechLocale(), voiceTestCategory?.value || "all") || [];
-  if (!scenarios.length) {
-    voiceTestCount.textContent = ui(
-      "この言語に対応する音声がありません。別の種類を選択してください。",
-      "No localized audio in this group. Choose another group.",
-    );
-    return false;
-  }
-  state.voiceTestRun = { scenarios, index:0, token:0, paused:false };
-  showScreen("voice-test");
-  renderVoiceTestStep();
-  return playVoiceTestStep();
+  return window.ParkingVoiceScreenDemo?.start?.() === true;
 }
 
 /** 戻る・スキップ・繰り返しは旧発話の終了通知を無効化する。 */
@@ -4824,7 +4797,6 @@ conditionForm.addEventListener("submit", async (event) => {
   state.autoProximityArmed = true;
   state.autoTriggeredFacilityId = null;
   state.searchOutcome = null;
-  document.querySelectorAll?.(".guidance-audio-message")?.forEach(node => { node.textContent = ""; });
   state.recommendedSpace = null;
 
   /* Safariではユーザー操作から離れて音声を開始すると無音になる場合がある。
@@ -4951,8 +4923,8 @@ window.ParkingTrafficSafetyContext = () => ({
   facility: state.selectedFacility,
   destinationId: state.selectedDestination?.id || "",
   screen: state.currentScreen,
-  voiceEnabled: state.voiceEnabled,
+  voiceEnabled: state.voiceEnabled && !state.voiceTestRun,
   locale: getGuidanceSpeechLocale(),
   speaking: Boolean(activeSpeechAudioRoute || activeDeviceSpeechUtterance || window.speechSynthesis?.speaking),
-  speak: message => (state.voiceEnabled ? speakText(message) : false),
+  speak: message => (state.voiceEnabled && !state.voiceTestRun ? speakText(message) : false),
 });
