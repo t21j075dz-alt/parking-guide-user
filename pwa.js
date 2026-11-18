@@ -48,9 +48,17 @@
       "オフラインです。現在の空き状況は確認できません。保存済みの情報や音声は引き続き利用できます。",
       "You are offline. Current availability cannot be checked. Saved information and audio remain available.",
     );
-    updatePanel.hidden = !registration?.waiting || reloadRequested;
-    updateStatus.textContent = label("新しいバージョンがあります。停車中に更新してください。", "An update is available. Update while parked.");
-    updateButton.textContent = label("更新して再読み込み", "Update and reload");
+    // 新版が未検出でも、ユーザー自身が更新を確認できるよう常時表示する。
+    updatePanel.hidden = false;
+    updateStatus.textContent = navigator.onLine === false
+      ? label("オフラインのため更新を確認できません。", "You are offline. Updates cannot be checked.")
+      : registration?.waiting
+        ? label("新しいバージョンがあります。停車中に更新してください。", "An update is available. Update while parked.")
+        : label("停車中に操作してください。最新の状態を確認して読み込み直します。", "Use while parked. Check for the latest version and reload.");
+    updateButton.textContent = reloadRequested
+      ? label("確認しています…", "Checking…")
+      : label("最新版を読み込む", "Load latest version");
+    updateButton.disabled = reloadRequested;
   }
 
   window.addEventListener("beforeinstallprompt", (event) => {
@@ -80,12 +88,51 @@
   window.addEventListener("offline", render);
   window.addEventListener("parking:languagechange", render);
 
-  updateButton.addEventListener("click", () => {
-    if (!registration?.waiting) return;
-    // クリックした画面だけを再読み込みする。他の端末・タブの案内は中断しない。
+  updateButton.addEventListener("click", async () => {
+    if (reloadRequested) return;
+    if (navigator.onLine === false) {
+      render();
+      return;
+    }
+    // クリックした画面だけを更新する。既に待機中の新版があれば直ちに適用する。
     reloadRequested = true;
-    registration.waiting.postMessage({ type: "ACTIVATE_UPDATE" });
     render();
+    if (registration?.waiting) {
+      registration.waiting.postMessage({ type: "ACTIVATE_UPDATE" });
+      return;
+    }
+    try {
+      if (registration) {
+        // 更新通知がまだ出ていない場合も、利用者の操作で最新版を確認する。
+        await registration.update();
+        const installing = registration.installing;
+        if (installing && !["installed", "activated", "redundant"].includes(installing.state)) {
+          // 新しいService Workerのインストールが終わるまで待つ。
+          await Promise.race([
+            new Promise((resolve) => {
+              installing.addEventListener("statechange", () => {
+                if (["installed", "activated", "redundant"].includes(installing.state)) resolve();
+              });
+            }),
+            new Promise((resolve) => window.setTimeout(resolve, 15000)),
+          ]);
+        }
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: "ACTIVATE_UPDATE" });
+          return; // controllerchangeで最新の画面を一度だけ再読み込みする。
+        }
+      }
+      // 更新版が無い場合も表示を読み込み直す。案内中の操作は利用者が行う。
+      reloadRequested = false;
+      window.location.reload();
+    } catch {
+      reloadRequested = false;
+      render();
+      updateStatus.textContent = label(
+        "更新を確認できませんでした。通信状態をご確認ください。",
+        "Could not check for updates. Check your connection.",
+      );
+    }
   });
 
   async function register() {
