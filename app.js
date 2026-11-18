@@ -4122,7 +4122,9 @@ function voiceTestScript(item) {
   if (!bank) throw new Error("音声テストの台本を読み込めません。");
   const layout = getFacilityLayout(state.selectedFacility);
   const spaces = layout ? createLayoutParkingSpaces(layout, state.selectedFacility) : [];
-  const space = spaces.find(candidate => candidate.spaceType === "standard") || spaces[0];
+  // 画面付きデモでは、画面に強調表示した区画と同じ番号を読み上げる。
+  const space = (state.voiceTestRun && state.recommendedSpace)
+    || spaces.find(candidate => candidate.spaceType === "standard") || spaces[0];
   const locale = getGuidanceSpeechLocale();
   const spokenSpace = space ? getSpokenSpaceId(space, locale) : (locale === "ja-JP" ? "ご" : "5");
   return bank.build(item, {
