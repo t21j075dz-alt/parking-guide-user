@@ -40,7 +40,7 @@
   <script src="./traffic-safety.js?v=20261113-english-1" defer></script>
     <script src="./pwa.js?v=20261112-plain-language-1" defer></script>
   <link href="./experience.css" rel="stylesheet">
-  <link href="./user-experience.css?v=20261112-settings-not-visible-1" rel="stylesheet">
+  <link href="./user-experience.css?v=20261118-header-update-1" rel="stylesheet">
 <script defer src="./camera-view.js?v=20261113-nikko-sync-1"></script>
   <script defer src="./user-experience.js?v=20261112-no-top-location-1"></script>
 </head>
@@ -104,7 +104,12 @@
           <span class="parking-symbol" aria-hidden="true">P</span>
           <span>駐車場空き区画案内</span>
         </a>
-        <div class="display-controls" aria-label="表示設定">
+        <div class="header-actions">
+          <div id="pwa-update-panel" class="pwa-update pwa-update-header" hidden>
+            <p id="pwa-update-status" class="pwa-status" role="status">新しいバージョンがあります。停車中に更新してください。</p>
+            <button id="pwa-update-button" class="secondary-button" type="button" aria-describedby="pwa-update-status">更新して再読み込み</button>
+          </div>
+          <div class="display-controls" aria-label="表示設定">
           <button class="display-button" id="theme-button" type="button" aria-pressed="false">
             ダークモード
           </button>
@@ -136,6 +141,7 @@
                     </details>
                   </section>
           </details>
+          </div>
         </div>
       </div>
     </header>
@@ -156,10 +162,7 @@
           <p id="pwa-install-status" class="pwa-status" role="status" aria-live="polite"></p>
         </details>
         <p id="pwa-offline-status" class="pwa-status" role="status" aria-live="polite" hidden></p>
-        <div id="pwa-update-panel" class="pwa-update" hidden>
-          <p id="pwa-update-status" class="pwa-status" role="status">新しいバージョンがあります。停車中に更新してください。</p>
-          <button id="pwa-update-button" class="secondary-button" type="button">更新して再読み込み</button>
-        </div>
+
       </section>
 
       <!-- 画面1：利用する施設の選択。 -->
