@@ -142,6 +142,24 @@ test('更新を検知しても自動再読み込みせず、押した画面だ�
   assert.equal(u.reloads(), 1);
 });
 
+test('更新通知がなくても右上の最新版ボタンを使って更新確認できる', async () => {
+  const u = await ui();
+  const panel = u.nodes.get('#pwa-update-panel');
+  const button = u.nodes.get('#pwa-update-button');
+  assert.equal(panel.hidden, false);
+  assert.match(button.textContent, /最新版を読み込む/);
+  await button.click();
+  assert.equal(u.reloads(), 1);
+});
+
+test('オフラインのときは最新版の読み込みを行わない', async () => {
+  const u = await ui({ offline: true });
+  assert.equal(u.nodes.get('#pwa-update-panel').hidden, false);
+  await u.nodes.get('#pwa-update-button').click();
+  assert.equal(u.reloads(), 0);
+  assert.match(u.nodes.get('#pwa-update-status').textContent, /オフライン/);
+});
+
 test('ホーム画面起動と追加可能なブラウザーを区別する', async () => {
   const installed = await ui({ standalone: true });
   assert.match(installed.nodes.get('#pwa-title').textContent, /ホーム画面から起動/);
