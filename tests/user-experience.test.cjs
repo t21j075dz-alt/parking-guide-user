@@ -24,16 +24,17 @@ test("利用者画面に研究者向けの説明を常時表示しない", () =>
   assert.match(html, /<details class="app-about">/);
 });
 
-test("区画番号は既存の要素を再利用し、通常画面にも案内文を表示する", () => {
+test("区画番号は既存の要素を再利用し、音声台本全文は画面に表示しない", () => {
   const js = read("user-experience.js");
   const css = read("user-experience.css");
   assert.match(js, /result\.prepend\(hero\)/);
   assert.doesNotMatch(js, /transcript\?\.remove\(\)/);
-  assert.match(read("app.js"), /node.textContent = message/);
+  assert.doesNotMatch(read("app.js"), /node\.textContent = message/);
   assert.match(js, /#waiting-screen \.guidance-audio-card, #result-screen \.guidance-audio-card/);
   assert.match(css, /#space-number/);
   assert.match(css, /position: sticky/);
-  assert.match(read("index.html"), /id="voice-test-transcript"/);
+  assert.doesNotMatch(read("index.html"), /id="voice-test-transcript"|class="guidance-audio-message"/);
+  assert.match(read("index.html"), /id="voice-test-demo-controls"/);
 });
 
 test("録画映像を現在の空き状況と誤認させない", () => {
@@ -51,7 +52,7 @@ test("利用者向け全画面は、操作と状態を短い日本語で示す",
   const html = read("index.html");
   const ux = read("user-experience.js");
   const app = read("app.js");
-  for (const screen of ["facility", "condition", "waiting", "result", "parked", "voice-test", "voice-test-complete"]) {
+  for (const screen of ["facility", "condition", "waiting", "result", "parked"]) {
     assert.match(html, new RegExp('data-screen="' + screen + '"'));
   }
   for (const expected of ["行き先を選ぶ", "駐車場の写真を見る", "もう一度探す", "駐車位置を保存しました"]) {
