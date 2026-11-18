@@ -297,3 +297,47 @@ body[data-guidance-screen="waiting"] .header-inner { min-height: 3.5rem; }
 .display-menu .location-settings .location-actions button {
   max-width: 100%;
 }
+
+/* 更新があるときだけ、最新版の再読み込みを表示設定の隣に出す。 */
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .5rem;
+  min-width: 0;
+  margin-left: auto;
+}
+.header-actions .display-menu { margin-left: 0; flex-shrink: 0; }
+.header-actions .pwa-update-header {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+}
+.header-actions .pwa-update-header .pwa-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.header-actions #pwa-update-button {
+  min-height: 2.5rem;
+  padding: .55rem .8rem;
+  font-size: .85rem;
+  white-space: nowrap;
+}
+@media (max-width: 650px) {
+  /* 更新ボタンが見える場合だけ、設定メニューを同じ行に並べて折り返す。 */
+  .header-inner:has(.pwa-update-header:not([hidden])) {
+    flex-wrap: wrap;
+  }
+  .header-inner:has(.pwa-update-header:not([hidden])) .header-actions {
+    flex-basis: 100%;
+  }
+  .header-actions #pwa-update-button {
+    padding: .55rem .65rem;
+    font-size: .82rem;
+  }
+}
