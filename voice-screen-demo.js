@@ -218,7 +218,7 @@ window.ParkingVoiceScreenDemo = (() => {
     state.currentSpaces=[];state.currentLayout=null;
     if(resultMapSlot&&parkingMapSection)resultMapSlot.append(parkingMapSection);
     panel.hidden=true;
-    document.body.classList.remove("voice-demo-active");
+    document.body.classList.toggle("voice-demo-active",false);
     if(state.selectedFacility?.id===VOICE_TEST_FACILITY_ID){
       showScreen("condition",{addHistory:false});
       updateVoiceTestEntry();
