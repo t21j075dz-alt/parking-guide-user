@@ -13,7 +13,7 @@ function loadScript(context, name) {
 function testApp() {
   const nodes = new Map();
   const document = {
-    documentElement:{lang:"ja"}, hidden:false,
+    documentElement:{lang:"ja"}, body:element(), hidden:false, addEventListener(){},
     querySelector(selector) {
       if (!nodes.has(selector)) nodes.set(selector, element());
       return nodes.get(selector);
@@ -39,8 +39,9 @@ function testApp() {
   const source = fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
   vm.runInContext(source.split("/* =========================================================\n   操作イベント")[0],context);
   const run = code => vm.runInContext(code,context);
-  run("renderFacilities = () => {}; state.selectedFacility = VOICE_TEST_FACILITY; state.voiceEnabled = true;");
+  run("renderFacilities = () => {}; renderParkingMap = () => {}; state.selectedFacility = VOICE_TEST_FACILITY; state.voiceEnabled = true;");
   nodes.get("#voice-enabled").checked = true;
+  loadScript(context,"voice-screen-demo.js");
   // 実デバイスの音声代わりに終了・失敗イベントだけを手動で送信する。
   run("window.__realSpeakText = speakText; speakText = (message,options) => { window.__currentVoice = {message, options}; return true; };");
   return { run, context, nodes };
@@ -83,46 +84,54 @@ test("音声テストだけに専用画面を表示し、通常のカメラ状�
   assert.equal(nodes.get("#normal-condition-actions").hidden,false);
 });
 
-test("完了イベント1回ごとに次画面へ進み、最後は終了画面に移る",()=>{
+test("通常の待機画面から音声終了ごとに場面が進む",()=>{
   const {run,context,nodes}=testApp();
   nodes.get("#voice-test-category").value="basic";
   assert.equal(run("startVoiceTest()"),true);
-  assert.equal(run("state.currentScreen"),"voice-test");
+  assert.equal(run("state.currentScreen"),"waiting");
   assert.equal(run("state.voiceTestRun.index"),0);
-  assert.match(nodes.get("#voice-test-progress").textContent,/1 \/ 5/);
-  const oldComplete=context.window.__currentVoice.options.onComplete;
-  oldComplete();
+  const first=context.window.__currentVoice.options.onComplete;
+  first();
   assert.equal(run("state.voiceTestRun.index"),1);
-  assert.match(nodes.get("#voice-test-progress").textContent,/2 \/ 5/);
-  oldComplete(); // 重複した終了通知で2つ進んではいけない。
+  first();
   assert.equal(run("state.voiceTestRun.index"),1);
   for(let i=1;i<5;i++) context.window.__currentVoice.options.onComplete();
-  assert.equal(run("state.currentScreen"),"voice-test-complete");
+  assert.equal(run("state.voiceTestRun.completed"),true);
+  assert.equal(nodes.get("#voice-test-demo-controls").hidden,false);
   assert.match(nodes.get("#voice-test-complete-count").textContent,/5種類/);
 });
 
-test("一時停止・移動・通信失敗後は古い音声の通知で勝手に画面を進めない",()=>{
+test("38種類の場面を本番と同じ画面種別に割り振る",()=>{
+  const {run}=testApp();
+  for(const [item,screen] of [["start_single","waiting"],["space_found","result"],
+    ["full","result"],["parking_completed","parked"],["conditions_changed","condition"],
+    ["guidance_ended","facility"]]){
+    assert.equal(run("window.ParkingVoiceScreenDemo.sceneScreen('"+item+"')"),screen);
+  }
+  assert.equal(run("window.ParkingVoiceTestScenarios.scenarios('ja-JP').length"),38);
+});
+
+test("エラー・場面移動後の古い音声の終了通知を無効にする",()=>{
   const {run,context,nodes}=testApp();
   nodes.get("#voice-test-category").value="basic";
   run("startVoiceTest()");
   const previous=context.window.__currentVoice.options;
-  run("state.voiceTestRun.paused = true; state.voiceTestRun.token += 1; cancelSpeech()");
+  run("state.voiceTestRun.paused=true; state.voiceTestRun.token++; cancelSpeech()");
   previous.onComplete();
   assert.equal(run("state.voiceTestRun.index"),0);
-  run("playVoiceTestStep()");
+  run("window.ParkingVoiceScreenDemo.play()");
   context.window.__currentVoice.options.onError();
   assert.equal(run("state.voiceTestRun.paused"),true);
-  assert.match(nodes.get("#voice-test-status").textContent,/再開/);
   const failed=context.window.__currentVoice.options;
-  run("moveVoiceTestStep(1)");
+  run("window.ParkingVoiceScreenDemo.change(1)");
   failed.onComplete();
   assert.equal(run("state.voiceTestRun.index"),1);
-  run("state.voiceTestRun = null; showScreen('condition')");
-  context.window.__currentVoice.options.onComplete();
+  run("window.ParkingVoiceScreenDemo.stop()");
+  assert.equal(run("state.voiceTestRun"),null);
   assert.equal(run("state.currentScreen"),"condition");
 });
 
-test("非表示タブでは次画面に進んでも自動発話しない",()=>{
+test("非表示タブで次へ進んでも自動再生しない",()=>{
   const {run,context,nodes}=testApp();
   nodes.get("#voice-test-category").value="basic";
   run("startVoiceTest()");
@@ -132,6 +141,15 @@ test("非表示タブでは次画面に進んでも自動発話しない",()=>{
   assert.equal(run("state.voiceTestRun.index"),1);
   assert.equal(run("state.voiceTestRun.paused"),true);
   assert.equal(context.window.__currentVoice,old);
+});
+
+test("案内音声の全文を画面内に描画しない",()=>{
+  const html=fs.readFileSync(path.join(__dirname,"../index.html"),"utf8");
+  const app=fs.readFileSync(path.join(__dirname,"../app.js"),"utf8");
+  const demo=fs.readFileSync(path.join(__dirname,"../voice-screen-demo.js"),"utf8");
+  assert.doesNotMatch(html,/class="guidance-audio-message"|id="voice-test-transcript"/);
+  assert.doesNotMatch(app,/node\.textContent = message;/);
+  assert.doesNotMatch(demo,/textContent\s*=\s*script\.text/);
 });
 
 test("端末の音声は最終endでのみ完了し、手動中止や音声エラーでは進まない",()=>{
