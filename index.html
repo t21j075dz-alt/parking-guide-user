@@ -17,7 +17,7 @@
     >
     <title>駐車場空き区画案内</title>
     <!-- 利用者画面の共通スタイル。管理画面とは別リポジトリで管理する。 -->
-    <link rel="stylesheet" href="./styles.css?v=20261112-code-cleanup-1">
+    <link rel="stylesheet" href="./styles.css?v=20261118-voice-scene-demo-1">
     <!-- 安全確認 → 施設データ → 同期設定 → レイアウト → 画面制御の順で読み込む。 -->
     <link rel="stylesheet" href="./map-display.css?v=20261029-phase-demo-2">
     <script src="./map-display.js?v=20261014-interaction" defer></script>
@@ -33,7 +33,7 @@
   <script src="./voice-continuous-playback.js?v=20261030-voice-no-cutoff-1" defer></script>
   <script src="./voice-audio-cache.js?v=20261030-rpc-manifest-1" defer></script>
   <script src="./voice-test-scenarios.js?v=20261113-bilingual-coverage-1" defer></script>
-  <script src="./app.js?v=20261113-live-english-1" defer></script>
+  <script src="./app.js?v=20261118-voice-scene-demo-1" defer></script>
   <link rel="stylesheet" href="./traffic-safety.css?v=20261112-1">
   <script src="./traffic-safety.js?v=20261113-english-1" defer></script>
     <script src="./pwa.js?v=20261112-plain-language-1" defer></script>
@@ -370,8 +370,8 @@
           </section>
 
           <section id="voice-test-launch" class="voice-test-launch" hidden aria-labelledby="voice-test-launch-title">
-            <h2 id="voice-test-launch-title">音声ガイダンスの連続テスト</h2>
-            <p>読み上げが終わると、次の案内へ自動で進みます。</p>
+            <h2 id="voice-test-launch-title">実際の案内画面で動きを確認</h2>
+            <p>通常の待機・区画案内・駐車完了画面を表示し、音声が終わると次の場面へ進みます。すべて模擬データです。</p>
             <label for="voice-test-category">テストする案内の種類</label>
             <select id="voice-test-category">
               <option value="all">すべての音声</option>
@@ -383,8 +383,8 @@
               <option value="connection">カメラ・通信・位置情報</option>
               <option value="advanced">入口・経路案内</option>
             </select>
-            <p id="voice-test-count" role="status">選択した案内を順番に再生します。</p>
-            <button class="primary-button full-width" id="voice-test-start" type="button">連続音声テストを開始</button>
+            <p id="voice-test-count" role="status">選択した場面を通常画面で順番に再現します。</p>
+            <button class="primary-button full-width" id="voice-test-start" type="button">画面付きデモを開始</button>
             <p class="muted">日本語は既存台本の全種類をテストできます。英語・中国語・韓国語・スペイン語では対応済みのサンプル案内を再生します。音声設定は上で変更してください。</p>
           </section>
           <div class="condition-actions" id="normal-condition-actions">
@@ -440,7 +440,7 @@
             <strong>音声案内</strong>
             <span class="guidance-audio-mode" role="status" aria-live="polite">案内待機中</span>
           </div>
-          <p class="guidance-audio-message" aria-live="off"></p>
+          
           <button class="secondary-button guidance-audio-replay" type="button">安全な場所で案内を聞き直す</button>
         </section>
         <div class="safety-note waiting-safety" role="note">
@@ -462,14 +462,14 @@
             <strong>音声案内</strong>
             <span class="guidance-audio-mode" role="status" aria-live="polite">案内待機中</span>
           </div>
-          <p class="guidance-audio-message" aria-live="off"></p>
+          
           <button class="secondary-button guidance-audio-replay" type="button">安全な場所で案内を聞き直す</button>
         </section>
         <p id="congestion-notice" class="congestion-notice" role="status" hidden></p>
         <section id="no-space-content" class="no-space-card" hidden aria-labelledby="no-space-title">
           <span class="no-space-symbol" aria-hidden="true">—</span>
           <h2 id="no-space-title">空き区画が見つかりませんでした</h2>
-          <p id="no-space-description"></p><p class="guidance-audio-message" aria-live="off"></p>
+          <p id="no-space-description"></p>
           <p class="pass-through">公道で順番待ちをせず、周囲の安全を確認してそのまま通過してください。</p>
           <p>別の駐車場をご利用ください。</p>
           <div class="button-group">
@@ -546,39 +546,27 @@
         </div>
       </section>
 
-      <!-- 音声テスト専用：読み終わるたびに次の案内ページへ切り替える。 -->
-      <section class="screen" id="voice-test-screen" data-screen="voice-test" aria-labelledby="voice-test-title" hidden>
-        <button class="back-button" id="voice-test-back" type="button">← 音声テストの設定へ戻る</button>
-        <div class="screen-heading">
-          <p class="step-label" id="voice-test-progress">テストの準備中</p>
-          <h1 id="voice-test-title" tabindex="-1">音声案内の確認</h1>
-          <p id="voice-test-group">音声案内の確認</p>
+      <!-- 音声テストは通常の待機・案内・駐車画面を再利用する。
+           操作パネルのみ共通表示し、読み上げ全文はDOMに作らない。 -->
+      <aside id="voice-test-demo-controls" class="voice-demo-panel" aria-label="案内画面のデモ操作" hidden>
+        <div class="voice-demo-heading">
+          <span class="voice-demo-badge">模擬データ・実際の空き状況ではありません</span>
+          <button class="secondary-button" id="voice-test-back" type="button">デモを終了</button>
         </div>
-        <section class="guidance-audio-card voice-test-card" aria-labelledby="voice-test-transcript-title">
-          <h2 id="voice-test-transcript-title">読み上げる案内文</h2>
-          <p id="voice-test-transcript" class="voice-test-transcript"></p>
-          <p id="voice-test-status" role="status" aria-live="polite">音声再生を準備しています。</p>
-        </section>
-        
+        <p id="voice-test-progress" class="voice-demo-progress">準備中</p>
+        <strong id="voice-test-title" class="voice-demo-title">案内画面の動作確認</strong>
+        <p id="voice-test-group" class="voice-demo-group"></p>
+        <p id="voice-test-status" role="status" aria-live="polite">音声を準備しています。</p>
+        <p id="voice-test-complete-count" role="status" hidden></p>
         <div class="voice-test-actions">
+          <button class="secondary-button" id="voice-test-prev" type="button">前の場面</button>
           <button class="primary-button" id="voice-test-pause" type="button">一時停止</button>
-          <button class="secondary-button" id="voice-test-retry" type="button">この音声をもう一度</button>
-          <button class="secondary-button" id="voice-test-prev" type="button">前の案内</button>
-          <button class="secondary-button" id="voice-test-next" type="button">次へスキップ</button>
+          <button class="secondary-button" id="voice-test-retry" type="button">音声を聞き直す</button>
+          <button class="secondary-button" id="voice-test-next" type="button">次の場面</button>
+          <button class="primary-button" id="voice-test-repeat" type="button" hidden>同じデモをもう一度</button>
+          <button class="secondary-button" id="voice-test-finish" type="button" hidden>条件選択に戻る</button>
         </div>
-      </section>
-
-      <section class="screen" id="voice-test-complete-screen" data-screen="voice-test-complete" aria-labelledby="voice-test-complete-title" hidden>
-        <div class="screen-heading">
-          <h1 id="voice-test-complete-title" tabindex="-1">音声の確認が終わりました</h1>
-          <p id="voice-test-complete-count">テストした音声を確認できます。</p>
-        </div>
-        <p>別の種類や言語を試す場合は設定画面に戻って変更してください。</p>
-        <div class="button-group">
-          <button class="primary-button" id="voice-test-repeat" type="button">同じテストをもう一度</button>
-          <button class="secondary-button" id="voice-test-finish" type="button">音声設定に戻る</button>
-        </div>
-      </section>
+      </aside>
 
     </main>
 
